@@ -3,15 +3,17 @@
 `channels/channels.py` turns an already-resolved `ProjectPaths` (`proj`) plus `StandardPaths`
 (`std`) into the host-side channel paths: the system-scope and workset-scope channel roots, and
 the per-box mailbox/share addresses inside them. It is **pure derivation** — it computes paths and
-changes no behavior: it creates no directories, touches no launch mounts, and seeds no files.
+changes no behavior: it creates no directories, touches no launch mounts, and seeds no files. The
+bind production, the `mkdir` and the file-seeding that consume these paths live on the launch path.
 
-It arrived as sub-step 6a of Phase 6 of the 1.6.0 config/settings revamp. The bind production, the
-`mkdir` and the file-seeding that consume these paths live in sub-step 6b, on the launch path.
+## The two channel scopes
 
-## The two channel scopes (TARGET §1, §2c, §2f)
+Keyspec § *CONFIG — the bootstrap PATH layer*, § *Worksets & box bindings — per mode*, and
+§ *Channels* declare them.
 
-**System scope** — five type roots under `@system.channelroot`: `common`, `chat`, `broadcast`,
-`mailboxes`, `share`. The two instance-owned types (`mailboxes`, `share`) are *partitioned* by the
+**System scope** — four type roots under `@system.channelroot`: `common`, `chat`, `mailboxes`,
+`share`, plus `broadcast`, a FILE under `system.channels.chat` (`{system.channels.chat}/broadcast.md`).
+The two instance-owned types (`mailboxes`, `share`) are *partitioned* by the
 workset-name token: `mailboxes/<ws>` and `share/<ws>`, where `<ws>` is `__PRIMARY__` | `<named>` |
 `__STANDALONE__`.
 
@@ -27,7 +29,7 @@ groups with **different mode rules**:
   `@meta.workset.path/channels`): `common`, `chat`, `share`, and `broadcast` (which defaults to
   `@workset.channels.chat/broadcast.md` and names a FILE, not a dir). These exist for PRIMARY and
   NAMED modes ONLY. Standalone has no workset-local channels — its `workset.channelroot` is
-  `<None>` per the TARGET, so `workset_channel_paths` returns `None` and `~/channels/workset/*` is
+  `<None>` per the keyspec, so `workset_channel_paths` returns `None` and `~/channels/workset/*` is
   omitted (A10). `has_workset_channels` is the single predicate for that split;
   `launch/templates.py` uses it to decide whether the workset mount exists at all.
 * The two **ALL-PROJECTS** leaves, `mailboxes` and `share_global`, default to the SYSTEM partition
@@ -37,14 +39,9 @@ groups with **different mode rules**:
   installed by no floor in any mode.
 
 ⚑⚑ **EVERY LEAF RESOLVES THROUGH ITS OWN DECLARED KEY — never a join onto the root.** The joins
-*are* the spec's defaults, which is why the un-keyed version looked correct for so long: it
-produced the right paths and obeyed no key. What it cost (R-35, ratified "fix the CODE"): `chat`
-became a split carrier — the `~/channels/workset/chat` bind followed the override while
-`start.py._seed_channel_files` kept joining `<channelroot>/chat`, so a repoint mounted one
-directory and seeded the chat logs into another, mounted nowhere, while the charter tells every agent
-its logs live at `~/channels/workset/chat`. `share` had the same split, latent. `broadcast`,
-`mailboxes` and `share_global` had no consumer at all: `config set` took the value, `config get`
-read it back, and nothing changed.
+*are* the spec's defaults, so a join produces the right paths and obeys no key: a repoint of `chat`
+would move the `~/channels/workset/chat` bind while the chat logs were seeded into the joined
+directory, mounted nowhere.
 
 The repoint reader takes its FILE SLOT from `config_keys._KEY_ROUTES`, the same table `config set`
 writes through, so the slot read and the slot written cannot drift. A repoint's own grammar
@@ -74,13 +71,13 @@ project root, and the workspace is a `workspace/` subdir beneath it — so `proj
 root and must not be substituted here.
 
 `WS_TOKEN_PRIMARY` and `WS_TOKEN_STANDALONE` are the reserved tokens standing for the PRIMARY and
-STANDALONE pseudo-worksets. A named workset may not use either; Phase 5 (5e) reserves them at
-workset-create time, so the derivation can treat a `<named>` token as unambiguous.
+STANDALONE pseudo-worksets. A named workset may not use either; workset create reserves them, so
+the derivation can treat a `<named>` token as unambiguous.
 
 Both derivations raise `ValueError` when a NAMED box is missing its workset group or name: the
 partition key would otherwise be silently wrong, which addresses a box's mail to the wrong place.
 
-## The addresses — `meta.box.*` (TARGET §2c)
+## The addresses — `meta.box.*` (keyspec § *Worksets & box bindings — per mode*)
 
 `box_channel_addresses` produces this box's own dirs *within* the partitioned roots, from the
 workset token plus the box name (`proj.name`):
@@ -111,8 +108,7 @@ resolved before calling it.
   `SystemPartition`. Same shape, different question; do not collapse the two. Built in exactly one
   place, `partition_key_paths(std, ws_token, ws_root)`; `workset_partition_paths` (from a resolved
   `ProjectPaths`) and `own_partition_dirs` (from raw relocation inputs) are its two entry points,
-  and they are two entry points rather than two derivations because they used to be two
-  derivations and answered differently.
+  never two derivations, so they cannot answer differently.
 * `WorksetChannels` — the workset-local leaves: `root`, `common`, `chat`, `chat_broadcast` (the
   `broadcast` KEY), `chat_general` (the non-key `general.md` inside the resolved chat dir), and
   `share` (whose per-box subdirs are `meta.box.share_workset`).
@@ -120,7 +116,7 @@ resolved before calling it.
 * `OwnPartition` — this box's own dirs, `mailbox` and `share_global`, addressed by raw
   `(ws_token, ws_root, box_name)`.
 
-## `own_partition_dirs` — the raw-input primitive behind the addresses (6d)
+## `own_partition_dirs` — the raw-input primitive behind the addresses
 
 `own_partition_dirs` is the lower-level primitive underneath `box_channel_addresses`: it takes the
 workset-name token, the workset ROOT and the box name directly, with no `ProjectPaths`. That is
@@ -129,19 +125,13 @@ must compute BOTH the OLD and the NEW partition for a box being moved between wo
 works from a pair of `ProjectState`s (via its own `_state_ws_token` and `_state_ws_root`), never
 from a resolved `ProjectPaths`.
 
-⚑⚑ **THE GAP THAT USED TO BE HERE IS CLOSED (2026-08-26), and how it read is worth keeping.** This
-function took `(std, ws_token)` alone, which is exactly enough to build the partition's DEFAULT and
-not enough to read a `workset.channels.{mailboxes,share_global}` repoint — while
-`box_channel_addresses` has routed through those keys since R-35. So a workset that repointed
-`mailboxes` had its boxes MOUNTED at the repointed address, and a `box move` out of it moved the
-default directory: an empty one, leaving every message the box had received stranded at an address
-no longer registered to it. It was not "two paths disagreeing by accident" — it was one of them
-consulting a key the other could not see, and the fix is to let it see: `ws_root` is now a REQUIRED
-keyword, and both entry points resolve through the single `partition_key_paths`. An OPTIONAL root
-would have reproduced the old behavior for any caller who omitted it, silently, which is the shape
-of the bug rather than a mitigation of it.
+⚑⚑ **`ws_root` is a REQUIRED keyword.** `(std, ws_token)` alone builds the partition's DEFAULT but
+cannot read a `workset.channels.{mailboxes,share_global}` repoint, which `box_channel_addresses`
+honors; a `box move` would then move the empty default directory and strand the box's mail at the
+mounted, repointed address. Both entry points resolve through the single `partition_key_paths`; an
+OPTIONAL root would silently drop the repoint for any caller who omitted it.
 
-⚑ Reading a key put a REFUSING resolver on the relocation path for the first time —
+⚑ Reading a key puts a REFUSING resolver on the relocation path —
 `partition_key_paths` raises (naming the key) on a repoint it cannot resolve, as every pre-snapshot
 key read does. `_relocate_channel_partition` catches that, warns and skips: it runs AFTER the files
 have moved, and a settings error in a best-effort cleanup step must not abort a lifecycle operation
@@ -151,7 +141,7 @@ Relocation itself is best-effort by contract (spec §2f, D-M10): a box's partiti
 `@meta.workset.name`, so moving it changes its channel address; its OWN mailbox and share move,
 and stale cross-box references to the old address may break, with no forwarding marker.
 
-## `workset.channelroot` is resolved, never hard-coded (§3.3)
+## `workset.channelroot` is resolved, never hard-coded
 
 `workset_channel_paths` is the `ProjectPaths` adapter over `workset_channels_at(ws_root)`, adding
 only the standalone gate; a working set with no box (`settings_launch.resolve_inputs`' `WORKSET`
@@ -173,14 +163,22 @@ imports inside the functions also keeps this pure-derivation module import-light
 
 ## Who calls this
 
+Among the callers:
+
 * `settings/core_defaults.py` — `box_channel_addresses` + `workset_channel_paths` feed the
   `meta.box.*` / `workset.channels.*` defaults.
-* `commands/start.py` — the launch path takes `workset_name_token`, `box_channel_addresses` and
-  `workset_channel_paths`. Its comments state that the token is SINGLE-SOURCED here precisely so
-  the token used for the runtime metadata and the token used for the partition cannot drift.
-* `settings/settings_launch.py` — documents the same single-sourcing at the launch seam; its
-  `WORKSET` subject takes `workset_token`, `partition_key_paths` and `workset_channels_at`.
+* `settings/settings_launch.py` — the launch seam takes `workset_name_token`, `workset_root`,
+  `workset_channel_paths` and `box_channel_addresses`; its comments state that the token is
+  SINGLE-SOURCED here so the token used for the runtime metadata and the token used for the
+  partition cannot drift. Its `WORKSET` subject takes `workset_token`, `partition_key_paths` and
+  `workset_channels_at`.
+* `commands/start.py` — `workset_channel_paths` and `CHAT_GENERAL_LEAF`, to seed the chat logs.
 * `commands/box/_lifecycle.py` — `own_partition_dirs` plus both reserved tokens, for move/convert.
+* `commands/box/_duplicate.py`, `commands/clean.py`, `commands/restore.py` — `workset_name_token`
+  and `workset_root`.
+* `launch/box_resolve.py`, `settings/workset_dirkeys.py`, `settings/paths.py` — `workset_token`
+  and the reserved tokens.
+* `project/workset.py`, `project/names.py` — the reserved tokens.
 * `launch/templates.py` — `has_workset_channels`, to gate the workset-local template layer.
 
 Import it as the SUBMODULE (`from kanibako.channels.channels import box_channel_addresses`); the
@@ -197,20 +195,3 @@ other box's mailbox, share, common or chat. This is the deliberate single-operat
 stance — box↔HOST isolation is unaffected. Real access limits land later with option (C), which
 keeps the guest PATHS but flips `rw*`→`ro` and routes writes through the helper socket. Do not
 write a comment, doc or error message that promises the current partitioning enforces anything.
-
----
-
-## Completeness sweep (relocation pass, 2026-08-20)
-
-Everything removed from the source is carried above, with two deliberate duplication drops:
-
-1. **The second lazy-import rationale** in `workset_channel_paths` (*"mirrors the module's other
-   function-level imports; keeps this pure-derivation module import-light at load"*) — the same
-   fact as the note at `workset_name_token`'s import and the `TYPE_CHECKING` comment, both of which
-   survive in source; the full reason is under `workset.channelroot is resolved` above.
-2. **`OwnPartition`'s restatement of its own two path formulas**, which are already spelled at
-   `SystemPartition` and in `box_channel_addresses`'s address list.
-
-Every symbol keeps a one-line docstring. The `⚑` D-M9 warning at `system_partition` and the
-standalone-root note at `workset_root` stayed in source under the keep test: each marks the exact
-line where a plausible edit would silently break something.

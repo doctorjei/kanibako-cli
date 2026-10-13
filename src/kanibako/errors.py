@@ -108,7 +108,7 @@ class UserCanceled(KanibakoError):
 
 
 class SubjectConflictError(KanibakoError):
-    """A positional box subject and ``--box`` named DIFFERENT targets (§Design 8)."""
+    """A positional box subject and ``--box`` named DIFFERENT targets."""
 
 
 class AgentResolutionError(KanibakoError):

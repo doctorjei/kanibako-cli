@@ -1,7 +1,7 @@
 # The Error Hierarchy — one base, one clean exit
 
-Twenty-five exception classes, almost all of them bare subclasses. The file is small and the code in
-it is trivial, which is exactly why it is worth reading carefully: **about two hundred `raise`
+The exception classes here are almost all bare subclasses. The file is small and the code in it is
+trivial, which is exactly why it is worth reading carefully: **a large share of the `raise`
 statements in `src/` and `packages/` name one of these classes directly**, so whatever these
 one-line descriptors say is what those sites believe they are raising.
 
@@ -16,14 +16,14 @@ except KeyboardInterrupt:  print();                      rc = 130
 
 There is no catch-all. **Deriving from `KanibakoError` is what turns a failure into a one-line
 `Error: …` and exit 1; anything outside the hierarchy reaches the user as a traceback.** That is the
-whole contract, and it is why the base class carries the only `⚑` marker left in the source.
+whole contract, and it is why the base class carries a `⚑` marker in the source.
 
 ## What is NOT in this file
 
 `KanibakoError` is the base of the hierarchy, not the base of every exception in the tree, and this
 file is not the whole hierarchy either. Both facts matter to the `cli.py` contract above.
 
-**Ten `KanibakoError` subclasses live next to their subsystem instead of here** — deliberately, and
+**Some `KanibakoError` subclasses live next to their subsystem instead of here** — deliberately, and
 they exit cleanly like the rest:
 
 * `settings.settings_resolve.SettingsError`, and its child
@@ -34,9 +34,9 @@ they exit cleanly like the rest:
 * `snapshots`: `UnsafeSnapshotNameError`, `ForeignSnapshotError`, `RestoreRefusedError` (and its child
   `RestoreLinkRefusedError`), `RestoreUndoFailedError`, `SnapshotSafetyError`
 
-**Eight exception classes are OUTSIDE the hierarchy** and derive straight from `Exception` (the
-standalone `scripts/import-directives.py` has two more). An instance of one of these escaping to
-`cli.py` is a traceback, not an `Error:` line:
+**These exception classes are OUTSIDE the hierarchy** and derive straight from `Exception` (the
+standalone `scripts/import-directives.py` has its own as well). An instance of one of these escaping
+to `cli.py` is a traceback, not an `Error:` line:
 
 * `tweakcc_cache.TweakccCacheError`
 * `settings.settings_expand._LenientDefect`
@@ -47,9 +47,9 @@ standalone `scripts/import-directives.py` has two more). An instance of one of t
 * `browser_sidecar.BrowserSidecarError`
 * `bun_sea.BunSEAError`
 
-Six more are outside it too. Three derive from `OSError` or `ConnectionError`:
+Others are outside it too. These derive from `OSError` or `ConnectionError`:
 `boxfs.SymlinkRefusedError`, `project.workset.StoreRemovalError`, and
-`channels.helper_client.FrameTooLarge`. Three derive from `yaml.YAMLError`:
+`channels.helper_client.FrameTooLarge`. These derive from `yaml.YAMLError`:
 `settings.config_io`'s `DuplicateKeyError`, `CyclicAnchorError`, and `DocumentTooDeepError`, which
 `config_io.load_doc` re-raises as `ConfigError`.
 
@@ -72,9 +72,9 @@ contract and nothing in the file's shape objects.
 ```class ConfigError(KanibakoError):```
 Configuration missing, malformed, or refused.
 
-⚑ **This is broader than "a config file is bad", and the older descriptor said only that.** Of the
-39 `raise ConfigError` sites in `src/`, eight are in `agent_ref.py` and refuse a malformed `--agent`
-REF STRING — a value typed on the command line, with no file anywhere in the story. Its two
+⚑ **This is broader than "a config file is bad".** The `raise ConfigError` sites in `agent_ref.py`
+refuse a malformed `--agent` REF STRING — a value typed on the command line, with no file anywhere
+in the story. Its two
 subclasses below are likewise not file faults: one is a *declaration* collision, the other a *scope*
 violation. What the family really means is "the configuration the user expressed is not usable" —
 whatever surface it was expressed on.
@@ -132,7 +132,7 @@ the same `kind` / `box_dest` / `entries`. The user-visible payoff: a message nam
 
 Both refusals are raised by named helpers rather than inline, so the spec-mandated message text
 exists exactly once each: `settings_categories.raise_binding_vs_binding` and
-`raise_extension_onto_occupied`, three callers apiece.
+`raise_extension_onto_occupied`.
 
 ⚑⚑ **Cite these refusals by name, never as `§0 row-1` / `§0 row-3`.** The collision table in the
 system design's § *Collision arbitration* is keyed by the ARRIVING entry (bind / mask /
@@ -183,26 +183,68 @@ with `copy_tree`, so a symlink in a layer is refused by the copier while it is s
 ```class ProjectError(KanibakoError):```
 Project cannot be resolved, or its name/location is refused.
 
-⚑ Broader than the older *"path does not exist or cannot be resolved"*. Several raise sites are
+⚑ Broader than *"path does not exist or cannot be resolved"*. Several raise sites are
 REFUSALS of a perfectly resolvable project, each with its own message constant in
 `settings/messages.py`: `ERR_PROJECT_NAME_USED`, `ERR_PROJECT_REG_HOME` (registration of HOME), and
 `ERR_PROJECT_PATH_IS_NAMED_BOX` (the path is already a named box's workspace). `project/names.py`
-adds the ambiguous-name and unknown-name refusals.
+adds the unknown-name refusal; the ambiguous-name one is `AmbiguousNameError`, below.
+
+```class BoxNameError(ProjectError):
+    def __init__(self, message: str, name: str) -> None
+    def with_cure(self, cure: str) -> str```
+A new box name breaks the box-name rule; each caller adds its cure.
+
+Raised by `launch/box_identity.py`'s name check; it carries the refused `name`, and `with_cure`
+appends the caller's cure to the message. The box verbs (`box create`, `box duplicate`, the
+`box` parser, `workset` commands) catch it and report it with their own cure.
+
+```class DerivedBoxNameError(BoxNameError):```
+A box name taken from a directory breaks the box-name rule.
+
+Raised where a name is DERIVED rather than typed: `settings/paths.py` (a box named for its
+directory), `launch/box_identity.py`, and `launch/box_resolve.standalone_box_name` (a moved
+standalone whose new leaf has no ASCII spelling — every door refuses with the one cure).
+
+```class LegacyBoxNameError(ProjectError):```
+A box typed by a stored name the box-name rule refuses: it is reached by its path only.
+
+Raised by `settings/paths.refuse_legacy_box`, the one carrier of that refusal, which the
+designation cascade runs for every verb that looks a box up by name.
+
+```class UnmarkedStandaloneError(ProjectError):```
+A registered standalone root lost its marker: refused, never "no box".
+
+Raised in `commands/box/_lifecycle.py` when a registered standalone root has no marker left; the
+same module catches it where it reports the refusal.
+
+```class AmbiguousNameError(ProjectError):```
+A bare box NAME matched several boxes, or only a member of a workset outside the path space.
+
+Raised by `project/names.py`; its message names `<workset>/<box>`. ⚑ A caller that catches
+`ProjectError` to mean "no such box" must exclude it, so an ambiguity is never read as a miss.
 
 ```class ContainerError(KanibakoError):```
 Container runtime or image operation failed.
 
-39 sites across the runtime and image layers; the descriptor is accurate and nothing was displaced.
+Raised across the runtime and image layers.
+
+```class LabelQueryError(ContainerError):```
+A runtime that is present failed to say which containers carry a box's labels.
+
+Raised by `runtime/container.py` when `ps` does not run or fails. A destructive verb (`stop`,
+`box rm`) refuses on it: the box may be running under another name.
+
+```class PackagingError(KanibakoError):```
+kanibako's packaged data is missing or incomplete; the install is broken.
+
+Raised by `settings/core_defaults.py` when a shipped data file is missing or malformed. No in-tree
+caller catches it by name, so it reaches `cli.py` as an `Error:` line.
 
 ```class ArchiveError(KanibakoError):```
 Archive creation, extraction, or validation failed.
 
-⚑⚑ **DEAD AS OF THIS PASS — it has no raiser, no catcher and no importer anywhere in `src/`,
-`tests/` or `packages/`.** `commands/archive.py` raises and catches `GitError` instead. The source
-descriptor now says `(no in-tree raiser)` so the next reader is not misled into thinking the archive
-path signals through it. It was left DECLARED rather than deleted: this is a prose pass, and the name
-is public API in a package whose plugin wheels depend on `kanibako-cli` with no upper bound. Deleting
-it is a code decision for someone else.
+No in-tree raiser, catcher, or importer; kept declared as public API. `commands/archive.py`
+catches `GitError`, which `git.py` raises.
 
 ```class GitError(KanibakoError):```
 Git check failed (uncommitted changes, unpushed commits, etc.).
@@ -213,7 +255,7 @@ two the descriptor names. Caught twice in `commands/archive._archive_one`.
 ```class WorksetError(KanibakoError):```
 Workset creation, loading, or manipulation failed.
 
-26 raise sites; nothing displaced.
+Raised across the workset layer.
 
 ```class LegacyWorksetIdentityError(WorksetError):```
 A workset root's `workset.yaml` still carries a RETIRED workset identity table — either the
@@ -226,6 +268,15 @@ re-raise it:** `commands/box/_parser.py:_resolve_standalone_target` swallows eve
 `detect_project_mode` as "a non-project path is simply a miss", and an un-migrated workset root in
 the ancestor walk is a named thing to fix, not a miss. Cure: MIGRATION.md § "A workset root no
 longer carries an identity table; an un-migrated root refuses".
+
+```class ReservedWorksetNameError(WorksetError):```
+A registered workset carries a name 1.8 reserves; the message carries the cure.
+
+Raised by `project/workset.py` for a registered workset whose name is in `RESERVED_WORKSET_NAMES`
+(the default workset's identifiers, the channel partition tokens, and the primary and standalone
+container-name segments); the message says to register it again under its directory name.
+`settings/paths.py` and `launch/box_resolve.py` re-raise it ahead of their `WorksetError` catch,
+so a reserved name is never read as "no workset".
 
 ```class LegacyRegistryIdentityError(WorksetError):```
 A per-workset `registry.yaml` still carries a RETIRED `workset:` identity table or `projects:` map
@@ -243,7 +294,7 @@ generic `Error: …` / exit 1. `utils.confirm_prompt` raises it both when the an
 than crashes.
 
 ```class SubjectConflictError(KanibakoError):```
-A positional box subject and `--box` named DIFFERENT targets (§Design 8).
+A positional box subject and `--box` named DIFFERENT targets.
 
 Raised in one place, `commands/flags.resolve_subject_value`, under the general rule its docstring
 states: wherever a positional and `--box` coexist, both supplied with DIFFERENT strings is this error.
@@ -259,18 +310,17 @@ raise site writes a multi-line message with a cure in it, and why
 comments in `commands/agent_cmd.py` and `commands/start.py` note that the error "surfaces verbatim".
 Reword one of these messages and you have reworded user-facing output.
 
-⚑ **Only ONE of these carries an install command now — `AgentNotInstalledError`.** The retired
-`NoAgentInstalledError` carried one for the zero-plugins-installed case; since 2026-09-19 the launch
-answers that case with `AgentUnsetError`, whose cure is `kanibako setup` at every installed count, and
-`commands/setup_cmd.py`'s Step 2 is where the tailored `install_method.install_command(...)` is
-printed instead. Do not re-add one here: the two refusals are deliberately one sentence each about
-what is UNSET, not a report on what is installed.
+⚑ **Only ONE of these carries an install command — `AgentNotInstalledError`.** With no plugin
+installed the launch answers `AgentUnsetError`, whose cure is `kanibako setup` at every installed
+count, and `commands/setup_cmd.py`'s Step 2 prints the tailored `install_method.install_command(...)`.
+Do not add one here: the two refusals are deliberately one sentence each about what is UNSET, not a
+report on what is installed.
 
 Two subclasses are raised from `settings/config.py`'s `resolve_agent`; the third,
 `AgentNoDefaultError`, is raised one seam earlier, in `settings/agent_select.py`'s `select_agent`,
 because only that function can see the difference between *unset* and *present-`None`*.
 
-🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE.** Retired 2026-09-19 (his ruling; keyspec §2b). Nothing
+🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (keyspec §2b). Nothing
 auto-selects an agent, not even when exactly one plugin is installed, and the installed set is read
 for ONE question only — *is this NAME installed?* — which is why it is read inside the named-ref
 branch and is not in scope on the refusal path.
@@ -293,8 +343,8 @@ cannot tell the two states apart. ⚑ **It is reachable by TYPO:** YAML reads `n
 ```class AgentNotInstalledError(AgentResolutionError):```
 A name resolved (explicit `--agent`, cascade, or default) but that agent adapter is not installed.
 
-Raised by `config.resolve_agent`. ⚑ The older descriptor said "(cascade/default)" and omitted the
-commonest trigger: `resolve_agent` reads `explicit_agent` FIRST, so a typo'd `--agent` lands here. What
+Raised by `config.resolve_agent`. ⚑ The commonest trigger is an explicit `--agent`:
+`resolve_agent` reads `explicit_agent` FIRST, so a typo'd `--agent` lands here. What
 must be installed is the HARNESS (`harness_of(node)`), never the composite node-name — a persona
 segment is free-form, so `navigator+claude` requires `claude` to be installed and asks nothing of
 `navigator`.
