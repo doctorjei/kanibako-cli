@@ -5441,8 +5441,8 @@ class TestApplyInitSeeds:
 
     def test_box_suppresses_target_default_seed(self, tmp_path):
         """A box-level present-None (``null``) suppresses the target-declared
-        default seed (the KeyStore merge suppression idiom, §3/§6e — present-None
-        OMITs the inherited bind; the old terminal-``""`` idiom is retired).
+        default seed (the merge suppression idiom, spec §2a PER-ENTRY CASCADE MERGE —
+        present-None OMITs the inherited bind; the old terminal-``""`` idiom is retired).
 
         Director ruling (F8, 2026-07-02): the capability is spec-implied — a box
         may not set ``agent.<name>.*`` directly (an upward write, dropped at
@@ -5450,8 +5450,8 @@ class TestApplyInitSeeds:
         REQUEST ``pref.agent.<a>.seeded[<dest>]: null`` (the ``box.agent.*``
         mirror it used to be is RETIRED, spec §2b). The pref installs present-None
         VERBATIM as an ordinary cascade level, so it OMITs the target seed AT
-        MERGE (the §3 type-split) — one route, no post-expand overlay, no
-        collector raise.
+        MERGE (spec §2h "Values are installed VERBATIM") — one route, no
+        post-expand overlay, no collector raise.
 
         ⚑ GREEN IS EVIDENCE HERE AGAIN (2026-08-08d) — this note used to say it
         was not, and the condition it named has now been met. The defect:

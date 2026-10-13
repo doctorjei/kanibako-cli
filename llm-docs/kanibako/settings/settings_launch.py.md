@@ -9,9 +9,9 @@ It replaced the two inline `LevelView` cascades `start.py` used to hand-build pe
 behavior cascade and the per-mount-family category cascade) and the `machine`
 (`/etc/kanibako.yaml`) reads (S14). It is the block-7b consumer SWAP: it IMPORTS the pipeline —
 single-source, it never re-implements assemble/merge/expand — and ADAPTS the snapshot's category
-subtrees into the one `list[CategoryEntry]` the delivery seams consume (§6g). ⚑ The single by-dest
-`reconcile` pass those seams replaced was retired at cutover 6-R3; this module never held it and
-does not need editing when its successors move.
+subtrees into the one `list[CategoryEntry]` the delivery seams consume (system-design § "The
+collapse"). ⚑ The single by-dest `reconcile` pass those seams replaced was retired at cutover
+6-R3; this module never held it and does not need editing when its successors move.
 
 The module has two halves. The FIRST half builds FLOORS — `{dotted_key: value}` fragments the caller
 folds into `build_launch_snapshot`'s one floor, so `expand` resolves every `@`-ref chain ONCE
@@ -23,11 +23,10 @@ folds into `build_launch_snapshot`'s one floor, so `expand` resolves every `@`-r
 §2a (the categories), §2c (worksets + box bindings per mode). ⚑ **The spec is the LIVE authority;
 read it first.** SEAMS S7/S8/S9/S12/S14/S17/S20/S26/S27 + OS1.
 
-Historical: `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §1 (purpose), §2 (storage model), §4 (resolution), §6g (cascade
-MERGE and category RECONCILE kept distinct). ⚑ It is ARCHIVED, at
-`~/canon/notebook/archives/keystore-2026-06/keystore-design.md`. 🛑 **Its §4 writes the cascade
-bracket with a 7th `required` tier that S14 and spec §2 CUT** — so on the cascade the archive is
-WRONG and the spec wins. Cite §4 for the resolution mechanics only, never for tier structure.
+Historical: `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §1 (purpose),
+§2 (storage model), §4 (resolution). 🛑 **Its §4 writes the cascade bracket with a 7th `required`
+tier that S14 and spec §2 CUT** — so on the cascade the archive is WRONG and the spec wins. Cite §4
+for the resolution mechanics only, never for tier structure.
 
 ## What lands in the one snapshot
 
@@ -94,8 +93,9 @@ FALLBACK — a legitimate discriminator, left as-is.)
 Two per-entry rules live in the floor fold:
 
 * **The `masks` BRIDGE.** A live `<scope>.masks` value is a LIST[box_dest] (the shipped/file form)
-  while the KeyStore model is a keyed `dict[box_dest → bool]` (S5/§6f). The floor converts, so the
-  snapshot's masks node is the keyed shape the adapter reads (present = mask). This is a CONVERSION,
+  while the KeyStore model is a keyed `dict[box_dest → bool]` (S5; spec §2a "masks is a KEYED
+  category"). The floor converts, so the snapshot's masks node is the keyed shape the adapter reads
+  (present = mask). This is a CONVERSION,
   not a filter, and it is a different thing from the `""`-suppression beside it.
 * **PER-ENTRY `""`-suppression.** Every bind-shaped category is DEST-KEYED and TERMINAL (R-5;
   2026-08-08c), so the whole map is ONE floor key — which would coarsen the smallest suppressible
@@ -122,8 +122,9 @@ a FRESH `KeyStore` shaped like a single bare agent scope node — its `bindings.
 `seeded` / `common` / `synced` / `masks` / `env` subtrees plus behavior leaves, each holding the
 per-name winner. The overlay is PER NAME (deep), so an active `agent.<active>.common.cache` and a
 default-only `agent.default.common.plugins` BOTH survive. A present-`None` reset was already OMITted
-by the merge (§3 / §6e), so it never reaches here. It must NOT itself read `meta.box.agent.*` — that
-node is MATERIALIZED FROM this pick, so reading it would be a chicken-and-egg.
+by the merge (spec §2a "PER-ENTRY CASCADE MERGE"), so it never reaches here. It must NOT itself
+read `meta.box.agent.*` — that node is MATERIALIZED FROM this pick, so reading it would be a
+chicken-and-egg.
 
 ### A pseudo-agent has no default slot — `_fallback_node`
 
@@ -877,8 +878,9 @@ require a leading `/`.** That was tried: it reddens 131 tests in `tests/test_com
 which mock `load_std_paths()` wholesale, so `config.primary_workset` stringifies to `"<MagicMock …>"`
 and the resolved root is legitimately not a real path in that context. No production path reaches
 this check non-absolute (the foundation is a real `Path`), so the absoluteness arm bought nothing and
-cost a harness-wide false positive. What catches the real hazard is the §3 three-state (absent /
-present-`None` / `""`-terminal) plus the vanished-leaf shape.
+cost a harness-wide false positive. What catches the real hazard is the three-state (spec §2h
+"Values are installed VERBATIM": absent / present-`None` / `""`-terminal) plus the vanished-leaf
+shape.
 
 `_BOX_STORE_KEY` (`workset.boxes`) is the SETTABLE key the box root dereferences, and it is
 validated ALONGSIDE the root because a broken source does not always produce a broken-LOOKING root.
@@ -1512,7 +1514,7 @@ apart — the distinction `effective_behavior`'s collapse erases. The subtree co
 `snapshot_category_entries` walks the snapshot's category subtrees into the ONE
 `list[CategoryEntry]`. Every delivery seam downstream reads THIS list and no other: the per-scope
 `store_shape` producer, the assembly collapse, and the launch seam's `LaunchDeliveries`. The shape is
-the one the retired by-name resolver produced, unchanged (§6g).
+the one the retired by-name resolver produced, unchanged (system-design § "The collapse").
 
 For every `<scope>.<category>` subtree present it emits one entry per leaf. The four scopes are the
 SAME `system, agent, workset, box` apply order the old by-name resolver used, so a same-scope tie
@@ -1654,8 +1656,9 @@ leaf is a 2-element `BindEntry(src, opts)` that carries no destination at all. T
 HERE, at the seam that knows the shape, and the destination handed to `_emit_bind` is the map key —
 never a value field. That is what makes "mount at the destination stored in the value"
 UNREPRESENTABLE rather than merely guarded against (R-8). A present-`None` ENTRY set in a file is
-omitted at the merge (§3/§6e). ⚑ **The `None` that reaches the loop is an entry whose SOURCE is
-`<None>`, and it is SKIPPED in every category, never refused** ([Q80] (a); spec §2a for a `seeded`
+omitted at the merge (spec §2a "PER-ENTRY CASCADE MERGE"). ⚑ **The `None` that reaches the loop
+is an entry whose SOURCE is `<None>`, and it is SKIPPED in every category, never refused** ([Q80]
+(a); spec §2a for a `seeded`
 layer). `settings_expand` hands it up as a present `None` (not absent) — whole-value or embedded
 (spec §0) — so it still overrides a fallback arm in the §2d pick (`[R177]`). A standard bind's lone
 `<None>` is warned by `_warn_lone_none_standard_binds`, not here. Only a non-`BindEntry` of another
@@ -1782,7 +1785,7 @@ be the WHOLE key and a bare `common` cannot match.
 `meta.agent.<a>.mode` as `mode_key → interactive argv fragment`, and `meta.agent.<a>.exec` as the
 standalone one-shot fragment (`None` when the agent declares no `exec` operation).
 
-`AuthTier` is the auth SHARING tier a box resolves to (design §3, precedence workset > global).
+`AuthTier` is the auth SHARING tier a box resolves to (spec §2b, precedence workset > global).
 
 `_overlay_into` deep-overlays *top*'s leaves onto *base*, in place, per name (S3). Matching
 `KeyStore` subtrees recurse, so a deep `top` leaf overlays the same deep `base` leaf without

@@ -11,7 +11,7 @@ folds into :func:`build_launch_snapshot`'s one floor, so ``expand`` resolves eve
 ``@``-ref chain ONCE (single-route, NO second resolver). The second READS the
 expanded snapshot: behavior, launch grammar, auth source, and the category adapter
 that turns the snapshot's category subtrees into the one ``list[CategoryEntry]``
-every delivery seam consumes (§6g).
+every delivery seam consumes (system-design § "The collapse").
 
 **Authority:** ``specs/settings-keyspace-1.8.0.md`` — §0 (the CLOSED keyspace), §1,
 §2 (the cascade), §2a (the categories), §2c (worksets + box bindings per mode).
@@ -921,13 +921,13 @@ def workset_anchor_floor(
     return floor
 
 
-#: The auth SHARING tier a box resolves to (design §3, precedence workset>global).
+#: The auth SHARING tier a box resolves to (spec §2b, precedence workset>global).
 AuthTier = Literal["workset", "global", "box"]
 
 
 @dataclass(frozen=True)
 class AuthSource:
-    """The resolved credential-SHARING decision for one box (spec §2b; design §3).
+    """The resolved credential-SHARING decision for one box (spec §2b).
 
     The two enables COMPOSE — a box can be global-shared AND/OR workset-shared — but
     the SELECTED *tier* obeys precedence workset>global. Field-by-field notes are in
@@ -2249,8 +2249,9 @@ def fold_floor(
             if val == "":
                 continue
             # masks BRIDGE: the shipped/file form is a LIST[box_dest]; the KeyStore
-            # model is a keyed ``dict[box_dest → bool]`` (S5/§6f). ⚑ This CONVERTS,
-            # it does not filter — a different thing from the suppression below.
+            # model is a keyed ``dict[box_dest → bool]`` (S5; spec §2a "masks is a
+            # KEYED category"). ⚑ This CONVERTS, it does not filter — a different
+            # thing from the suppression below.
             if (key == "masks" or key.endswith(".masks")) and isinstance(
                 val, (list, tuple)
             ):
@@ -3555,7 +3556,7 @@ def snapshot_category_entries(
     Every delivery seam downstream reads THIS list and no other: the per-scope
     ``store_shape`` producer, the assembly collapse, and the launch seam's
     ``LaunchDeliveries``. The shape is the one the retired by-name resolver produced,
-    unchanged (§6g). The four scopes are walked in the SAME ``system, agent, workset,
+    unchanged. The four scopes are walked in the SAME ``system, agent, workset,
     box`` apply order, so a same-scope tie breaks identically, and every emitted
     entry's ``scope`` is the BARE scope token — the load-bearing scope identity (§7),
     NOT the snapshot's agent discriminator. The agent tier is picked
@@ -3677,7 +3678,7 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     name holding the active slot's leaf where it set that name, else the
     ``agent.default`` leaf. The overlay is PER NAME (deep), so an active
     ``common.cache`` and a default-only ``common.plugins`` BOTH survive. A
-    present-``None`` reset was already OMITted by the merge (§3 / §6e).
+    present-``None`` reset was already OMITted by the merge (spec §2a "PER-ENTRY CASCADE MERGE").
 
     ⚑ This is the subtree the ``meta.box.agent.*`` RO mirror is MATERIALIZED from, so
     it must NOT itself read ``meta.box.agent.*`` — no chicken-and-egg. Reads via the
@@ -3883,8 +3884,9 @@ def _emit_scope_node(
             )
 
     # masks — a keyed dict[box_dest → bool] (present-None unmasks were dropped at
-    # build, §6f); each surviving key is a masked dest. ⚑ The isinstance is a TYPE
-    # NARROW, not a filter: every other shape was already refused by name.
+    # build, spec §2a "masks is a KEYED category"); each surviving key is a masked
+    # dest. ⚑ The isinstance is a TYPE NARROW, not a filter: every other shape was
+    # already refused by name.
     masks = dict.get(scope_node, "masks", __MISSING__)
     if isinstance(masks, KeyStore):
         for raw_dest in dict.keys(masks):

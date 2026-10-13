@@ -796,7 +796,7 @@ class TestAMasksListInTheFloorReachesTheEmit:
     ``list[box_dest]`` (e.g. ``core_defaults.vault_mask_default()``, which returns
     the shipped MAP's keys), while the KeyStore model — and the spec's own
     declaration, §2a ``dict[box_dest → bool|None]``, "NOT a bare list" — is KEYED
-    (S5/§6f), and the adapter's masks emit only walks a ``KeyStore`` node. ``build_launch_snapshot`` bridges the two in the
+    (S5), and the adapter's masks emit only walks a ``KeyStore`` node. ``build_launch_snapshot`` bridges the two in the
     ``default_categories`` fold (``settings_launch.py``, the ``masks BRIDGE``
     branch). Delete that branch and the list stays a ``list``, the emit's
     ``isinstance(masks, KeyStore)`` guard skips it, and EVERY floor-declared mask
@@ -3640,7 +3640,8 @@ def test_box_pref_category_merges_into_active_agent_slot(tmp_path: Path):
 
 def test_box_pref_category_present_none_suppresses_through_adapter(tmp_path: Path):
     # A box pref CATEGORY present-None (``null``) SUPPRESSES the inherited default
-    # bind AT MERGE (the §3 type-split), so it never reaches the category adapter.
+    # bind AT MERGE (spec §2h "Values are installed VERBATIM"), so it never reaches
+    # the category adapter.
     # ⚑ §2h: present-None installs VERBATIM — ``if value is None: continue`` in the
     # pref loop would silently delete this capability.
     box = _yaml(
