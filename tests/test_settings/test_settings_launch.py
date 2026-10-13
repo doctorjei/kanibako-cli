@@ -736,7 +736,7 @@ def test_adapter_does_not_root_a_relative_host_src():
     re-introduced prepend RED.
 
     ⚑ THE "SHOULD NEVER REACH HERE" PREMISE IS NOW TRUE, and it was not when this
-    was written: a source spelled ``{box.canon}/handbook`` passed the declaration
+    was written: a source spelled ``@box.canon/handbook`` passed the declaration
     parse and only became relative once the key it dereferences was read, so it
     reached the mount as a bare relative — which podman takes for a NAMED VOLUME.
     [R147] closed that on both sides (``settings_expand._refuse_relative_host_src``
@@ -4039,7 +4039,7 @@ def test_home_bind_names_the_derived_key_and_resolves_through_it():
 
     ⚑ THIS REPLACES THE DRIFT GUARD (deleted 2026-08-10, A9 re-point), and it is
     RE-AIMED, never deleted. While the derivation existed TWICE — the key, and an
-    inline ``{meta.box.path}/home`` in the ``home`` row of ``core-defaults.yaml`` — a
+    inline ``@meta.box.path/home`` in the ``home`` row of ``core-defaults.yaml`` — a
     guard held the two spellings equal. Then the row NAMED the key. At cutover 6-H the
     row went away entirely: home does NOT route through ``bindings.rw`` (spec
     ``:1015``), and ``commands.start._install_assembly_collapse`` builds the pid-0

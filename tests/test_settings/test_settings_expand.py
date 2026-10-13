@@ -1292,7 +1292,7 @@ def test_bind_entry_embedded_present_none_src_is_a_none_entry(category: str) -> 
     """An embedded source ref to a present None makes the ENTRY None (spec §0).
 
     ⚑ The hazard, measured on the launch path before the fix: standalone
-    ``workset.auth.path`` is ``<None>``, so ``{workset.auth.path}/x`` rendered the
+    ``workset.auth.path`` is ``<None>``, so ``@workset.auth.path/x`` rendered the
     HOST path ``/x`` and mounted it.  ONE rule for every bind-shaped category —
     ``seeded`` is no longer special in the expander.
     """
@@ -1693,7 +1693,7 @@ def test_ref_to_a_bare_relative_path_key_is_refused_not_mounted() -> None:
     """🛑 THE HOLE [R147] CLOSES, measured before the guard existed.
 
     ``box.canon: relcanon`` is self-resolving where it is DECLARED — the source is
-    spelled ``{box.canon}/handbook``, so ``_declared_source``'s parse-time refusal
+    spelled ``@box.canon/handbook``, so ``_declared_source``'s parse-time refusal
     never sees a relative — and it only becomes one HERE, when the key is read.
     The launch seam then uses ``host_src`` AS-IS, and podman reads a source
     beginning with neither ``.`` nor ``/`` as a NAMED VOLUME: the box would have
