@@ -886,13 +886,17 @@ class TestDeliverySeams:
             config_root=tmp_path, access="full",
         ) is True
         data = tomllib.loads(self._config(tmp_path).read_text())
-        # hook + GUEST_HOME-derived trust literals (directive group 0 + the
-        # Phase-2 liveness-marker group 1):
+        # hook + GUEST_HOME-derived trust literals (directive group 0, the four
+        # charter start scripts, then one per PostToolUse/SessionEnd/Stop group):
         assert data["hooks"]["SessionStart"]
+        cfg = f"{GUEST_HOME}/.codex/config.toml"
         state_keys = list(data["hooks"]["state"])
         assert state_keys == [
-            f"{GUEST_HOME}/.codex/config.toml:session_start:0:0",
-            f"{GUEST_HOME}/.codex/config.toml:session_start:1:0",
+            *(f"{cfg}:session_start:{i}:0" for i in range(5)),
+            f"{cfg}:post_tool_use:0:0",
+            f"{cfg}:post_tool_use:1:0",
+            f"{cfg}:session_end:0:0",
+            f"{cfg}:stop:0:0",
         ]
         assert (
             data["projects"][f"{GUEST_HOME}/workspace"]["trust_level"] == "trusted"

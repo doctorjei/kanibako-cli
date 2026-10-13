@@ -1141,7 +1141,7 @@ def test_codex_merge_with_provider_is_idempotent():
     twice = merge_codex_config(once, **kw)
     assert twice == once
     assert once.count("[model_providers.") == 1
-    assert once.count("[[hooks.SessionStart]]") == 2
+    assert once.count("[[hooks.SessionStart]]") == 5
 
 
 def test_codex_merge_provider_preserves_user_content():

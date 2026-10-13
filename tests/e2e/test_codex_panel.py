@@ -62,6 +62,7 @@ MARKERS_DIR = "/tmp/kanibako/agents"
 # black box that observes a real container, so its expectations are written out rather
 # than imported from the code under test.
 PID_ADD_SCRIPT = "~/canon/charter/general/scripts/util/pid-add.sh"
+CHARTER_HOOKS = "~/canon/charter/general/scripts/hooks"
 # The e2e fixture box's DEFAULT agent program.  ⚑ Load-bearing for the panel
 # simulation below: PID 1 judges a marker's pid against the launch grammar it was
 # given, so a simulated panel agent must carry the box's own agent name.
@@ -202,8 +203,9 @@ def _drift_managed_bytes(cfg: bytes) -> bytes:
 
 def test_codex_delivery_real_box(e2e_env):
     """Real `start --agent codex` delivers the FULL managed config.toml:
-    directive + D2 marker SessionStart groups, both trust entries, project
-    trust, the sandbox invariant — and a restart re-delivers it byte-identically
+    directive + charter start SessionStart groups, the PostToolUse, SessionEnd
+    and Stop canon hooks, one trust entry each, project trust, the sandbox
+    invariant — and a restart re-delivers it byte-identically
     (both seams reconverge on the real path)."""
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel_deliv"
     _seed_codex_stub(e2e_env)
@@ -219,20 +221,28 @@ def test_codex_delivery_real_box(e2e_env):
 
         groups = data["hooks"]["SessionStart"]
         commands = [g["hooks"][0]["command"] for g in groups]
-        assert len(groups) == 2, f"expected directive+marker groups, got {commands}"
+        assert len(groups) == 5, f"expected directive+4 charter groups, got {commands}"
         assert "/opt/kanibako/kanibako/scripts/import-directives.py" in commands[0]
-        # ⚑ MARKERS_DIR is deliberately NOT expected in the command any more: the
-        # marker hook is a CALL into the charter's PID helper, which is where the
-        # ``${KANIBAKO_AGENT_MARKERS_DIR:-…}`` fallback now lives.
-        assert PID_ADD_SCRIPT in commands[1] and '"$PPID"' in commands[1]
-        # ⚑ That the CALLED script really exists in a codex box is a claim about a
+        # The charter start scripts cascade to the PID helper, so the marker is
+        # written by them; each passes the agent pid explicitly.
+        assert commands[1:] == [
+            f'{CHARTER_HOOKS}/{leaf}.sh "$PPID"'
+            for leaf in ("startup", "resume", "clear-start", "compact")
+        ]
+        # ⚑ That the CALLED scripts really exist in a codex box is a claim about a
         # LIVE container, which this test does not have — its box exits the moment
         # the ``/bin/true`` codex does.  It is asserted by
         # ``test_codex_box_has_charter_pid_helper`` below, on a detached box.
+        assert [g["hooks"][0]["command"] for g in data["hooks"]["SessionEnd"]] == [
+            f'{CHARTER_HOOKS}/end.sh "$PPID"',
+        ]
         box_cfg = f"{GUEST_HOME}/.codex/config.toml"
         assert set(data["hooks"]["state"]) == {
-            f"{box_cfg}:session_start:0:0",
-            f"{box_cfg}:session_start:1:0",
+            *(f"{box_cfg}:session_start:{i}:0" for i in range(5)),
+            f"{box_cfg}:post_tool_use:0:0",
+            f"{box_cfg}:post_tool_use:1:0",
+            f"{box_cfg}:session_end:0:0",
+            f"{box_cfg}:stop:0:0",
         }
         for entry in data["hooks"]["state"].values():
             assert entry["trusted_hash"].startswith("sha256:")
@@ -241,7 +251,6 @@ def test_codex_delivery_real_box(e2e_env):
         assert "approval_policy" not in data
         # sandbox_mode is a box invariant (danger-full-access), not yolo-gated.
         assert data["sandbox_mode"] == "danger-full-access"
-        assert "SessionEnd" not in first.decode()  # codex has no such event
 
         # restart → byte-identical.  ⚑ Drift a value each seam owns first: untouched
         # bytes also match after a restart that never ran.
@@ -256,7 +265,7 @@ def test_codex_delivery_real_box(e2e_env):
 
 
 def test_codex_box_has_charter_pid_helper(e2e_env):
-    """A CODEX box really carries the charter PID helper the D2 marker hook calls.
+    """A CODEX box really carries the charter hooks and the PID helper they call.
 
     The delivered ``config.toml`` only proves the hook COMMAND names the script;
     an agent-gated ``charter/general`` bind would leave that command calling
@@ -277,6 +286,9 @@ def test_codex_box_has_charter_pid_helper(e2e_env):
             f"codex box never came up: rc={r.returncode} stderr={r.stderr[-300:]!r}"
         )
         _require_executable(name, PID_ADD_SCRIPT)
+        for leaf in ("startup", "resume", "clear-start", "compact", "edited",
+                     "end", "stop"):
+            _require_executable(name, f"{CHARTER_HOOKS}/{leaf}.sh")
     finally:
         rm(name)
 
