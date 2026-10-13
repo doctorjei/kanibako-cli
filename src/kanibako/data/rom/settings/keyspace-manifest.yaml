@@ -46,7 +46,7 @@ policy:
   # Override PRECEDENCE. Box wins. NOT the same axis as containment below.
   # AUTHORITY TIERS — the actual sources of a value, in precedence order:
   cascade: [base, system, agent, workset, box]
-  cascade_spec: "§2 (authority tiers), as clarified by Jei 2026-07-27"
+  cascade_spec: "§2 (authority tiers), as clarified [Jei:2026-07-27]"
 
   # R-17: the manifest carries BOTH forms — one alone generates the wrong
   # resolver. The IMPLEMENTATION BRACKET writes the agent tier's intra-tier
@@ -60,13 +60,13 @@ policy:
   # `agent.default` is NOT an authority tier. It is the agent tier's INTRA-TIER
   # FALLBACK: the values automatically part of EVERY agent unless overridden.
   #   agent tier value = agent.<active>.<key> if provided, else agent.default.<key>
-  # [Jei 2026-07-27: "It's not really its own level; rather, those are the values
-  #  until and unless the plugin provides a different value."]
+  # [Jei:2026-07-27] "It's not really its own level; rather, those are the values
+  #  until and unless the plugin provides a different value."
   agent_tier_fallback: "agent.<agent>.<key> -> agent.default.<key>"
-  agent_tier_fallback_spec: "§2d; clarified Jei 2026-07-27; R-17 ratified the framing"
+  agent_tier_fallback_spec: "§2d; clarified [Jei:2026-07-27]; R-17 ratified the framing"
 
   # (R-17 also RESOLVES the draft's "SPEC RECONCILIATION NEEDED" flag that stood
-  #  here: the spec ruled the fallback framing 2026-07-27 and the flag is DELETED.)
+  #  here: the spec ruled the fallback framing [Jei:2026-07-27] and the flag is DELETED.)
 
   # PARAMETRIC EXPANSION — makes the closed set closed WITHOUT enumerating it.
   # The keyspace is closed but NOT flat: these rules generate the legal key set.
@@ -100,7 +100,7 @@ policy:
   containment_spec: "§0 (directional view/set)"
 
   write_rule: command_scope_ge_key_scope    # may write own scope + scopes it CONTAINS
-  write_rule_spec: "§2a (scope-direction guard); R2 2026-06-29 + Jei 2026-07-02"
+  write_rule_spec: "§2a (scope-direction guard); [Jei:2026-06-29] + [Jei:2026-07-02]"
 
   ref_direction: up_only          # references view UP (read-only); never point DOWN
   ref_direction_spec: "§0"
@@ -127,12 +127,12 @@ policy:
   reference_forms_spec: "§0 (References)"
 
   enforce_at: resolve             # containing-scope key in a lower file is DROPPED + warned
-  enforce_at_spec: "§0 (clause 4 bless, Jei 2026-07-02)"
+  enforce_at_spec: "§0 (clause 4 bless, [Jei:2026-07-02])"
 
   read_verbs:                     # clause 5
     get: stored_at_scope          # what THIS scope's file says; else "(not set)"; never fabricate
     get_effective: cascade        # what will actually apply
-  read_verbs_spec: "§2a (clause 5 bless, Jei 2026-07-02)"
+  read_verbs_spec: "§2a (clause 5 bless, [Jei:2026-07-02])"
 
   # Files store entries UNRESOLVED — no code path writes a resolved value back.
   files_store_unresolved: true
@@ -157,7 +157,7 @@ policy:
     copies: guest               # seeded · synced — SPELLED guest, RESOLVED to the
                                 #  host store when the copy runs (2026-08-08; was
                                 #  `host` until then).
-  tuple_direction_spec: "§0 (Tuple direction; R-20, ruled 2026-07-30)"
+  tuple_direction_spec: "§0 (Tuple direction; R-20, [Jei:2026-07-30])"
 
   # -------------------------------------------------------------------------
   # TWO LAYERS (R-19) — the categories are NOT peers; `bindings` is the SOURCE
@@ -347,22 +347,24 @@ policy:
                                          #   the seed pass completes BEFORE any
                                          #   binding folds and no mount arbitrates
                                          #   it. ⚑ `synced` has NO home-only rule
-                                         #   (ruling 2026-08-10): it copies LAST,
-                                         #   through the FINAL bind map
+                                         #   (system-design § "Collision arbitration"):
+                                         #   it copies LAST, through the FINAL bind map
     seed_dest_outside_home: error        # a SEEDED dest not inside home is a
                                          #   config ERROR (`synced`: not an error)
-    synced_vs_binding_same_dest: allowed  # ⚑ RETIRED AS A RULE, ruling 2026-08-12
-                                         #   ("don't check for sync. Let it clobber
-                                         #   whatever it wants."). A sync at a bind's
-                                         #   EXACT dest is ORDINARY: it resolves
-                                         #   through that bind into its host source,
-                                         #   so it overwrites CONTENT and most of the
-                                         #   bind remains intact. NOTHING refuses it —
-                                         #   not the reconcile (retired 5-1b) and not
-                                         #   the assembly fold. The mount SURVIVES
-                                         #   beside the copy; a `synced` no longer
-                                         #   displaces it. ⚑ mount_forbidden stays
-                                         #   REMOVED: nothing needs replacing.
+    synced_vs_binding_same_dest: allowed  # ⚑ RETIRED AS A RULE,
+                                         #   system-design § "Collision arbitration";
+                                         #   [Jei:2026-08-12] ("don't check for sync.
+                                         #   Let it clobber whatever it wants."). A
+                                         #   sync at a bind's EXACT dest is ORDINARY:
+                                         #   it resolves through that bind into its
+                                         #   host source, so it overwrites CONTENT and
+                                         #   most of the bind remains intact. NOTHING
+                                         #   refuses it — not the reconcile (retired
+                                         #   5-1b) and not the assembly fold. The
+                                         #   mount SURVIVES beside the copy; a
+                                         #   `synced` no longer displaces it. ⚑
+                                         #   mount_forbidden stays REMOVED: nothing
+                                         #   needs replacing.
                                          #   ✅ SPEC DELTA TAKEN (2026-08-12): §0 now
                                          #   states such a dest is ACCEPTED, with a
                                          #   dated correction note, and the
@@ -381,9 +383,10 @@ policy:
   # spec §0 and code AGREE. ⚑ The two CODE carriers cannot disagree with each
   # other (settings_keyspace.RESERVED_LEAF_NAMES IS
   # keystore.KeyStore.RESERVED_KEY_NAMES — an alias, not a copy), but THIS list is
-  # a THIRD carrier and it DID drift: it still read 11 after ruling 25
-  # (2026-08-12) added the store's own two members. Pinned against the code since,
-  # by test_settings_keyspace.test_the_manifest_reserved_leaf_names_match_the_code.
+  # a THIRD carrier and it DID drift: it still read 11 after the keyspec §0
+  # "Reserved key names" change (2026-08-12) added the store's own two members.
+  # Pinned against the code since, by
+  # test_settings_keyspace.test_the_manifest_reserved_leaf_names_match_the_code.
   reserved_leaf_names: [get, keys, values, items, pop, popitem, setdefault,
                         update, clear, copy, fromkeys, RESERVED_KEY_NAMES,
                         insert_segments]
@@ -404,7 +407,7 @@ policy:
     box_side_deferred: true           # host pass MUST NOT expand a box-side {$XDG_*}/~
     escapes:                          # deferred residue: what the host pass keeps for the box pass
       carried_verbatim: ['\~', '\\', '{{', '}}']
-  xdg_spec: "§1 (clause 3′ bless, Jei 2026-07-02)"
+  xdg_spec: "§1 (clause 3′ bless, [Jei:2026-07-02])"
 
   # CLI LEVEL (§1A; R-11): the command line is its OWN level — the highest, above
   # every settings file and every pref. ANY flag that shadows a key overrides that
@@ -422,8 +425,8 @@ policy:
     # Absorbed from the former top-level `cli_flags_ephemeral` field — one
     # spelling of one policy.
     flags_ephemeral: true
-    flags_ephemeral_spec: "§1A (Jei ratified 2026-07-08)"
-    # CREATE EXCEPTION (R-11a, Jei 2026-08-01): at box CREATION only, a shadowing
+    flags_ephemeral_spec: "§1A ([Jei:2026-07-08])"
+    # CREATE EXCEPTION (R-11a, [Jei:2026-08-01]): at box CREATION only, a shadowing
     # flag's value PERSISTS — it INITIALIZES the box's stored config (e.g.
     # `create -i` durably writes box.image). Ephemerality governs every other
     # invocation; ALL shadowing flags act UNIFORMLY; create is the ONLY exception.
@@ -509,7 +512,7 @@ policy:
     # is already a key (config.agents, workset.boxes).
     guest_root: none
     root_dirname_is_a_key: false
-  declaration_roots_spec: "§2a (DECLARATION ROOTS; R-21, ruled 2026-08-01)"
+  declaration_roots_spec: "§2a (DECLARATION ROOTS; R-21, [Jei:2026-08-01])"
 
   # SEED WHITELISTS (R-24) — per-scope, DENY BY DEFAULT: anything not listed is
   # refused. The enumeration IS an allowlist — a correctness property, not a
@@ -561,7 +564,7 @@ policy:
     # destination subtree. Those TRAVERSAL DEFENSES are an algorithm, not a
     # table: they stay in CODE (R-24's explicit split).
     traversal_defenses: code
-  seed_whitelists_spec: "§2a (seed whitelists, ruled Jei 2026-07-30; R-24 — data
+  seed_whitelists_spec: "§2a (seed whitelists, [Jei:2026-07-30]; R-24 — data
                          into the manifest, defenses stay code)"
 
   # OUT-OF-BOX TEMPLATES (R-24) — the HOST STORES are stamped from the PACKAGES:
@@ -586,8 +589,8 @@ policy:
     - moment: "box create"
       from: "the three */template/box/canon/handbook layers"
       into: ["<box_dir>/canon/handbook"]    # an out-of-box TEMPLATE — NO key
-    # ⚑ The box-handbook row is listed and is explicitly KEYLESS — that is the
-    # 2026-08-07g ruling: those three layers are HOST templates, not GUEST
+    # ⚑ The box-handbook row is listed and is explicitly KEYLESS — that is
+    # [Jei:2026-08-07g]: those three layers are HOST templates, not GUEST
     # templates, so they left the `seeded` category (no `seeded` entry names that
     # dest now) and are copied host-side at create by
     # launch.templates.install_box_handbook_template, exactly as the agent and
@@ -608,7 +611,7 @@ policy:
     allow: [unrelated_defect, downstream_defect, defect_the_edit_resolves]
     warn: [host_source_path_missing]
     rule: "allow iff the edited value resolves cleanly post-edit"
-  set_validation_spec: "§2a (ruling 2026-06-29, E3)"
+  set_validation_spec: "§2a ([Jei:2026-06-29], E3)"
 
   # ANTI-FABRICATION GATE — the reason this file exists.
   # A key not in this table cannot be read, set, or resolved; an unrecognized
@@ -616,7 +619,7 @@ policy:
   unknown_key: error
   unknown_policy_field: error
   unknown_spec: "§0 \"The keyspace is CLOSED — an undeclared key is NOT a key\" (folded into the
-                 spec 2026-07-28). Rulings: 2026-06-27 walkthrough + Jei 2026-07-27."
+                 spec 2026-07-28). Rulings: [Jei:2026-06-27] walkthrough + [Jei:2026-07-27]."
 
 ## ---------------------------------------------------------------------------
 ## CATEGORY SCOPES — the settable cascade levels every `categories:` family is
@@ -678,7 +681,7 @@ categories:
     cli_set: false              # YAML only — a terminal dict, exactly like masks.
                                 #   The former `source_only` name-keyed repoint is a
                                 #   KNOWN, ACCEPTED LOSS (R-9; DS-BL1 answered (a),
-                                #   Jei 2026-08-07g — accept the loss UNIFORMLY
+                                #   [Jei:2026-08-07g] — accept the loss UNIFORMLY
                                 #   across all six bind-shaped categories).
     default: {}
     spec: "§2a (REPRESENTATION; dest-keyed 2026-08-06c, R-5/R-6/R-9/R-10)"
@@ -706,7 +709,7 @@ categories:
     cli_set: false              # YAML only — a terminal dict, exactly like masks.
                                 #   The former `source_only` name-keyed repoint is a
                                 #   KNOWN, ACCEPTED LOSS (R-9; DS-BL1 answered (a),
-                                #   Jei 2026-08-07g — accept the loss UNIFORMLY
+                                #   [Jei:2026-08-07g] — accept the loss UNIFORMLY
                                 #   across all six bind-shaped categories).
     default: {}
     note: "GLOBAL at system, per-agent at agent.<agent>. ⚑ It holds the patched-binary
@@ -764,7 +767,7 @@ categories:
     never_read_by_kanibako: true    # value NEVER enters snapshot/keystore/argv/logs
     fail_soft: true                 # missing/unreadable/empty ⇒ WARN + VAR unset
     agent_independent: true
-    nullable: true                  # RATIFIED 2026-08-17 (Jei): the token/key MAY
+    nullable: true                  # keyspec §2a secret_path.<VAR>: the token/key MAY
                                      #   hold an explicit null to mean "no key" —
                                      #   THREE states, not two: ABSENT (never
                                      #   configured) ⇒ refuse as before;
@@ -784,7 +787,7 @@ categories:
                                      #   Authorization header omitted for a
                                      #   present-null token, never a placeholder
                                      #   value — the server decides.
-    spec: "§2a (2026-07-06, Jei; nullable 2026-08-17 ruling)"
+    spec: "§2a ([Jei:2026-07-06]; nullable: the secret_path.<VAR> note)"
 
 # The entry VALUE shape is load-bearing (§2a REPRESENTATION): a YAML list / Python
 # tuple, NEVER a colon-joined "host:box" string. THERE IS NOW ONE BIND SHAPE.
@@ -809,7 +812,7 @@ bindmap_shape:
                                 #   options, so the category has NO default for
                                 #   the slot and the slot has NO meaning today.
                                 #   RESERVED DELIBERATELY, not vestigial —
-                                #   Jei 2026-08-07g, asked what opts means for a
+                                #   [Jei:2026-08-07g], asked what opts means for a
                                 #   copy: "Right now, nothing; but it's a good
                                 #   placeholder that we might need in the
                                 #   future." The spec declines to rule it
@@ -908,7 +911,7 @@ keys:
     default: "{config.data}/global/journal.yaml"
     why: "lifecycle journal (crash-recovery write-ahead log); normally EMPTY"
     spec: "§1 (added 2026-06-30b)"
-    # ⚑ DRIFT RESOLVED (Jei 2026-07-27): §1 prose claimed the Layer-1 set was
+    # ⚑ DRIFT RESOLVED [Jei:2026-07-27]: §1 prose claimed the Layer-1 set was
     #   'finalized at FIVE config keys' while the table listed SIX. Ruling: strike
     #   the count — it is a moving target. Spec edited; the 1.6.0 spec is archived
     #   at ~/canon/notebook/archives/specs/settings-keyspace-1.6.0-target.md (the
@@ -1172,10 +1175,10 @@ keys:
     default: {primary: "{meta.workset.path}/template",
               named: "{meta.workset.path}/template", standalone: null}
     note: "seed layer 3; the layer is SKIPPED when the source dir is absent
-           (ruled 2026-07-09, was <None>). standalone: <None> — a lone box has
+           ([Jei:2026-07-09], was <None>). standalone: <None> — a lone box has
            no template tier (the spec's STANDALONE block states it explicitly:
-           'workset.{registry,template} | <None>'; per-mode shape ruled F-1/5a,
-           2026-08-02)"
+           'workset.{registry,template} | <None>'; per-mode shape F-1/5a,
+           [Jei:2026-08-02])"
     spec: "§2c / §2a (F-1/5a)"
   workset.kuid:
     scope: workset
@@ -1286,7 +1289,7 @@ keys:
     type: bool
     set: cli+file
     default: false
-    spec: "§2b (CONFIRMED false, Jei 2026-06-19b)"
+    spec: "§2b (CONFIRMED false, [Jei:2026-06-19b])"
   box.images_store:
     scope: box
     type: path
@@ -1489,10 +1492,11 @@ keys:
     type: str
     set: cli+file
     default: null                 # "use the harness's built-in default"
-    note: "-M overrides per launch. ⚑ RATIFIED 2026-08-17 (Jei, same ruling as
-           secret_path): a PERSONA node's model is ALSO three-state, for the
-           SAME reason (whether an endpoint NEEDS a model is a property of that
-           SERVER) — but `default: null` already means 'harness default' here,
+    note: "-M overrides per launch. ⚑ The token key's shape (keyspec §2a
+           secret_path.<VAR>; [Jei:2026-08-17]): a PERSONA node's model is
+           ALSO three-state, for the SAME reason (whether an endpoint NEEDS a
+           model is a property of that SERVER) — but `default: null` already
+           means 'harness default' here,
            so ABSENT and an explicit PERSONA-level null are NOT the same
            resolved value and must not collapse (`effective_behavior`'s
            generic present-None-is-omitted convention is the WRONG reader for
@@ -1514,7 +1518,7 @@ keys:
            persona-level null on a config-file harness is therefore a
            declared CONFLICT, refused by name (key + harness + reason), never
            silently resolved either way."
-    spec: "§2d (nullable-per-persona 2026-08-17 ruling)"
+    spec: "§2d (nullable-per-persona, as keyspec §2a secret_path.<VAR>; [Jei:2026-08-17])"
   agent.default.endpoint:
     scope: agent
     type: str
@@ -1548,7 +1552,7 @@ keys:
            transform · `transform_settings` is its CONFIG INPUT · the patched binary in
            `agent.<agent>.caches` is its OUTPUT (an ENTRY of a terminal dest-keyed key,
            never a key of its own).
-           ⚑⚑ DECLARED 2026-08-08c by Jei, RE-declared here 2026-08-08e — it had been
+           ⚑⚑ DECLARED [Jei:2026-08-08c], RE-declared here 2026-08-08e — it had been
            filed under not_keys.renamed as folded-into-caches (2026-06-27). That fold is
            SUPERSEDED; do not re-file it there.
            ✅ WIRED 2026-08-09: the launch gate (`start._effective_transform` ->
@@ -1623,7 +1627,7 @@ keys:
            `xterm` when the host's is empty or unset (a value that IS set passes
            through UNVALIDATED — a terminfo check would be a host-side guess about
            the box's database).
-           ⚑ THE DEFAULT TIER, NOT A PER-NODE ROW, on Jei's 2026-09-19 ruling: a
+           ⚑ THE DEFAULT TIER, NOT A PER-NODE ROW, on [Jei:2026-09-19]: a
            terminal type is not a plain-shell concern. The agent tier's two cascade
            levels are overlaid PER NAME (§2a), so a plugin descriptor or any
            settings file overrides it for ONE agent and every other agent keeps
@@ -1633,7 +1637,7 @@ keys:
            nearer file and the nearest wins, while TERM named at a SECOND scope
            (box.env.TERM) is the launch REFUSAL naming both keys (see
            meta.assembly.env)."
-    spec: "§2d (default tier; ruled all-agents 2026-09-19)"
+    spec: "§2d (default tier; all-agents, [Jei:2026-09-19])"
   agent.<agent>.<key>:
     scope: agent
     parametric: [agent, key]
@@ -1870,7 +1874,7 @@ keys:
     value: "/etc/kanibako/settings_base.yaml"
     note: "the machine-wide SETTINGS floor — the cascade `base` level input (L2.1)"
     spec: "§1A (L0.2)"
-  ## meta.assembly.* — the COLLAPSE outputs (ratified 2026-08-08f; MOVED out of
+  ## meta.assembly.* — the COLLAPSE outputs (ratified [Jei:2026-08-08f]; MOVED out of
   ## meta.runtime on 2026-08-09). Their own group because they sit at the OPPOSITE
   ## END OF THE LIFECYCLE from the three rows above: the treewalk answers where the
   ## workset is, what it is called and what mode is this BEFORE anything else
@@ -2345,7 +2349,7 @@ keys:
     type: dict            # {mode_key -> argv fragment}
     note: "the harness's INTERACTIVE launch grammar; a NON-EDITABLE key — plugin
            invocation syntax, not a user preference. RENAMED from agent.<agent>.mode
-           (Jei 2026-07-28, D-4)."
+           (D-4, [Jei:2026-07-28])."
     spec: "§2d"
   meta.agent.<agent>.exec:
     namespace: meta
@@ -2354,7 +2358,7 @@ keys:
     origin: plugin
     type: str             # argv fragment; carried in the descriptor's `operations` dict
     note: "the STANDALONE (one-shot/headless) invocation; MUTUALLY EXCLUSIVE with mode at
-           the same argv slot. RENAMED from agent.<agent>.exec (Jei 2026-07-28, D-4)."
+           the same argv slot. RENAMED from agent.<agent>.exec (D-4, [Jei:2026-07-28])."
     spec: "§2d"
   meta.agent.<agent>.auth.share_support:
     namespace: meta
@@ -2366,7 +2370,7 @@ keys:
     spec: "§2d (auth-level 2026-07-01)"
 
 ## ---------------------------------------------------------------------------
-## DEFAULT BIND ENTRIES (dest-keyed; ruled 2026-08-06c, R-3/R-5/R-9/R-10)
+## DEFAULT BIND ENTRIES (dest-keyed; [Jei:2026-08-06c], R-3/R-5/R-9/R-10)
 ##
 ## ⚑ THESE ARE NOT KEYS. `box.bindings.ro` and `box.bindings.rw` are TERMINAL
 ## keys (see `categories:` above); the rows below are the DOCUMENTED DEFAULT
@@ -2380,7 +2384,7 @@ keys:
 ## reasons nothing else records ("Not repointable: the index defines the canon's
 ## shape and load order", the brace-form rule, the empty-options socket rule, …).
 ## ⚑ EVERY `note:` BELOW IS PRESERVED VERBATIM from its pre-demotion row. When one
-## drifts, the fix turns on whether substitution recovers the truth (Jei, 2026-09-13):
+## drifts, the fix turns on whether substitution recovers the truth [R161]:
 ## a retired NAME keeps its quoted text and gets the current spelling beside it in
 ## `see:`; a LIVE MECHANISM gone false is corrected IN PLACE — a `see:` says "read
 ## this word as that word", and no substitution recovers a false predicate.
@@ -2401,7 +2405,7 @@ keys:
 ##
 ## ⚑⚑ A DEST SPELLING IS NOW AN IDENTITY. Two spellings of one path would be two
 ## dict entries, which was cosmetic under name-keying and is not cosmetic now. It
-## is SETTLED by R-11 (Jei, 2026-08-06c) — a binding DEST is normalized to an
+## is SETTLED by R-11 [Jei:2026-08-06c] — a binding DEST is normalized to an
 ## ABSOLUTE guest path (`~` expanded), so `~` and `~/` ARE one entry; the SRC is
 ## NEVER canonicalized (a host `~` is the invoking user's home). See spec §2a
 ## REPRESENTATION, "A MOUNT DESTINATION IS CANONICALIZED; THE SOURCE IS NOT".
@@ -2637,11 +2641,11 @@ bind_default_entries:
              _secret_export_shim cannot reach — non-login execs never inherit its
              env). UNCONDITIONAL/universal: the snippet no-ops when nothing is
              mounted. Only the snippet PATH is bound, never a token (arm's-length
-             preserved). Spec row added per ruling 8a (2026-08-02) — resolves the
+             preserved). Spec row added per [Jei:2026-08-02] — resolves the
              former A6-era 'no spec §2c row' flag."
       see: "the note's `kani_pkg` is the retired NAME of the
             /opt/kanibako/kanibako entry above"
-      spec: "§2c (kanibako CLI delivery; ruled 8a, 2026-08-02)"
+      spec: "§2c (kanibako CLI delivery; [Jei:2026-08-02])"
 
   box.bindings.rw:
 
@@ -2730,7 +2734,7 @@ bind_default_entries:
       spec: "§2c (ALL WORKSETS)"
 
 ## ---------------------------------------------------------------------------
-## CATEGORY DEFAULT ENTRIES (dest-keyed; ruled 2026-08-07f — same class as the
+## CATEGORY DEFAULT ENTRIES (dest-keyed; [Jei:2026-08-07f] — same class as the
 ## 2026-08-06c bindings demotion above)
 ##
 ## ⚑ THESE ARE NOT KEYS. `system.seeded`, `agent.<agent>.seeded` and
@@ -2752,7 +2756,7 @@ bind_default_entries:
 ## (§2a layers 1-3) and reasons nothing else records.
 ##
 ## ⚑⚑ AND THEN THERE WERE THREE. The `handbook` half (layers 4-6, all at
-## `{box.canon}/handbook`) was RETIRED 2026-08-07g on Jei's ruling: the handbook
+## `{box.canon}/handbook`) was RETIRED [Jei:2026-08-07g]: the handbook
 ## templates *"do not DIRECTLY interact with the box itself … They are HOST
 ## templates, not GUEST templates"*, so they left the `seeded` category entirely.
 ## The ratified §2a declares THREE layers, and the keyspace declares NO `seeded`
@@ -3109,16 +3113,16 @@ not_keys:
     "box.bootstrap_program":   "-> agent.default.bootstrap (multiplexer is agent-tier)"
     # ⚑ `agent.<agent>.transform` was HERE and is NOT a retired name — it is a LIVE
     #   DECLARED key (spec `agent.default.transform` / `agent.claude.transform | tweakcc`),
-    #   re-declared by Jei 2026-08-08c. Its 2026-06-27 fold into `caches` was superseded.
-    #   Removed from not_keys 2026-08-08e on his word: "It should not be in 'not_keys'."
+    #   re-declared [Jei:2026-08-08c]. Its 2026-06-27 fold into `caches` was superseded.
+    #   Removed from not_keys [Jei:2026-08-08e]: "It should not be in 'not_keys'."
     #   ⚑ Do NOT re-add it here: the 2026-06-27 fold is HISTORY, not the current model.
-    "agent.<agent>.mode":      "-> meta.agent.<agent>.mode (non-editable key, Jei 2026-07-28)"
-    "agent.<agent>.exec":      "-> meta.agent.<agent>.exec (non-editable key, Jei 2026-07-28)"
+    "agent.<agent>.mode":      "-> meta.agent.<agent>.mode (non-editable key, [Jei:2026-07-28])"
+    "agent.<agent>.exec":      "-> meta.agent.<agent>.exec (non-editable key, [Jei:2026-07-28])"
     "agent.default.auto_approve": "-> agent.default.access (R-41, 2026-08-01; values map
                                     true→full, false→restricted). A STORED one HARD-REFUSES
                                     the launch with a level-appropriate cure naming access
                                     and quoting the user's value through that mapping (RQ-2,
-                                    ruled 2026-08-02 — an undeclared key is SILENT, and
+                                    [Jei:2026-08-02] — an undeclared key is SILENT, and
                                     silence on a permission axis resolves PERMISSIVE)"
     "agent.<agent>.auto_approve": "-> agent.<agent>.access (R-41; same value mapping, same
                                     launch refusal)"
@@ -3140,7 +3144,7 @@ not_keys:
                             arrives via the charter general chapter bind at ~/canon/charter/general/
                             (§2c; path conformed to the canon-books model, D-8);
                             no key, no repoint"
-    "system.templates_stamp": "RETIRED (R-38, Jei 2026-08-01) — was a LIVE, UNDECLARED key in
+    "system.templates_stamp": "RETIRED (R-38, [Jei:2026-08-01]) — was a LIVE, UNDECLARED key in
                                shipped code (a §0 violation: read/written by the setup gate,
                                never declared). Retired, not declared: delete the
                                reader/writer/gate (code step B8); a stored leaf is
@@ -3198,7 +3202,7 @@ not_keys:
     "agent.<agent>.autonomous":  "DEAD — see autonomous"
     "agent.default.start_mode":  "DEAD — see start_mode"
     "agent.default.autonomous":  "DEAD — see autonomous"
-    "required":           "the non-overridable ceiling TIER was CUT (Jei 2026-06-29f)"
+    "required":           "the non-overridable ceiling TIER was CUT [Jei:2026-06-29f]"
     ".env":               "global/workset/project .env FILES were DROPPED (2026-06-27) — a
                            duplicate shared channel for env; use <scope>.env.<VAR> instead"
     "env.<VAR>":          "the BARE, UNSCOPED env KEY spelling — RETIRED (R-39): it wrote the
