@@ -882,38 +882,57 @@ class TestPersistentMode:
             )
             m.fcntl.flock.assert_not_called()
 
-    @pytest.mark.skip(
-        reason="BROKEN — vacuous; see the S2 backlog item in tasks.md (Jei, "
-               "2026-08-05g: mark it broken for now)."
-    )
-    def test_persistent_forces_no_helpers(self, start_mocks):
-        """⚑ BROKEN — THIS TEST ASSERTS NOTHING IT CLAIMS TO.
+    # --- his 184-S2 (a): a persistent box has helpers, and its hub outlives start ---
 
-        The docstring used to read "persistent mode disables helper hub even if
-        not requested", but the only assertion is ``run_kwargs["detach"] is
-        True`` — which holds whether or not the hub started.  It is doubly
-        inert: ``tests/conftest.py`` seeds the ``agent.default`` floor with
-        ``allow_helpers=false``, so helpers are off in this fixture regardless
-        of the force-set the test is named for.  It therefore stays GREEN
-        through the deletion of ``no_helpers = True`` and would have reported
-        coverage it does not have.
+    def _launch(self, m, tmp_path, *, persistent, no_helpers=False, allow="true",
+                box_up=True):
+        """Run a launch with the hub process stubbed; return the stub class."""
+        from unittest.mock import patch as _patch
 
-        Skipped rather than deleted because the BEHAVIOR is still wanted — it
-        gets a real test when S2 lands.  ⚑ S2 is parked on a live defect: the
-        helper hub is dead on arrival in a persistent box (``detach=persistent``
-        + ``hub.stop()`` in the same ``finally``), so the ruled deletion cannot
-        ship until hub lifetime is fixed for detached containers.
-        """
-        with start_mocks() as m:
+        from kanibako.channels import hub_daemon
+
+        m.agent_cfg.state["allow_helpers"] = allow
+        m.load_std_paths.return_value.runtime = tmp_path / "run"
+        m.runtime.is_running.return_value = box_up
+        with _patch.object(hub_daemon, "HubProcess") as m_hub:
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
-                extra_args=[], persistent=True, no_helpers=False,
+                extra_args=[], persistent=persistent, no_helpers=no_helpers,
             )
-            # HelperHub should never be imported/started
-            run_kwargs = m.runtime.run.call_args.kwargs
-            # The container should have launched (detached), hub not started
-            assert run_kwargs["detach"] is True
+        return m_hub
+
+    def test_persistent_starts_the_hub_and_leaves_it_running(self, start_mocks, tmp_path):
+        """The force-set is gone: a persistent launch with helpers allowed starts the
+        hub, and the box that came up keeps it after this command returns.
+        (Mutation: restore ``no_helpers = True`` -> no start -> RED; restore the
+        unconditional ``hub.stop()`` -> RED.)"""
+        with start_mocks() as m:
+            m_hub = self._launch(m, tmp_path, persistent=True)
+        assert m.runtime.run.call_args.kwargs["detach"] is True
+        assert m_hub.return_value.start.call_count == 1
+        m_hub.return_value.stop.assert_not_called()
+
+    def test_persistent_box_that_did_not_come_up_stops_its_hub(self, start_mocks, tmp_path):
+        with start_mocks() as m:
+            m_hub = self._launch(m, tmp_path, persistent=True, box_up=False)
+        assert m_hub.return_value.start.call_count == 1
+        m_hub.return_value.stop.assert_called_once()
+
+    def test_ephemeral_launch_stops_its_hub_when_the_box_exits(self, start_mocks, tmp_path):
+        with start_mocks() as m:
+            m_hub = self._launch(m, tmp_path, persistent=False)
+        assert m_hub.return_value.start.call_count == 1
+        m_hub.return_value.stop.assert_called_once()
+
+    @pytest.mark.parametrize(("no_helpers", "allow"), [(True, "true"), (False, "false")])
+    def test_persistent_without_helpers_starts_no_hub(self, start_mocks, tmp_path,
+                                                      no_helpers, allow):
+        """``--no-helpers`` and ``allow_helpers: false`` still decide."""
+        with start_mocks() as m:
+            m_hub = self._launch(m, tmp_path, persistent=True, no_helpers=no_helpers,
+                                 allow=allow)
+        m_hub.return_value.start.assert_not_called()
 
     def test_persistent_custom_entrypoint(self, start_mocks):
         """Custom entrypoint is wrapped inside tmux."""

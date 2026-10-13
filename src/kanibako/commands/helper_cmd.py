@@ -30,6 +30,7 @@ from kanibako.channels.helpers import (
     write_spawn_budget,
 )
 from kanibako.settings.config import system_settings_path
+from kanibako.settings.core_defaults import box_helper_socket
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 
 
@@ -163,7 +164,7 @@ def _helpers_dir() -> Path:
 
 
 def _socket_path() -> Path:
-    """Return the path to the helper hub socket.
+    """Return the path to the helper hub socket, in the hub directory the box binds.
 
     Under the FIXED pinned root
     (:data:`~kanibako.settings.settings_resolve.BOX_PINNED_STATE_RELPATH`), NOT the
@@ -173,7 +174,7 @@ def _socket_path() -> Path:
     symlink onto this dir after boot, so reading through either works — this reads
     the real thing, which is correct even if the projection was skipped.)
     """
-    return Path.home() / BOX_PINNED_STATE_RELPATH / "helper.sock"
+    return box_helper_socket(Path.home())
 
 
 #: How long the liveness probe waits for the hub to take a connection.
@@ -183,10 +184,9 @@ _PROBE_TIMEOUT = 2.0
 def _check_helpers_enabled() -> bool:
     """True only when a hub LISTENS on the helper socket: a connect is taken.
 
-    The path existing is not enough.  An ephemeral start pre-creates the socket's
-    mount stub (a plain file) in the persistent home, where it outlives the start,
-    and a hub that died leaves its socket file behind; with either, nothing could
-    launch a helper.
+    The path existing is not enough: a hub that died without removing its socket
+    leaves the file behind, and nothing could launch a helper.  The box binds the
+    socket's DIRECTORY, so this reads whatever socket the hub bound most recently.
     """
     path = _socket_path()
     if not path.is_socket():

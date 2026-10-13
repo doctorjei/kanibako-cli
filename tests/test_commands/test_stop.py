@@ -1626,3 +1626,45 @@ class TestStopAllIsolatesARegistryRefusal:
         out = capsys.readouterr().out
         for name in ("-legacy", "-solo", "-member"):
             assert f"Skipped box '{name}'" in out, out
+
+
+class TestStopEndsTheHelperHub:
+    """His 184-S2 (a): the hub outlives ``start``, so ``stop`` ends it, and its helpers."""
+
+    def test_stop_stops_the_boxs_hub(self, mock_runtime, tmp_path):
+        """(Mutation: drop the ``stop_box_helper_hub`` call -> RED.)"""
+        from pathlib import Path
+
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None
+        sock = Path("/run/kb/app-primary/helper.sock")
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths") as m_std,
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch("kanibako.commands.start.helper_socket_path",
+                  return_value=sock) as m_path,
+            patch("kanibako.channels.hub_daemon.stop_hub", return_value=True) as m_stop,
+        ):
+            m_resolve.return_value = MagicMock()
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+        assert m_path.call_args.args == (m_resolve.return_value, m_std.return_value.runtime)
+        m_stop.assert_called_once_with(sock)
+
+    def test_a_hub_that_will_not_stop_is_said_and_the_stop_succeeds(
+        self, mock_runtime, capsys,
+    ):
+        from pathlib import Path
+
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = None
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target"),
+            patch("kanibako.commands.start.helper_socket_path",
+                  return_value=Path("/run/kb/x/helper.sock")),
+            patch("kanibako.channels.hub_daemon.stop_hub", return_value=False),
+        ):
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+        assert "helper hub" in capsys.readouterr().err

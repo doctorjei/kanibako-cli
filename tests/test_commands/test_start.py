@@ -4228,13 +4228,13 @@ class TestCacheRootReachesItsConsumers:
         not-identity assertion goes RED; drop the selection → the mount never
         reaches the helper ctx → RED.)
         """
-        from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.channels import hub_daemon as hub_daemon_mod
         from kanibako.settings.kb_store import BindEntry
         from kanibako.targets.base import AgentInstall
         from kanibako.tweakcc_cache import CacheEntry
 
         with start_mocks() as m, patch.object(
-            helper_listener_mod, "HelperHub",
+            hub_daemon_mod, "HubProcess",
         ) as m_hub_cls:
             cache_root = tmp_path / "cache-root"
             agent_cache_dir = tmp_path / "agents" / "claude" / "caches" / "tweakcc"
@@ -4329,11 +4329,11 @@ class TestRuntimeRootReachesTheHelperHub:
     def test_the_hub_socket_is_under_std_runtime(self, start_mocks, tmp_path):
         """(Mutation: ``_start_helper_hub``'s ``_run_dir`` = any dir but ``std.runtime``
         → the socket's parent is not ``run_dir`` → RED.)"""
-        from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.channels import hub_daemon as hub_daemon_mod
 
         run_dir = tmp_path / "run"
         with start_mocks() as m, patch.object(
-            helper_listener_mod, "HelperHub",
+            hub_daemon_mod, "HubProcess",
         ) as m_hub_cls:
             # The hub is agent-scope opt-in in the fixture's floor; turn it ON so
             # the REAL ``_start_helper_hub`` runs.
@@ -4347,7 +4347,7 @@ class TestRuntimeRootReachesTheHelperHub:
 
         assert m_hub_cls.return_value.start.call_count == 1, "the hub must start"
         socket_path = m_hub_cls.return_value.start.call_args.args[0]
-        assert socket_path.parent == run_dir, socket_path
+        assert socket_path.parent.parent == run_dir, socket_path
         assert run_dir.is_dir(), "the launch creates the runtime dir it binds in"
 
 
@@ -4355,11 +4355,11 @@ class TestRuntimeRootReachesTheHelperHub:
         """A present-``<None>`` ``workset.logs`` names no log ([R177], companion "The
         helper-log bind"): the hub starts with NO message log and the helper table
         still carries the socket bind, minus the log bind."""
-        from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.channels import hub_daemon as hub_daemon_mod
         from kanibako.settings import core_defaults
 
         with start_mocks() as m, patch.object(
-            helper_listener_mod, "HelperHub",
+            hub_daemon_mod, "HubProcess",
         ) as m_hub_cls, patch(
             "kanibako.settings.paths.helper_log_path", return_value=None,
         ), patch.object(
@@ -4375,7 +4375,7 @@ class TestRuntimeRootReachesTheHelperHub:
             ) == 0
 
         assert m_hub_cls.return_value.start.call_count == 1, "the hub must start"
-        assert m_hub_cls.return_value.start.call_args.kwargs["log"] is None
+        assert m_hub_cls.return_value.start.call_args.kwargs["log_path"] is None
         assert m_table.call_count >= 1, "the socket alone must gate the helper table"
         assert all(c.kwargs["log_path"] is None for c in m_table.call_args_list)
 
@@ -4439,11 +4439,11 @@ class TestSpawnBudgetReachesTheDirector:
         with *stale_num* planted at ``meta.box.helper_num`` in it.
         *launch* reaches ``_run_container`` (``persistent``/``detach`` force the hub off).
         """
-        from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.channels import hub_daemon as hub_daemon_mod
         from kanibako.channels.helpers import write_spawn_budget
 
         with start_mocks() as m, patch.object(
-            helper_listener_mod, "HelperHub",
+            hub_daemon_mod, "HubProcess",
         ) as m_hub_cls:
             m.agent_cfg.state["allow_helpers"] = "true"
             m.load_std_paths.return_value.runtime = tmp_path / "run"
@@ -5086,13 +5086,13 @@ class TestBrowserSidecar:
         the identity of the map AND on the one variable production is known to
         write after the hub call.
         """
-        from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.channels import hub_daemon as hub_daemon_mod
 
         mock_sidecar = MagicMock()
         mock_sidecar.start.return_value = "ws://127.0.0.1:9222/devtools/browser/abc"
 
         with start_mocks() as m, patch.object(
-            helper_listener_mod, "HelperHub",
+            hub_daemon_mod, "HubProcess",
         ) as m_hub_cls:
             # The hub is agent-scope opt-in in the fixture's floor; turn it ON so
             # the REAL ``_start_helper_hub`` (the sole HelperContext construction)

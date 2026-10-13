@@ -94,7 +94,7 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
     ),
   )
   entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
-  sock_dest = "/home/agent/.kanibako/state/helper.sock"
+  sock_dest = "/home/agent/.kanibako/state/hub"
   log_dest = "/home/agent/.kanibako/state/helpers.jsonl"
   options = {e.box_dest: e.options for e in entries}
 

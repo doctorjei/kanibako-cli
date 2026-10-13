@@ -427,7 +427,7 @@ class TestBundledInitScript:
         # guaranteed to have happened, so it must not depend on it.
         path = bundled_init_script()
         content = path.read_text()
-        assert 'SOCKET_PATH="$HOME/.kanibako/state/helper.sock"' in content
+        assert 'SOCKET_PATH="$HOME/.kanibako/state/hub/helper.sock"' in content
         # No EXECUTABLE line may RESOLVE anything from XDG (the comment explaining
         # why is exempt: it is the prose, not the resolution).
         #
@@ -480,7 +480,7 @@ class TestBundledInitScript:
             e["key"]: e["box_dest"] for e in core_defaults._load_doc()["helpers"]
         }
         assert declared == {
-            "helper_sock": f"~/{BOX_PINNED_STATE_RELPATH}/helper.sock",
+            "helper_sock": f"~/{BOX_PINNED_STATE_RELPATH}/hub",
             "helper_log": f"~/{BOX_PINNED_STATE_RELPATH}/helpers.jsonl",
             # The spawn-budget bind: the in-box reader is ``Path.home() /
             # SPAWN_CONFIG_FILENAME`` (``helper_cmd.run_spawn``), so dest and reader agree.
@@ -488,7 +488,7 @@ class TestBundledInitScript:
         }
 
         # 3. The box-side SHELL literal, resolved with the box's HOME.
-        shell_line = 'SOCKET_PATH="$HOME/.kanibako/state/helper.sock"'
+        shell_line = 'SOCKET_PATH="$HOME/.kanibako/state/hub/helper.sock"'
         assert shell_line in bundled_init_script().read_text()
         shell_dest = shell_line.split('"')[1].replace("$HOME", GUEST_HOME)
 
@@ -496,7 +496,8 @@ class TestBundledInitScript:
         with patch.object(Path, "home", staticmethod(lambda: Path(GUEST_HOME))):
             cli_sock, cli_log = str(_socket_path()), str(_log_path())
 
-        mount_sock = declared["helper_sock"].replace("~", GUEST_HOME, 1)
+        mount_sock = (declared["helper_sock"].replace("~", GUEST_HOME, 1)
+                      + "/" + core_defaults.HELPER_SOCKET_NAME)
         mount_log = declared["helper_log"].replace("~", GUEST_HOME, 1)
         assert shell_dest == cli_sock == mount_sock
         assert cli_log == mount_log
@@ -518,8 +519,8 @@ class TestBundledInitScript:
         home = Path(tempfile.mkdtemp(prefix="kbi-", dir="/tmp"))
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            (home / ".kanibako" / "state").mkdir(parents=True)
-            listener.bind(str(home / ".kanibako" / "state" / "helper.sock"))
+            (home / ".kanibako" / "state" / "hub").mkdir(parents=True)
+            listener.bind(str(home / ".kanibako" / "state" / "hub" / "helper.sock"))
             listener.listen(1)
             fakebin = home / "bin"
             fakebin.mkdir()

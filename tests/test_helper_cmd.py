@@ -72,7 +72,7 @@ def helpers_env(tmp_path, monkeypatch):
     # linked in, because an AF_UNIX path is capped near 108 bytes and ``tmp_path`` is
     # not.  Nobody accepts on it: a connect still succeeds into the backlog, and that
     # is all the CLI's liveness probe asks.
-    sock = home / ".kanibako" / "state" / "helper.sock"
+    sock = home / ".kanibako" / "state" / "hub" / "helper.sock"
     sock.parent.mkdir(parents=True)
     listener, real = _listening_socket()
     sock.symlink_to(real)
@@ -122,7 +122,7 @@ def _listening_socket() -> tuple[socket.socket, Path]:
 
 def _no_hub(home: Path) -> None:
     """Take the hub away: the box a persistent start leaves (no socket)."""
-    (home / ".kanibako" / "state" / "helper.sock").unlink()
+    (home / ".kanibako" / "state" / "hub" / "helper.sock").unlink()
 
 
 class TestGetExistingHelpers:
@@ -762,7 +762,7 @@ class TestRunSend:
     def test_a_stub_or_dead_socket_gets_the_no_hub_wording(self, helpers_env, capsys, verb):
         """The socket FILE exists (a stub, or a dead hub's socket): "no socket found"
         would be false; the cause is the same as with no file, so is the sentence."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.unlink()
         sock.touch()
         run = run_send if verb == "send" else run_broadcast
@@ -773,7 +773,7 @@ class TestRunSend:
 
     def test_send_with_socket(self, helpers_env, capsys):
         """Send succeeds when socket exists and mock returns ok."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
@@ -784,7 +784,7 @@ class TestRunSend:
         assert "sent" in capsys.readouterr().out
 
     def test_send_failure(self, helpers_env, capsys):
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
@@ -803,7 +803,7 @@ class TestRunBroadcast:
         assert "Cannot broadcast: this box runs no helper hub" in capsys.readouterr().err
 
     def test_broadcast_success(self, helpers_env, capsys):
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
@@ -834,7 +834,7 @@ class TestRunRegister:
         real = Path(tempfile.mkdtemp(prefix="kbr-", dir="/tmp")) / "s"
         hub = HelperHub()
         hub.start(real, MagicMock(helpers_dir=home / "helpers"))
-        link = home / ".kanibako" / "state" / "helper.sock"
+        link = home / ".kanibako" / "state" / "hub" / "helper.sock"
         link.unlink()
         link.symlink_to(real)
         return hub, real
@@ -981,7 +981,7 @@ class TestFormatLogEntry:
 class TestSocketWiring:
     def test_spawn_with_socket(self, helpers_env, capsys):
         """Spawn calls socket client when socket exists."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
@@ -997,7 +997,7 @@ class TestSocketWiring:
 
     def test_spawn_socket_failure(self, helpers_env, capsys):
         """Spawn records 'failed' when socket returns error."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
@@ -1060,7 +1060,7 @@ class TestSocketWiring:
 
     def test_stop_with_socket(self, helpers_env, capsys):
         """Stop calls socket client for container stop."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
@@ -1100,7 +1100,7 @@ class TestSocketWiring:
 
     def test_respawn_with_socket(self, helpers_env, capsys):
         """Respawn calls socket client for container relaunch."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
 
@@ -1159,7 +1159,7 @@ class TestNoHub:
     def test_the_leftover_socket_stub_is_not_a_hub(self, helpers_env, capsys):
         """An ephemeral start pre-creates the socket's mount stub (a plain FILE) in the
         persistent home; the next persistent start runs no hub, but the file stays."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.unlink()
         sock.touch()
         rc = run_spawn(_make_args(depth=None, breadth=None, model=None))
@@ -1171,7 +1171,7 @@ class TestNoHub:
 
     def test_a_dead_hubs_socket_is_not_a_hub(self, helpers_env, capsys):
         """A real socket file that nothing listens on (the hub died) refuses the same way."""
-        sock = helpers_env / ".kanibako" / "state" / "helper.sock"
+        sock = helpers_env / ".kanibako" / "state" / "hub" / "helper.sock"
         sock.unlink()
         listener, real = _listening_socket()
         listener.close()  # the file stays; a connect now gets ECONNREFUSED

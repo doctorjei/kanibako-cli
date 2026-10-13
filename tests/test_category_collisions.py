@@ -452,7 +452,7 @@ class TestANarrowResolveEmitsOnlyItsOwnTable:
     CROSS-scope pair is the collapse's, which returns early here.
     """
 
-    TABLE = "/home/agent/.kanibako/state/helper.sock"
+    TABLE = "/home/agent/.kanibako/state/hub"
     DESTS = frozenset({TABLE})
 
     def _table_row(self):

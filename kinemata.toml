@@ -2467,7 +2467,7 @@ section = "keys"
 where = { id_matches = '^meta\.(workset\.(path|name|settings)|box\.mode)$' }
 
 # FACT: the helper SOCKET bind's host source is the name the keyspec spells --
-# `<box name>-<workset name>.sock` under `@system.runtime` -- as the helper bind
+# `<box name>-<workset name>` (the socket's directory) under `@system.runtime` -- as the helper bind
 # emitter installs it. The COMPOSITION half of `TestBindDefaults`' helper-socket
 # case, NAMED MODE ONLY (the parity note says why); the length BOUND and its hash
 # stay with that case ([R165]).
@@ -2478,7 +2478,7 @@ name = "helper-socket-bind"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
-where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
+where = { id_matches = '^~/\.kanibako/state/hub$' }
 
 # FACT: `workset.kuid`'s PRIMARY and NAMED arms are the value the anchor floor
 # supplies there -- `kuid.SENTINEL`. The STANDALONE arm is the prose `<generated at
@@ -2732,7 +2732,7 @@ name = "helper-socket-options"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
-where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
+where = { id_matches = '^~/\.kanibako/state/hub$' }
 
 # FACT: the CORE binds' host sources -- the workspace and the two vault rows, per
 # mode -- are what `core_defaults.core_default_categories` emits. One view per arm.
@@ -4628,26 +4628,26 @@ authority = "declared"
 # oracle prints the emitter's whole `box.bindings.rw` arm, dest by dest, each dest
 # written back as the `~` the manifest keys on (`kinemata_views.guest_bind_arm`).
 # ⚑ `translate` IS THE NAME RULE'S UNBOUNDED ARM, declared where it can be read:
-# `<bounded name of "<t>">` is `<t>.sock` while the path fits the socket limit.
+# `<bounded name of "<t>">` is `<t>` while `<t>/helper.sock` fits the socket limit.
 # It matches only a cell whose mount options are `""`; the EMITTER's options are
 # `helper-socket-options`' to compare.
 #   `# helper-socket-bind: 1 declared, 1 produced, in agreement, agreeing on
 #   default.`  rc=0
 # NEGATIVE CONTROLS:
 #   code, the separator `-` -> `_` in `helper_socket_path`:
-#     `~/.kanibako/state/helper.sock: default declared
-#     '@system.runtime/@{meta.box.name}-@{meta.workset.name}.sock', code produces
-#     '@system.runtime/@{meta.box.name}_@{meta.workset.name}.sock'`
+#     `~/.kanibako/state/hub: default declared
+#     '{system.runtime}/{meta.box.name}-{meta.workset.name}', code produces
+#     '{system.runtime}/{meta.box.name}_{meta.workset.name}'`
 #   code, `core-defaults.yaml`'s `helper_sock` row moved to `bindings.ro`:
-#     `~/.kanibako/state/helper.sock: declared, produced by nothing`
+#     `~/.kanibako/state/hub: declared, produced by nothing`
 #   manifest, the two refs swapped in the bounded-name template: `default declared
-#     '@system.runtime/@{meta.workset.name}-@{meta.box.name}.sock', code produces
-#     '@system.runtime/@{meta.box.name}-@{meta.workset.name}.sock'`
+#     '{system.runtime}/{meta.workset.name}-{meta.box.name}', code produces
+#     '{system.runtime}/{meta.box.name}-{meta.workset.name}'`
 #   manifest, options `""` -> `"Z"`: `default declared '(@system.runtime/<bounded
 #     name of "@{meta.box.name}-@{meta.workset.name}">, "Z")', code produces ...`
-# HOP CONTROL, `translate` removed: `default declared '(@system.runtime/<bounded
-# name of "@{meta.box.name}-@{meta.workset.name}">, "")', code produces
-# '@system.runtime/@{meta.box.name}-@{meta.workset.name}.sock'`.
+# HOP CONTROL, `translate` removed: `default declared '({system.runtime}/<bounded
+# name of "{meta.box.name}-{meta.workset.name}">, "")', code produces
+# '{system.runtime}/{meta.box.name}-{meta.workset.name}'`.
 [[parity]]
 registry = "helper-socket-bind"
 command = ["{python}", "-c", """
@@ -4662,7 +4662,7 @@ for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
 extract = '(?m)^kanibako-helper-bind: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
-translate = { pattern = '^\((.*)/<bounded name of "(.*)">, ""\)$', replacement = '\1/\2.sock' }
+translate = { pattern = '^\((.*)/<bounded name of "(.*)">, ""\)$', replacement = '\1/\2' }
 
 # `kuid-primary` / `kuid-named`: the oracle prints the floor's `workset.kuid` for
 # the one mode; every other key of the floor is `workset-anchor-floor`'s.
@@ -5256,7 +5256,7 @@ translate = { pattern = '^\((.*)\)$', replacement = '\1' }
 #   `# helper-socket-options: 1 declared, 1 produced, in agreement, agreeing on
 #   default.`  rc=0
 # NEGATIVE CONTROL, code, `helper_sock`'s options `""` -> `"Z"`: this view
-# `~/.kanibako/state/helper.sock: default declared '""', code produces '"Z"'`, and
+# `~/.kanibako/state/hub: default declared '""', code produces '"Z"'`, and
 # `helper-socket-bind` stays rc=0 -- the half it does not compare.
 [[parity]]
 registry = "helper-socket-options"

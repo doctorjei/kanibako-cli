@@ -286,6 +286,10 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
             cleared = True
             print(f"\n{stale_lock_cure(lock_file)}")
 
+    # The box's helper hub outlives ``start`` (his 184-S2 (a)); a stop ends it and its
+    # helpers now, rather than at the hub's next liveness poll.
+    stop_box_helper_hub(std, proj)
+
     # 🛑 A FAILED REMOVAL IS SAID AND FAILS THE RUN: the container still holds the name.
     if not cleared:
         sys.stdout.flush()
@@ -293,6 +297,25 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
               f"{rm_cure(runtime, container_name)}", file=sys.stderr)
         return 1
     return 0
+
+
+def stop_box_helper_hub(std: StandardPaths, proj: ProjectPaths) -> None:
+    """Stop *proj*'s helper hub process, if one runs; a hub that will not stop is said.
+
+    The hub stops its helper containers and removes its socket before it exits.  A box
+    with no renderable name has no hub (``start`` refuses it first).  Never blocks the
+    stop: a hub that cannot be found is left to exit on its own.
+    """
+    from kanibako.channels.hub_daemon import stop_hub
+    from kanibako.commands.start import helper_socket_path
+
+    try:
+        socket_path = helper_socket_path(proj, std.runtime)
+    except Exception:  # noqa: BLE001 - never let the hub block a stop
+        return
+    if not stop_hub(socket_path):
+        print(f"Warning: the helper hub of box '{proj.name}' did not stop; it exits "
+              f"when it next sees the box is gone.", file=sys.stderr)
 
 
 def _boxes_rendering_no_name() -> list[str]:
@@ -411,6 +434,10 @@ def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
         fail(f"Failed to remove {name}: {stuck_container_cure(runtime, name, state)}"
              if state in STUCK_STATES else f"Failed to remove {name}\n{rm_cure(runtime, name)}")
 
+    # ⚑ Each box's helper hub process is left to exit on its own: it polls its box and
+    # exits once the box is gone.  A name is never parsed back into the box that would
+    # name the hub (system-design § Box and helper identity), and the helpers it would
+    # stop are in ``names`` already.
     stopped_count = 0
     removed_count = 0
     for name in names:

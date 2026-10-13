@@ -425,7 +425,7 @@ def guest_bind_arm(binds: Any, arm: str) -> list[tuple[str, tuple[str, ...]]]:
 def sentinel_helper_binds() -> Any:
     """`core_defaults.helper_default_categories` fed the socket `helper_socket_path`
     names (plus the log and the spawn budget) for a NAMED sentinel box, under a run
-    dir spelled `{system.runtime}`.
+    dir spelled `{system.runtime}`; the socket row binds the socket's directory.
 
     The box and workset names are the braced refs the socket cell embeds
     (`{meta.box.name}`, `{meta.workset.name}`), written back over two sentinel names. All three sources are created, because
@@ -454,7 +454,8 @@ def sentinel_helper_binds() -> Any:
     for stand_in, ref in stand_ins.items():
         composed = composed.replace(stand_in, ref)
     socket = Path(composed)
-    socket.touch()
+    # The emitter binds the socket's DIRECTORY, so that is the source that must exist.
+    socket.parent.mkdir()
     log = Path("helpers.jsonl")
     log.touch()
     budget = Path(SPAWN_CONFIG_FILENAME)

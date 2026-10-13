@@ -1208,7 +1208,7 @@ available to all helpers.
   all/ro/               # broadcast read-only
   all/rw/               # broadcast read-write
 $XDG_STATE_HOME/kanibako/
-  helper.sock           # hub socket (mounted from host)
+  hub/helper.sock       # hub socket (its directory mounted from host)
   helpers.jsonl         # message log (mounted read-only)
 ~/.local/bin/kanibako   # kanibako CLI (bind-mounted from host, ro)
 ```

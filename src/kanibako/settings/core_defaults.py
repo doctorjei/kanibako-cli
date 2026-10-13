@@ -1275,6 +1275,30 @@ def helper_budget_dest() -> tuple[str, str]:
     return str(row["box_dest"]), str(row["options"])
 
 
+#: The hub socket's file name inside its bound directory, host side and box side.
+HELPER_SOCKET_NAME = "helper.sock"
+
+
+def helper_socket_dest() -> tuple[str, str]:
+    """``(box_dest, options)`` of the hub-socket row — the box DIRECTORY the socket is in.
+
+    The ONE carrier of the dest: the director's bind is emitted from this row, the hub
+    binds each helper's at the same dest and options
+    (``channels.helper_listener._build_helper_mounts``), and the in-box CLI finds the
+    socket through :func:`box_helper_socket`.
+    """
+    (row,) = _keyed_rows(
+        "helpers", "helper_sock", "the helper-socket bind (spec §2c)", exactly_one=True,
+    )
+    return str(row["box_dest"]), str(row["options"])
+
+
+def box_helper_socket(home: Path) -> Path:
+    """The hub socket as seen IN a box whose home is *home*: the row's dest + the name."""
+    dest = helper_socket_dest()[0]
+    return home / dest.removeprefix("~/") / HELPER_SOCKET_NAME
+
+
 def core_bind_slots() -> dict[str, tuple[str, str]]:
     """Each ``core:`` row's ``source`` symbol → its ``(box_dest, options)``.
 
@@ -1304,6 +1328,8 @@ def helper_default_categories(
     message LOG (Phase B), and the SPAWN BUDGET document (spec §2c
     ``box.bindings.ro[~/spawn.yaml]``).
 
+    The socket row binds *socket_path*'s DIRECTORY, which must exist; the hub binds the
+    socket inside it, before or after the box starts.
     A ``None`` *socket_path* means NO HUB: neither hub row is emitted, which is how the
     every-start budget resolve carries the budget row alone.  With a hub, a ``None``
     *log_path* (``workset.logs`` is ``<None>``) still emits the ``helper_log``
@@ -1318,8 +1344,11 @@ def helper_default_categories(
     arguments BEFORE the box is live; ``box_supervisor.project_pinned_xdg`` restores XDG later.
     """
     sources: dict[str, Path | None] = {
-        # symbolic source name -> probed host source (the DEST is in the file)
-        "helper_sock": socket_path,
+        # symbolic source name -> probed host source (the DEST is in the file).
+        # ⚑ The socket's DIRECTORY is bound, never the socket: ``bind(2)`` makes a new
+        # inode, so a file bind would pin a running box to a socket a restarted hub no
+        # longer listens on (his 184-S2 (a)).
+        "helper_sock": None if socket_path is None else socket_path.parent,
         "helper_log": log_path,
         "helper_budget": budget_path,
     }

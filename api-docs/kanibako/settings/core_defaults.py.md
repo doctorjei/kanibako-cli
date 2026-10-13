@@ -34,6 +34,7 @@ UNSHARE_BOX_ROOT_GID = 1
 CANON_SKELETON_DIR_MODE = '555'
 CANON_SKELETON_FILE_MODE = '444'
 BIND_TABLES = ('channels', 'core', 'kani', 'kickoff', 'canon', 'helpers', 'images')
+HELPER_SOCKET_NAME = 'helper.sock'
 _INTERNAL_BIND_TABLES = ('kani', 'kickoff')
 _INTERNAL_BIND_ROWS = (('images', 'images_conf'),)
 _CONVENIENCE_BIND_ROWS = (('kani', 'secret_export'), ('kickoff', 'kickoff'), ('helpers', 'helper_sock'), ('helpers', 'helper_budget'), ('images', 'images_conf'))
@@ -80,6 +81,8 @@ def helper_bind_dests() -> frozenset[str]
 def spawn_budget_bind_dests() -> frozenset[str]
 def image_bind_dests() -> frozenset[str]
 def helper_budget_dest() -> tuple[str, str]
+def helper_socket_dest() -> tuple[str, str]
+def box_helper_socket(home: Path) -> Path
 def core_bind_slots() -> dict[str, tuple[str, str]]
 def helper_default_categories(*, socket_path: Path | None, log_path: Path | None, budget_path: Path | None=None) -> BindArmTable
 def image_default_categories(*, graph_root: Path | None, storage_conf_path: Path) -> dict[str, object]

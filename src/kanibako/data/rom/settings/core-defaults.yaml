@@ -392,11 +392,14 @@ canon:
 # listens on; a Z/U relabel/chown would break the shared socket topology.  The
 # per-entry empty-options 2nd slot is exactly what makes this routable.
 helpers:
-  # Live helper unix socket → ~/.kanibako/state/helper.sock (rw, options="").
+  # The live helper unix socket's DIRECTORY → ~/.kanibako/state/hub (rw, options="");
+  # the socket is `helper.sock` in it (`core_defaults.HELPER_SOCKET_NAME`).  The
+  # directory, never the file: a hub that binds again makes a new inode, and only a
+  # directory bind shows it to a box that is already running.
   - key: helper_sock
     category: bindings.rw
     source: helper_sock
-    box_dest: "~/.kanibako/state/helper.sock"
+    box_dest: "~/.kanibako/state/hub"
     owner: box
     options: ""
   # Per-box helper message log → ~/.kanibako/state/helpers.jsonl (ro).

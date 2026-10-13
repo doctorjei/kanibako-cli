@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -25,13 +24,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_fork(args: argparse.Namespace) -> int:
-    from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
+    # The same probe as ``box helper``: a hub must take a connection, because a
+    # socket file outlives a hub that died.  This runs IN-BOX.
+    from kanibako.commands.helper_cmd import _check_helpers_enabled, _socket_path
 
-    # The socket lives under the FIXED pinned root, not $XDG_STATE_HOME — that is
-    # where the mount lands, because a mount dest is fixed host-side before the box
-    # is live.  This runs IN-BOX, so Path.home() is the box's own home.
-    socket_path = Path.home() / BOX_PINNED_STATE_RELPATH / "helper.sock"
-    if not socket_path.exists():
+    socket_path = _socket_path()
+    if not _check_helpers_enabled():
         print(
             "Error: fork requires a running kanibako session with helpers enabled.",
             file=sys.stderr,

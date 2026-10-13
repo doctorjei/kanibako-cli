@@ -1617,7 +1617,7 @@ class TestTheThreeMissingSourcePolicies:
         from kanibako.commands.start import _narrow_bind_map
         from kanibako.settings.settings_categories import CategoryEntry
 
-        table = "/home/agent/.kanibako/state/helper.sock"
+        table = "/home/agent/.kanibako/state/hub"
 
         def row(scope, category, dest):
             return CategoryEntry(
@@ -1637,7 +1637,7 @@ class TestTheThreeMissingSourcePolicies:
         # ⚑ The rows ARE there to be emitted — the filter is what drops them, not
         # some upstream absence.
         assert sorted(_bind_map_from_mounts(rows)) == [
-            "/home/agent/.claude/plugins", "/home/agent/.kanibako/state/helper.sock",
+            "/home/agent/.claude/plugins", "/home/agent/.kanibako/state/hub",
             "/home/agent/.local/bin/claude", "/opt/kanibako",
         ]
 
@@ -2998,7 +2998,7 @@ class TestANarrowTableDestIsMountedOnce:
     """
 
     _BUDGET = "/home/agent/spawn.yaml"
-    _SOCK = "/home/agent/.kanibako/state/helper.sock"
+    _SOCK = "/home/agent/.kanibako/state/hub"
     _LOG = "/home/agent/.kanibako/state/helpers.jsonl"
     _IMAGES = "/var/lib/shared-images"
 
@@ -3044,10 +3044,10 @@ class TestANarrowTableDestIsMountedOnce:
         from types import SimpleNamespace
         from unittest.mock import MagicMock
 
-        from kanibako.channels import helper_listener
+        from kanibako.channels import hub_daemon
         from kanibako.commands.start import _start_helper_hub
 
-        with patch.object(helper_listener, "HelperHub"):
+        with patch.object(hub_daemon, "HubProcess"):
             _start_helper_hub(
                 runtime=MagicMock(), image="img", container_name="box",
                 proj=proj, target=None, install=None, binary_mnts=[],
@@ -3099,7 +3099,7 @@ class TestANarrowTableDestIsMountedOnce:
         src.write_text("")
         proj = self._box(
             std, config, project_dir,
-            [("rw", "~/.kanibako/state/helper.sock", [str(src), ""])],
+            [("rw", "~/.kanibako/state/hub", [str(src), ""])],
         )
         snapshot, mounts = self._main(std, proj)
         self._budget(std, proj, snapshot, mounts)
@@ -3148,7 +3148,7 @@ class TestANarrowTableDestIsMountedOnce:
         src.write_text("")
         proj = self._box(
             std, config, project_dir,
-            [("rw", "~/.kanibako/state/helper.sock", [str(src), ""])],
+            [("rw", "~/.kanibako/state/hub", [str(src), ""])],
         )
         snapshot, mounts = self._main(std, proj)
         self._budget(std, proj, snapshot, mounts)

@@ -59,7 +59,8 @@ from kanibako.utils import (
     short_hash, stat_unless_gone,
 )
 from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
-                                         CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
+                                         CREDS_WATCHER_LOG_SUFFIX, HELPER_HUB_LOG_SUFFIX,
+                                         HOME_PATH,
                                          IGNORE_FILE, KANIBAKO_PATH, KIND_PROJECT, KIND_WORKSET,
                                          PROFILE_FILE, RUN_USER_UID_PATH, SHELL_D_FILE,
                                          SYSTEM_PATH_DEFAULTS,
@@ -1560,11 +1561,23 @@ def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | Non
     return None if logs_dir is None else box_log_files(logs_dir, box).creds_watcher
 
 
+def helper_hub_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
+    """Per-box HOST log of the detached helper hub — its stderr, beside the helper log.
+
+    The hub process outlives ``start`` with no terminal
+    (:class:`kanibako.channels.hub_daemon.HubProcess`), so this file is the only place
+    its warnings reach.  ``None`` when the box's ``workset.logs`` is a present ``<None>``.
+    """
+    logs_dir, box = box_logs_location(std, proj)
+    return None if logs_dir is None else box_log_files(logs_dir, box).helper_hub
+
+
 class BoxLogFiles(NamedTuple):
     """Every per-box file kanibako writes into a resolved ``workset.logs`` dir."""
 
     helper: Path
     creds_watcher: Path
+    helper_hub: Path
 
 
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles:
@@ -1576,6 +1589,7 @@ def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles:
     return BoxLogFiles(
         helper=logs_dir / f"{box}.jsonl",
         creds_watcher=logs_dir / f"{box}{CREDS_WATCHER_LOG_SUFFIX}",
+        helper_hub=logs_dir / f"{box}{HELPER_HUB_LOG_SUFFIX}",
     )
 
 

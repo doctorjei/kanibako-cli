@@ -574,17 +574,18 @@ BIND_EXEMPTIONS: dict[str, str] = {
 
 #: The helper socket's host source is COMPUTED by the name rule (companion § "Box and
 #: helper identity"), so its row is checked against that rule instead of a ``meta_ref``.
-HELPER_SOCKET_DEST = "~/.kanibako/state/helper.sock"
+HELPER_SOCKET_DEST = "~/.kanibako/state/hub"
 _HELPER_SOCKET_CELL = re.compile(r'^\(\{system\.runtime\}/<bounded name of "(?P<t>[^"]+)">, ""\)$')
 
 
-def _spec_socket_name(identity: str, run_dir: Path) -> str:
-    """The companion's name rule, written out independently of the code under test."""
+def _spec_hub_dir_name(identity: str, run_dir: Path) -> str:
+    """The companion's name rule for the bound hub DIRECTORY, written out independently
+    of the code under test: the socket ``helper.sock`` in it must stay under 104 bytes."""
     import hashlib
 
-    if len(str(run_dir / f"{identity}.sock").encode("utf-8")) < 104:
-        return f"{identity}.sock"
-    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".sock"
+    if len(str(run_dir / identity / "helper.sock").encode("utf-8")) < 104:
+        return identity
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
 
 def _check_helper_socket_row(raw: object) -> None:
@@ -606,7 +607,7 @@ def _check_helper_socket_row(raw: object) -> None:
             identity = (cell["t"].replace("{meta.box.name}", box_name)
                         .replace("{meta.workset.name}", ws_name))
             assert "@" not in identity, f"unrendered ref in {cell['t']!r}"
-            want = run_dir / _spec_socket_name(identity, run_dir)
+            want = run_dir / _spec_hub_dir_name(identity, run_dir) / "helper.sock"
             assert helper_socket_path(proj, run_dir) == want, (mode, box_name)
 
 

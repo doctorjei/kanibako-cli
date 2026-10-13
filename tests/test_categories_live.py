@@ -2748,7 +2748,7 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
     @pytest.mark.parametrize("dest", [
         "/etc/profile.d/kanibako-secrets.sh",
         "/home/agent/.config/kanibako/kickoff.md",
-        "/home/agent/.kanibako/state/helper.sock",
+        "/home/agent/.kanibako/state/hub",
         "/home/agent/spawn.yaml",
         "/home/agent/.config/containers/storage.conf",
     ])
@@ -2782,9 +2782,9 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
         """``helper.sock`` is a user key (owner ``box``): the user's bind is shown."""
         text = self._render(
             tmp_path,
-            box_binds={"rw": {"~/.kanibako/state/helper.sock": ["/mine/hub.sock", ""]}},
+            box_binds={"rw": {"~/.kanibako/state/hub": ["/mine/hub.sock", ""]}},
         )
-        assert "= /mine/hub.sock -> /home/agent/.kanibako/state/helper.sock" in text, text
+        assert "= /mine/hub.sock -> /home/agent/.kanibako/state/hub" in text, text
 
     def test_the_rule_is_the_five_declared_rows(self):
         """The ONE list, read from the rows that declare the binds."""
@@ -2793,7 +2793,7 @@ class TestTheEffectiveBlockOmitsBindsOfConvenience:
         assert core_defaults.convenience_bind_dests() == {
             "/etc/profile.d/kanibako-secrets.sh",
             "/home/agent/.config/kanibako/kickoff.md",
-            "/home/agent/.kanibako/state/helper.sock",
+            "/home/agent/.kanibako/state/hub",
             "/home/agent/spawn.yaml",
             "/home/agent/.config/containers/storage.conf",
         }

@@ -347,16 +347,15 @@ class TestForkSourceMetaDirFallback:
 # ---------------------------------------------------------------------------
 
 class TestRunFork:
-    def test_prints_path_on_success(self, tmp_path, capsys):
+    _HUB_UP = "kanibako.commands.helper_cmd._check_helpers_enabled"
+
+    def test_prints_path_on_success(self, capsys):
         from kanibako.commands.fork_cmd import run_fork
         import argparse
 
         args = argparse.Namespace(name="test")
-        sock = tmp_path / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
-        sock.touch()
         with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch("kanibako.commands.fork_cmd.Path.home", return_value=tmp_path):
+             patch(self._HUB_UP, return_value=True):
             mock_send.return_value = {
                 "status": "ok",
                 "path": "/home/user/proj.test",
@@ -368,16 +367,13 @@ class TestRunFork:
         assert "/home/user/proj.test" in out
         assert "proj-test" in out
 
-    def test_prints_error_on_failure(self, tmp_path, capsys):
+    def test_prints_error_on_failure(self, capsys):
         from kanibako.commands.fork_cmd import run_fork
         import argparse
 
         args = argparse.Namespace(name="bad")
-        sock = tmp_path / ".kanibako" / "state" / "helper.sock"
-        sock.parent.mkdir(parents=True)
-        sock.touch()
         with patch("kanibako.channels.helper_client.send_request") as mock_send, \
-             patch("kanibako.commands.fork_cmd.Path.home", return_value=tmp_path):
+             patch(self._HUB_UP, return_value=True):
             mock_send.return_value = {
                 "status": "error",
                 "message": "destination already exists",
@@ -392,11 +388,28 @@ class TestRunFork:
         import argparse
 
         args = argparse.Namespace(name="nope")
-        with patch("kanibako.commands.fork_cmd.Path.home", return_value=tmp_path):
+        with patch("kanibako.commands.helper_cmd.Path.home", return_value=tmp_path):
             rc = run_fork(args)
         assert rc == 1
         err = capsys.readouterr().err
         assert "helpers enabled" in err
+
+    def test_a_socket_no_hub_answers_is_refused_before_any_request(self, tmp_path, capsys):
+        """A dead hub's socket file is not a hub (the findings' dead-socket row): fork
+        refuses as with no socket, and never sends.  (Mutation: probe by ``exists()``
+        -> it sends and fails with the connect error -> RED.)"""
+        from kanibako.commands.fork_cmd import run_fork
+        import argparse
+
+        sock = tmp_path / ".kanibako" / "state" / "hub" / "helper.sock"
+        sock.parent.mkdir(parents=True)
+        sock.touch()
+        with patch("kanibako.channels.helper_client.send_request") as mock_send, \
+             patch("kanibako.commands.helper_cmd.Path.home", return_value=tmp_path):
+            rc = run_fork(argparse.Namespace(name="x"))
+        assert rc == 1
+        assert "helpers enabled" in capsys.readouterr().err
+        mock_send.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

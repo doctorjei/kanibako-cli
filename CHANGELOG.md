@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `\\` and `\~` escape: respell an old `\@`, `\$`, `\{`, or `\/` as `@`, `$`, `{{`, or `/`. Plugin defaults files spell
   `{$GUEST_HOME}` and braced `meta_ref` sources. See `MIGRATION.md`, "References are braced: `{a.b.c}` names a key
   and `{$NAME}` a variable".
+- **A persistent box has helpers.** A plain `start` or `start --detach` no longer turns helpers off;
+  `allow_helpers` and `--no-helpers` decide in every mode. The helper hub runs in its own host process,
+  outlives `kanibako start`, and exits when the box stops (`kanibako stop` stops it, and the box's
+  helpers, at once). Its warnings go to `<box>.helper-hub.log` beside the helper message log. The box
+  binds the socket's directory, so the socket is `~/.kanibako/state/hub/helper.sock` and the bind key is
+  `box.bindings.rw[~/.kanibako/state/hub]`. `kanibako fork` checks that a hub answers, as
+  `kanibako box helper` does. See `MIGRATION.md`, "A persistent box has helpers, and the helper socket
+  moved into `~/.kanibako/state/hub/`".
 - **The persona probe tests the credential without a model before it tests the model.** The claude and codex
   probes ask for the endpoint's model list with the token and, if accepted, without it, then send the model request.
   A launch is refused on the model request as before, except that a credential verified without a model now warns

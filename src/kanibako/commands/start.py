@@ -2746,12 +2746,15 @@ def _start_helper_hub(
     extra_mounts,
     selection_level,
 ):
-    """Start the helper hub + append its mounts; return the started ``HelperHub``.
+    """Start the helper hub + append its mounts; return its :class:`HubProcess`.
 
+    The hub runs in its own detached process, which outlives this command and serves
+    until the box is gone (:mod:`kanibako.channels.hub_daemon`; his 184-S2 (a)).
     SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.  The spawn-budget
     bind is NOT this hub's: every start delivers it (:func:`_deliver_spawn_budget`).
     """
-    from kanibako.channels.helper_listener import HelperContext, HelperHub, MessageLog
+    from kanibako.channels.helper_listener import HelperContext
+    from kanibako.channels.hub_daemon import HubProcess
 
     # Socket must live in a short path to stay under the AF_UNIX
     # ``sun_path`` limit.  ``std.runtime`` is ``$XDG_RUNTIME_DIR/kanibako``
@@ -2774,7 +2777,7 @@ def _start_helper_hub(
     # emitted as the spec spelling {workset.logs}/{meta.box.name}.jsonl —
     # writer, .exists() gate and mount all name one file (migration M-14).
     # ``None`` when ``workset.logs`` is a present ``<None>``: no hub log, no log bind.
-    from kanibako.settings.paths import helper_log_path
+    from kanibako.settings.paths import helper_hub_log_path, helper_log_path
     log_path = helper_log_path(std, proj)
     if log_path is not None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2819,9 +2822,19 @@ def _start_helper_hub(
         early=_early_scope(std, BoxMode.primary),
     )
 
-    msg_log = MessageLog(log_path) if log_path is not None else None
-    hub = HelperHub()
-    hub.start(socket_path, helper_ctx, log=msg_log)
+    # The bound directory exists before the box does; the hub binds the socket in it.
+    socket_path.parent.mkdir(mode=0o700, exist_ok=True)
+    hub = HubProcess()
+    _hub_log = helper_hub_log_path(std, proj)
+    if not hub.start(
+        socket_path, helper_ctx, log_path=log_path, container=container_name,
+        stderr_path=_hub_log,
+    ):
+        print(
+            "Warning: the helper hub did not start, so this box has no helpers"
+            + (f"; see {_hub_log}." if _hub_log is not None else "."),
+            file=sys.stderr,
+        )
 
     # Mount the live helper socket + the per-box message log into the box,
     # routed through the category resolver (Phase B) instead of hardwired
@@ -2887,7 +2900,7 @@ def _deliver_spawn_budget(
 
     Spec §2c ``box.bindings.ro[~/spawn.yaml] | ({meta.box.path}/spawn.yaml)`` and the
     companion's "The spawn-budget bind": EACH start writes the budget, hub or not — a
-    persistent start runs no hub, yet its in-box ``box helper spawn`` reads the same
+    start with helpers off runs no hub, yet its in-box ``box helper spawn`` reads the same
     document, written WHOLE (no ``meta.box.helper_num``).  ⚑ THE ONE WRITE SITE for a
     director's document; a helper's copy is its parent's (``helper_cmd.run_spawn``).
     A malformed host value stops the start here.
@@ -4253,8 +4266,6 @@ def _run_container(
         if (live_name != container_name and runtime.container_exists(live_name)
                 and not runtime.is_running(live_name)):
             runtime.rm(live_name)
-        # Persistent mode forces no helpers
-        no_helpers = True
     else:
         # Interactive (shell/ephemeral) mode: if a container is already
         # running for this project AND we're in shell mode (entrypoint set,
@@ -5104,7 +5115,7 @@ def _run_container(
             logger=logger,
         )
 
-        # The spawn-budget bind: EVERY start, before the hub (a persistent start has none).
+        # The spawn-budget bind: EVERY start, before the hub (a start may have none).
         _deliver_spawn_budget(
             std=std,
             proj=proj,
@@ -5117,7 +5128,7 @@ def _run_container(
             selection_level=selection_level,
         )
 
-        # Helper hub: start listener before director, mount socket
+        # Helper hub: start it before the director and bind its socket's directory.
         hub = None
         helpers_enabled = not no_helpers and helpers_allowed
 
@@ -5583,8 +5594,10 @@ def _run_container(
                 post_start=_canon_reprotect_hook(proj, logger),
             )
         finally:
-            # Stop helper hub after director exits
-            if hub is not None:
+            # The hub outlives this command only while its box does: a persistent box
+            # that came up keeps it, and it exits when the box is gone.  Any other
+            # launch is over (or never started), so its hub stops now, with its helpers.
+            if hub is not None and not (persistent and runtime.is_running(container_name)):
                 hub.stop()
             # Release tweakcc cache entry (shared lock)
             if tweakcc_entry is not None and tweakcc_cache_obj is not None:
@@ -10971,22 +10984,26 @@ def _validate_mounts(mounts: list, logger) -> None:
             )
 
 
-# Length (hex chars) of the hashed socket name (companion § "Box and helper
+# Length (hex chars) of the hashed hub-directory name (companion § "Box and helper
 # identity"): the first 16 hex characters of SHA-256 over the identity.
 _SOCKET_HASH_LEN = 16
 
 
-def bounded_socket_name(identity: str, run_dir: Path) -> str:
-    """Return ``<identity>.sock`` if its path is under the byte limit, else the hashed name."""
-    verbatim = f"{identity}.sock"
-    if len(os.fsencode(run_dir / verbatim)) < _UNIX_SOCKET_PATH_LIMIT:
-        return verbatim
-    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-    return f"{digest[:_SOCKET_HASH_LEN]}.sock"
+def bounded_hub_dir_name(identity: str, run_dir: Path) -> str:
+    """Return *identity* when the socket in that directory is under the byte limit, else
+    the hashed name.
+
+    The hub's socket is ``<run_dir>/<this>/helper.sock``, and that whole path is what
+    must fit ``sun_path``; the DIRECTORY is what the box binds (his 184-S2 (a)).
+    """
+    if len(os.fsencode(run_dir / identity / core_defaults.HELPER_SOCKET_NAME)) < _UNIX_SOCKET_PATH_LIMIT:
+        return identity
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:_SOCKET_HASH_LEN]
 
 
 def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path:
-    """Return *proj*'s host helper socket, named from ``<box name>-<workset name>``."""
+    """Return *proj*'s host helper socket, ``<hub dir>/helper.sock``; the hub dir is
+    named from ``<box name>-<workset name>`` and is the bind source."""
     # ``meta.box.name`` is ``proj.name``; a nameless box has no identity to render.
     if not proj.name:
         raise ValueError("box has no name; cannot derive its helper socket name.")
@@ -10997,7 +11014,7 @@ def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path:
         raise ValueError(
             "box name renders no helper-socket identity; start refuses it first."
         )
-    socket_path = run_dir / bounded_socket_name(identity, run_dir)
+    socket_path = run_dir / bounded_hub_dir_name(identity, run_dir) / core_defaults.HELPER_SOCKET_NAME
     validate_socket_path(socket_path)
     return socket_path
 

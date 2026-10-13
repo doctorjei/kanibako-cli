@@ -42,9 +42,13 @@ class HelperHub:
     def __init__(self) -> None
 
     def start(self, socket_path: Path, context: HelperContext, log: MessageLog | None=None) -> None
+    def listening(self) -> bool
+    def rebind(self) -> None
     def stop(self) -> None
 
-    def _accept_loop(self) -> None
+    def _listen(self) -> None
+    def _unlink_own_socket(self) -> None
+    def _accept_loop(self, sock: socket.socket) -> None
     def _client_reader(self, conn: socket.socket) -> None
     def _dispatch(self, conn: socket.socket, request: dict, current_helper: int | None) -> tuple[dict | None, int | None]
     def _register(self, helper_num: int, conn: socket.socket) -> None

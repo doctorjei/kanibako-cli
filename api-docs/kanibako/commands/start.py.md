@@ -55,7 +55,7 @@ def emit_collision_warnings(collisions) -> None
 def persona_create_verdict(std, config, proj, *, explicit_agent: str | None=None) -> str | None
 def seed_new_box(std, config, proj, *, explicit_agent: str | None=None) -> None
 def recover_cure(probe) -> str
-def bounded_socket_name(identity: str, run_dir: Path) -> str
+def bounded_hub_dir_name(identity: str, run_dir: Path) -> str
 def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path
 def validate_socket_path(socket_path: Path) -> None
 def _agent_critical_dests() -> list[tuple[str, str]]

@@ -522,6 +522,9 @@ inside boxes. In order of likely impact:
 57. **A reference is written in braces — `{a.b.c}` for a key, `{$NAME}` for a variable — and an old
     `@a.b.c` or `$NAME` that kanibako recognizes stops the command** — see *References are braced:
     `{a.b.c}` names a key and `{$NAME}` a variable*.
+58. **A persistent box (a plain `start`, or `start --detach`) has helpers; the helper hub keeps running
+    until the box stops. In a box the socket is `~/.kanibako/state/hub/helper.sock`** — see *A
+    persistent box has helpers, and the helper socket moved into `~/.kanibako/state/hub/`*.
 
 ---
 
@@ -1719,7 +1722,7 @@ fixed paths under a new directory, and no longer follow that box's `$XDG_STATE_H
 
 | Inside the box | v1.7.x | v1.8.0 |
 |---|---|---|
-| helper socket | `$XDG_STATE_HOME/kanibako/helper.sock` | `~/.kanibako/state/helper.sock` |
+| helper socket | `$XDG_STATE_HOME/kanibako/helper.sock` | `~/.kanibako/state/hub/helper.sock` |
 | helper message log | `$XDG_STATE_HOME/kanibako/helpers.jsonl` | `~/.kanibako/state/helpers.jsonl` |
 
 `~` is the box's home, so in practice `/home/agent/.kanibako/state/`. Both filenames are unchanged,
@@ -1744,7 +1747,7 @@ rm -rf ~/.local/state/kanibako     # inside the box; it holds nothing but dead m
 
 **Who else this affects: a box that sets `XDG_STATE_HOME` to a non-default absolute path.** The
 mount itself no longer follows that setting — but the post-boot symlink does, so a reader using
-`$XDG_STATE_HOME/kanibako/helper.sock` still lands on the socket. Only something that ran *before*
+`$XDG_STATE_HOME/kanibako/hub/helper.sock` still lands on the socket. Only something that ran *before*
 the box finished starting would see the difference.
 
 **Why.** A mount destination is written into the container runtime's arguments before the box
@@ -5848,14 +5851,15 @@ and their `--default`, `--standalone`, and `--workset <ws>` flags are unchanged.
 ### 2.85 The host helper socket name is measured in bytes
 
 **Read this only if a host-side script builds the helper socket path under `$XDG_RUNTIME_DIR/kanibako/`
-itself.** The socket's file name is `<box>-<workset>.sock` when the full path is under 104 UTF-8
-bytes; otherwise it is the first 16 hex characters of SHA-256 over `<box>-<workset>`, plus
-`.sock`. Before, the path was measured in characters, so a box name with non-ASCII letters whose
+itself.** The socket is `helper.sock` in a directory named `<box>-<workset>` when the socket's full
+path is under 104 UTF-8 bytes; otherwise the directory is named with the first 16 hex characters of
+SHA-256 over `<box>-<workset>` (see *A persistent box has helpers, and the helper socket moved into
+`~/.kanibako/state/hub/`*). Before, the path was measured in characters, so a box name with non-ASCII letters whose
 path was under 104 characters but 104 bytes or longer kept the plain name, and at 108 bytes or
 more the helper hub then failed to start.
 
-**What you must do.** Nothing inside a box: the socket is recreated at every launch and is still
-mounted at `~/.kanibako/state/helper.sock`. A host script that computes the path must measure it
+**What you must do.** Nothing inside a box: the socket is recreated at every launch, in the directory
+mounted at `~/.kanibako/state/hub/`. A host script that computes the path must measure it
 in bytes.
 
 ### 2.86 A `bootstrap` of `null` or `""` means no bootstrap program
@@ -7959,6 +7963,33 @@ grep -nE '[@${}\\]' ~/.config/kanibako.cfg /etc/kanibako/base.cfg <data>/global/
 Put each reference in braces (`@config.data/x` → `{config.data}/x`, `$XDG_DATA_HOME/x` →
 `{$XDG_DATA_HOME}/x`, `@{meta.box.name}.jsonl` → `{meta.box.name}.jsonl`), double each literal
 brace, and respell each escape as above.
+
+### 2.118 A persistent box has helpers, and the helper socket moved into `~/.kanibako/state/hub/`
+
+**Read this if you use `kanibako box helper` or `kanibako fork`, or you set the helper-socket bind.**
+
+**What changed.** v1.7.x turned helpers off whenever a box was persistent, which is the default
+shape of a `start`. Now `allow_helpers` and `--no-helpers` decide in every mode. The helper hub runs
+in its own host process and keeps running after `kanibako start` returns; it exits when the box
+stops, and stops the box's helpers when it does. Its warnings go to `<box>.helper-hub.log` beside
+the box's helper message log.
+
+The box binds the hub socket's directory instead of the socket file, so a hub that binds its socket
+again reaches a box that is already running:
+
+| | v1.8.0 release candidates | Now |
+|---|---|---|
+| socket inside the box | `~/.kanibako/state/helper.sock` | `~/.kanibako/state/hub/helper.sock` |
+| bind key | `box.bindings.rw[~/.kanibako/state/helper.sock]` | `box.bindings.rw[~/.kanibako/state/hub]` |
+| socket on the host | `$XDG_RUNTIME_DIR/kanibako/<box>-<workset>.sock` | `$XDG_RUNTIME_DIR/kanibako/<box>-<workset>/helper.sock` |
+
+The host directory is named `<box>-<workset>` while the socket's path is under 104 UTF-8 bytes;
+otherwise it is the first 16 hex characters of SHA-256 over `<box>-<workset>`.
+
+**What you must do.** To keep a persistent box without helpers, set `allow_helpers: false` or start
+it with `--no-helpers`. If you set `box.bindings.rw[~/.kanibako/state/helper.sock]`, it is now an
+ordinary bind at that path; set `box.bindings.rw[~/.kanibako/state/hub]` instead, with a directory as
+its source. A script that reads the socket in the box reads the new path.
 
 ---
 

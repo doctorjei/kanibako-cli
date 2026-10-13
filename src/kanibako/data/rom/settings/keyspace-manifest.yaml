@@ -2668,14 +2668,15 @@ bind_default_entries:
       see: "the note's `box.bindings.ro.vault` is the retired KEY spelling of the
             ro arm's ~/vault/ro entry"
       spec: "§2c (ALL WORKSETS / STANDALONE; R-29)"
-    "~/.kanibako/state/helper.sock":
+    "~/.kanibako/state/hub":
       user_key: true
       owner: box
       default: "({system.runtime}/<bounded name of \"{meta.box.name}-{meta.workset.name}\">, \"\")"
-      note: "mount options MUST stay empty ('') — a LIVE unix socket; Z/U
-             relabel/chown would break the shared socket topology (core-defaults
-             carries the empty 3rd slot). Name rule: companion § \"Box and
-             helper identity\"."
+      note: "the DIRECTORY of the hub's LIVE unix socket `helper.sock`, bound so a
+             hub that binds again reaches a running box; mount options MUST stay
+             empty ('') — Z/U relabel/chown would break the shared socket topology
+             (core-defaults carries the empty 3rd slot). Name rule: companion §
+             \"Box and helper identity\"."
       see: "the note's 'empty 3rd slot' is the OLD arity — under bindmap_shape the
             options are the SECOND element, and this entry is the one place the
             2-element form is exercised."

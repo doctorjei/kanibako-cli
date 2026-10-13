@@ -62,6 +62,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def helper_budget_path(proj: ProjectPaths) -> Path
 def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
+def helper_hub_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
 def box_logs_to_remove(logs_dir: Path | None, box: str, *, keep: Iterable[Path]=()) -> list[Path]
 def remove_box_logs(logs_dir: Path | None, box: str, *, keep: Iterable[Path]=()) -> list[Path]
@@ -229,6 +230,7 @@ class WorksetSpec:
 class BoxLogFiles(NamedTuple):
     helper: Path
     creds_watcher: Path
+    helper_hub: Path
 
 class LegacyBox(NamedTuple):
     mode: str

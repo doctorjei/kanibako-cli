@@ -19,7 +19,7 @@ import pytest
 from kanibako.commands.start import (
     _UNIX_SOCKET_PATH_LIMIT,
     _validate_mounts,
-    bounded_socket_name,
+    bounded_hub_dir_name,
     helper_socket_path,
     validate_socket_path,
 )
@@ -126,107 +126,88 @@ class TestSocketPathBoundary:
         assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
 
-class TestBoundedSocketName:
-    """``bounded_socket_name`` keeps the socket under the AF_UNIX limit."""
+class TestBoundedHubDirName:
+    """``bounded_hub_dir_name`` keeps ``<run_dir>/<name>/helper.sock`` under the AF_UNIX
+    limit; the DIRECTORY is the bind source (his 184-S2 (a))."""
 
-    @staticmethod
-    def _identity_of_bytes(run_dir: Path, total: int) -> str:
-        """An ASCII identity whose ``run_dir/<identity>.sock`` is exactly *total* bytes."""
-        return "n" * (total - len(str(run_dir)) - 1 - len(".sock"))
+    SOCK = "/helper.sock"
+
+    @classmethod
+    def _identity_of_bytes(cls, run_dir: Path, total: int) -> str:
+        """An ASCII identity whose ``run_dir/<identity>/helper.sock`` is *total* bytes."""
+        return "n" * (total - len(str(run_dir)) - 1 - len(cls.SOCK))
 
     @staticmethod
     def _hashed(identity: str) -> str:
-        """The companion's hashed name: 16 hex chars of SHA-256 over UTF-8, plus ``.sock``."""
-        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".sock"
+        """The companion's hashed name: 16 hex chars of SHA-256 over UTF-8."""
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+
+    def _sock(self, run_dir: Path, name: str) -> Path:
+        return run_dir / name / "helper.sock"
 
     def test_short_name_verbatim(self):
-        """A short combined identity is used verbatim as ``<identity>.sock``."""
         run_dir = Path("/run/user/1000/kanibako")
-        assert bounded_socket_name("myproj", run_dir) == "myproj.sock"
+        assert bounded_hub_dir_name("myproj", run_dir) == "myproj"
 
     def test_combined_box_ws_identity_verbatim(self):
-        """The host socket basename is ``<box>-<ws>.sock`` (FIX K)."""
+        """The host hub directory is ``<box>-<ws>`` (FIX K)."""
         run_dir = Path("/run/user/1000/kanibako")
-        assert (
-            bounded_socket_name("myproj-__PRIMARY__", run_dir)
-            == "myproj-__PRIMARY__.sock"
-        )
+        assert bounded_hub_dir_name("myproj-__PRIMARY__", run_dir) == "myproj-__PRIMARY__"
 
-    def test_same_box_distinct_ws_distinct_sockets(self):
-        """A box name reused across worksets gets distinct sockets via the token."""
+    def test_same_box_distinct_ws_distinct_dirs(self):
         run_dir = Path("/run/user/1000/kanibako")
-        primary = bounded_socket_name("app-__PRIMARY__", run_dir)
-        named = bounded_socket_name("app-myset", run_dir)
-        assert primary != named
+        assert (bounded_hub_dir_name("app-__PRIMARY__", run_dir)
+                != bounded_hub_dir_name("app-myset", run_dir))
 
     def test_worst_case_standalone_name_under_limit(self):
         """A ``<kuid>_<32-char-leaf>`` name in a deep runtime dir fits."""
-        # 5-char kuid + "_" + 32-char leaf = 38-char box name.
         box_name = "abcde_" + "x" * 32
-        assert len(box_name) == 38
-        # A plausibly deep XDG_RUNTIME_DIR.
         run_dir = Path("/run/user/4000000/kanibako")
-        socket_path = run_dir / bounded_socket_name(box_name, run_dir)
+        socket_path = self._sock(run_dir, bounded_hub_dir_name(box_name, run_dir))
         assert len(os.fsencode(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
     def test_very_long_name_falls_back_to_hash(self):
-        """An over-long name is replaced by a bounded hash, still under limit."""
         run_dir = Path("/run/user/1000/kanibako")
-        box_name = "z" * 200
-        name = bounded_socket_name(box_name, run_dir)
-        # Verbatim would be far over the limit; the fallback must be short.
-        assert name != f"{box_name}.sock"
-        assert name.endswith(".sock")
-        assert len(name) == len("0123456789abcdef") + len(".sock")
-        assert len(os.fsencode(run_dir / name)) < _UNIX_SOCKET_PATH_LIMIT
+        name = bounded_hub_dir_name("z" * 200, run_dir)
+        assert name == self._hashed("z" * 200)
+        assert len(os.fsencode(self._sock(run_dir, name))) < _UNIX_SOCKET_PATH_LIMIT
 
     def test_deterministic(self):
-        """The hashed name is a pure function of the identity (so reattach finds it)."""
+        """A pure function of the identity, so every start and stop finds one hub."""
         run_dir = Path("/run/user/1000/kanibako")
         identity = "箱" * 40 + "-myset"
-        first = bounded_socket_name(identity, run_dir)
-        assert first == bounded_socket_name(identity, run_dir)
-        assert first == self._hashed(identity)
-
-    def test_distinct_names_distinct_sockets(self):
-        """Different over-long names get different bounded sockets."""
-        run_dir = Path("/run/user/1000/kanibako")
-        a = bounded_socket_name("a" * 200, run_dir)
-        b = bounded_socket_name("b" * 200, run_dir)
-        assert a != b
+        assert bounded_hub_dir_name(identity, run_dir) == self._hashed(identity)
+        assert bounded_hub_dir_name("a" * 200, run_dir) != bounded_hub_dir_name(
+            "b" * 200, run_dir)
 
     def test_103_bytes_keeps_the_plain_name(self):
-        """A full path of 103 bytes is under the limit, so the name is ``I.sock``."""
+        """A socket path of 103 bytes is under the limit, so the directory is ``I``."""
         run_dir = Path("/run/user/1000/kanibako")
         identity = self._identity_of_bytes(run_dir, 103)
-        assert len(os.fsencode(run_dir / f"{identity}.sock")) == 103
-        assert bounded_socket_name(identity, run_dir) == f"{identity}.sock"
+        assert len(os.fsencode(self._sock(run_dir, identity))) == 103
+        assert bounded_hub_dir_name(identity, run_dir) == identity
 
     def test_boundary_triggers_fallback(self):
-        """A full path of exactly 104 bytes is not under the limit, so the name is hashed."""
+        """The SOCKET's path is what is measured: exactly 104 bytes is hashed.
+        (Mutation: measure the directory alone -> plain name -> RED.)"""
         run_dir = Path("/run/user/1000/kanibako")
         identity = self._identity_of_bytes(run_dir, _UNIX_SOCKET_PATH_LIMIT)
-        assert len(os.fsencode(run_dir / f"{identity}.sock")) == _UNIX_SOCKET_PATH_LIMIT
-        result = bounded_socket_name(identity, run_dir)
+        assert len(os.fsencode(self._sock(run_dir, identity))) == _UNIX_SOCKET_PATH_LIMIT
+        result = bounded_hub_dir_name(identity, run_dir)
         assert result == self._hashed(identity)
-        assert len(os.fsencode(run_dir / result)) < _UNIX_SOCKET_PATH_LIMIT
+        validate_socket_path(self._sock(run_dir, result))  # Should not raise.
 
     def test_multibyte_name_is_measured_in_bytes(self):
-        """A CJK name short in characters but long in bytes must hash, and then fit."""
         run_dir = Path("/run/user/1000/kanibako")
         identity = "箱" * 25 + "-__PRIMARY__"
-        verbatim = str(run_dir / f"{identity}.sock")
+        verbatim = str(self._sock(run_dir, identity))
         assert len(verbatim) < _UNIX_SOCKET_PATH_LIMIT
         assert len(os.fsencode(verbatim)) >= _UNIX_SOCKET_PATH_LIMIT
-        name = bounded_socket_name(identity, run_dir)
-        assert name == self._hashed(identity)
-        validate_socket_path(run_dir / name)  # Should not raise.
+        assert bounded_hub_dir_name(identity, run_dir) == self._hashed(identity)
 
     def test_short_multibyte_name_stays_plain(self):
-        """A CJK name whose path is under 104 bytes keeps the plain name."""
         run_dir = Path("/run/user/1000/kanibako")
-        identity = "箱-__PRIMARY__"
-        assert bounded_socket_name(identity, run_dir) == f"{identity}.sock"
+        assert bounded_hub_dir_name("箱-__PRIMARY__", run_dir) == "箱-__PRIMARY__"
 
     def test_validate_counts_bytes(self):
         """A path under 104 characters but not under 104 bytes is refused."""
@@ -245,7 +226,8 @@ class TestHelperSocketPath:
         proj.name = "app"
         # The ``<W>`` segment is the bare word, not the ``__PRIMARY__`` partition
         # directory name — the socket names a box, it does not address a path.
-        assert helper_socket_path(proj, run_dir) == run_dir / f"app-{WORKSET_SEGMENT_PRIMARY}.sock"
+        assert (helper_socket_path(proj, run_dir)
+                == run_dir / f"app-{WORKSET_SEGMENT_PRIMARY}" / "helper.sock")
 
     def test_nameless_box_is_refused(self):
         """A box without ``meta.box.name`` has no identity to render."""

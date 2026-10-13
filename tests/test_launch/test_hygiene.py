@@ -598,7 +598,7 @@ class TestPreservation:
         construction rather than by exclusion -- this pins that it stays that way.
         """
         sock_marker = _make_file(
-            tmp_path / ".kanibako" / "state" / "helper.sock", size=10
+            tmp_path / ".kanibako" / "state" / "hub" / "helper.sock", size=10
         )
         cleanup_shell_dir(tmp_path)
         assert sock_marker.exists()

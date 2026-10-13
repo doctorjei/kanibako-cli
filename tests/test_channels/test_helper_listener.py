@@ -334,7 +334,7 @@ class TestBuildHelperMounts:
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
-        assert any(m.destination == "/home/agent/.kanibako/state/helper.sock" for m in mounts)
+        assert any(m.destination == "/home/agent/.kanibako/state/hub" for m in mounts)
 
     def test_no_socket_mount_when_missing(self, tmp_path):
         """Socket is not mounted when it doesn't exist."""
@@ -353,7 +353,7 @@ class TestBuildHelperMounts:
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
-        assert not any(m.destination == "/home/agent/.kanibako/state/helper.sock" for m in mounts)
+        assert not any(m.destination == "/home/agent/.kanibako/state/hub" for m in mounts)
 
 
 class TestRegistrationLifetime:
@@ -1481,7 +1481,7 @@ class TestHelperDefaultCategories:
         # unchanged — an EXPLICIT ``""``, never Z/U/z, and never absent (an absent
         # slot would take the ``rw`` category default, which IS ``Z,U``).
         sock_val = cats["box.bindings.rw"][
-            "/home/agent/.kanibako/state/helper.sock"
+            "/home/agent/.kanibako/state/hub"
         ]
         assert sock_val == (str(sock), "")
         assert len(sock_val) == 2 and sock_val[1] == ""
@@ -1638,11 +1638,11 @@ class TestHelperDefaultCategories:
         # assertion.
         sock_mount = next(
             e for e in winners
-            if e.name == "/home/agent/.kanibako/state/helper.sock"
+            if e.name == "/home/agent/.kanibako/state/hub"
         )
         assert sock_mount.options == ""
         assert sock_mount.box_dest == (
-            "/home/agent/.kanibako/state/helper.sock"
+            "/home/agent/.kanibako/state/hub"
         )
         # And the log bind's @-ref chain resolves back to the probed log path —
         # the formula and the .exists()-gated literal must agree (PHASE R).

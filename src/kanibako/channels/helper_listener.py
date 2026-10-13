@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from kanibako import boxfs
 from kanibako.channels.helper_client import FrameTooLarge, iter_frames, send_frame
 from kanibako.channels.helpers import (
     HELPER_CORE_LEAVES,
@@ -24,7 +25,11 @@ from kanibako.channels.helpers import (
 from kanibako.errors import ContainerError
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import ROTATE_MAX_BYTES, get_logger, rotate_if_over
-from kanibako.settings.core_defaults import core_bind_slots, helper_budget_dest
+from kanibako.settings.core_defaults import (
+    core_bind_slots,
+    helper_budget_dest,
+    helper_socket_dest,
+)
 from kanibako.settings.settings_resolve import (
     BOX_PINNED_STATE_RELPATH,
     GUEST_HOME,
@@ -51,7 +56,7 @@ class HelperContext:
     container_name_segments: tuple[str, str]
     shell_path: Path      # director's shell_path (parent of helpers/)
     helpers_dir: Path     # absolute host path to helpers/ inside shell_path
-    socket_path: Path     # host path to helper.sock
+    socket_path: Path     # host path to helper.sock; its directory is the bind source
     binary_mounts: list[Mount] = field(default_factory=list)
     # A SNAPSHOT of the launch environment as it stood when the hub started, never
     # the launch's live dict: the hub outlives that assembly and spawns from this map
@@ -81,6 +86,8 @@ class HelperHub:
 
     def __init__(self) -> None:
         self._sock: socket.socket | None = None
+        self._socket_path: Path | None = None
+        self._bound_ino: int | None = None
         self._accept_thread: threading.Thread | None = None
         self._shutdown = threading.Event()
         self._ctx: HelperContext | None = None
@@ -117,21 +124,65 @@ class HelperHub:
         with self._containers_lock:
             self._next_num = max(on_disk, default=0) + 1
 
-        # Ensure parent dir exists, remove stale socket
         socket_path.parent.mkdir(parents=True, exist_ok=True)
-        if socket_path.exists():
-            socket_path.unlink()
+        self._socket_path = socket_path
+        self._listen()
 
-        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._sock.bind(str(socket_path))
-        self._sock.listen(16)
-        self._sock.settimeout(1.0)  # so accept loop checks shutdown flag
+    def _listen(self) -> None:
+        """Bind a NEW socket inode at the socket path and run an accept loop on it.
 
+        ⚑ The socket's DIRECTORY is bound into the box, never the file, so a box sees
+        whatever inode the path names NOW, and a re-bind reaches a running box.  The
+        directory is box-writable, so the stale entry is removed through
+        :mod:`kanibako.boxfs`; ``bind`` refuses any entry planted in the gap
+        (``EADDRINUSE``), a symlink included.
+        """
+        path = self._socket_path
+        assert path is not None
+        boxfs.unlink(path, path.parent, missing_ok=True)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(str(path))
+        sock.listen(16)
+        sock.settimeout(1.0)  # so accept loop checks shutdown flag
+        self._sock = sock
+        self._bound_ino = boxfs.stat(path, path.parent).st_ino
         self._accept_thread = threading.Thread(
-            target=self._accept_loop, daemon=True, name="helper-hub",
+            target=self._accept_loop, args=(sock,), daemon=True, name="helper-hub",
         )
         self._accept_thread.start()
-        logger.debug("HelperHub listening on %s", socket_path)
+        logger.debug("HelperHub listening on %s", path)
+
+    def listening(self) -> bool:
+        """True while the accept loop runs AND the socket path still names its inode.
+
+        False when the box removed or replaced the entry (the directory is bound rw)
+        or the accept loop ended on an error: no box can reach this hub until
+        :meth:`rebind`.
+        """
+        path, thread = self._socket_path, self._accept_thread
+        if path is None or self._sock is None or thread is None or not thread.is_alive():
+            return False
+        try:
+            return boxfs.stat(path, path.parent).st_ino == self._bound_ino
+        except OSError:
+            return False
+
+    def rebind(self) -> None:
+        """Replace the listening socket; helpers, connections, and the counter stay.
+
+        The recovery a bound DIRECTORY makes possible: the new inode appears in every
+        box that binds the directory, so a client that connects again reaches this hub.
+        """
+        old, thread = self._sock, self._accept_thread
+        self._sock = None
+        if old is not None:
+            try:
+                old.close()
+            except OSError:
+                pass
+        if thread is not None:
+            thread.join(timeout=5.0)
+        self._listen()
 
     def stop(self) -> None:
         """Shut down: stop all helper containers, close socket."""
@@ -196,6 +247,10 @@ class HelperHub:
             except Exception:
                 pass
             self._sock = None
+            # 🛑 The socket file goes too, but only while it is still this hub's inode:
+            # a box shown a socket no hub listens on calls the hub dead only when it
+            # connects (the findings' DEAD-SOCKET defect).
+            self._unlink_own_socket()
 
         if self._accept_thread:
             self._accept_thread.join(timeout=5.0)
@@ -204,11 +259,22 @@ class HelperHub:
         if self._log:
             self._log.close()
 
-    def _accept_loop(self) -> None:
-        """Accept incoming connections until shutdown."""
+    def _unlink_own_socket(self) -> None:
+        """Remove the socket path when it still names the inode this hub bound."""
+        path = self._socket_path
+        if path is None:
+            return
+        try:
+            if boxfs.stat(path, path.parent).st_ino == self._bound_ino:
+                boxfs.unlink(path, path.parent, missing_ok=True)
+        except OSError as exc:
+            logger.debug("helper socket %s left in place: %s", path, exc)
+
+    def _accept_loop(self, sock: socket.socket) -> None:
+        """Accept incoming connections on *sock* until shutdown or until it closes."""
         while not self._shutdown.is_set():
             try:
-                conn, _ = self._sock.accept()  # type: ignore[union-attr]
+                conn, _ = sock.accept()
                 t = threading.Thread(
                     target=self._client_reader,
                     args=(conn,),
@@ -833,17 +899,19 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int,
         budget_dest, budget_options = helper_budget_dest()
         mounts.append(Mount(budget_doc, normalize_bind_dest(budget_dest), budget_options))
 
-    # Helper socket — mount the hub socket into the helper.  The box-side dest is
-    # the FIXED pinned root, the same path ``core-defaults.yaml`` declares for the
-    # director's box, that ``helper-init.sh`` registers against and that the in-box
-    # CLI reads.  Nothing is derived from the helper's env: a mount dest is written
-    # into the runtime's arguments before the helper is live, and the box's real XDG
-    # location is served after boot by ``box_supervisor.project_pinned_xdg``.
-    if ctx.socket_path.exists():
+    # Helper socket — bind the hub socket's DIRECTORY into the helper, at the dest and
+    # options of the director's own row (``core_defaults.helper_socket_dest``), the
+    # dir ``helper-init.sh`` registers in and the in-box CLI reads.  The directory, so
+    # a hub that binds again reaches a running helper too.  Nothing is derived from
+    # the helper's env: a mount dest is written into the runtime's arguments before
+    # the helper is live, and its real XDG location is served after boot by
+    # ``box_supervisor.project_pinned_xdg``.
+    if ctx.socket_path.parent.is_dir():
         kanibako_dir = helper_root / BOX_PINNED_STATE_RELPATH
         kanibako_dir.mkdir(parents=True, exist_ok=True)
-        box_socket = f"{GUEST_HOME}/{BOX_PINNED_STATE_RELPATH}/helper.sock"
-        mounts.append(Mount(ctx.socket_path, box_socket, ""))
+        hub_dest, hub_options = helper_socket_dest()
+        mounts.append(Mount(ctx.socket_path.parent, normalize_bind_dest(hub_dest),
+                            hub_options))
 
     # Target binary mounts (same agent binary as the director)
     mounts.extend(ctx.binary_mounts)

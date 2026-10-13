@@ -681,7 +681,7 @@ class TestNoDemandedKeyDangles:
       # the manifest's own formula for the broadcast leaf
       ("workset.channels.broadcast", "workset.channels.chat"),
       # the helper-socket bind entry, ``bind_default_entries``
-      ('bind_default_entries[box.bindings.rw][~/.kanibako/state/helper.sock]',
+      ('bind_default_entries[box.bindings.rw][~/.kanibako/state/hub]',
        "system.runtime"),
       # a ``meta.*`` row's ``value:``, which is where meta declarations live
       ("meta.box.workspace", "workset.workspaces"),
