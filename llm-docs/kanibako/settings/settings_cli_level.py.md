@@ -65,6 +65,10 @@ seams write box invariants only), so the tier reaches the harness only as launch
 the flag stays ephemeral. The realizer also reads this entry directly, for a descriptor whose
 `access_realization.setting_key` is empty and so redeems no stored key.
 
+`-M` never reaches the codex config projection: `start._resolve_box_launch_decisions`, whose model
+is written to disk in codex's `[model_providers.<id>]` block, takes the selection-only level, since
+§1A forbids an ephemeral flag mutating a stored value. The flag reaches the launch's own resolve.
+
 ### Why `--image` / `--share-images` ARE listed
 
 They are WIRED: `box.image` / `box.share_images` resolve through the keyspace (the
