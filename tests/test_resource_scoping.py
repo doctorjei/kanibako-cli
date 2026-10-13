@@ -613,7 +613,7 @@ class TestDisplayAnswersLikeTheLaunch:
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         system_file = std.settings
         dump_doc(system_file, {
-            "agent": {"claude": {"template": "@meta.workset.path/tpl"}},
+            "agent": {"claude": {"template": "{meta.workset.path}/tpl"}},
         })
         selection = AgentSelection(node="claude", source="settings").selection_level
         target = MagicMock()
@@ -686,10 +686,10 @@ class TestXdgFallbackRegression:
         ssp = tmp_path / "settings.yaml"
         ssp.write_text(
             "system:\n"
-            "  cache: $XDG_CACHE_HOME/kanibako\n"
+            "  cache: '{$XDG_CACHE_HOME}/kanibako'\n"
             "agent:\n"
             "  claude:\n"
-            "    template: $XDG_CACHE_HOME/kanibako/probe\n"
+            "    template: '{$XDG_CACHE_HOME}/kanibako/probe'\n"
         )
 
         std, proj = _real_primary_box(tmp_path / "proj")

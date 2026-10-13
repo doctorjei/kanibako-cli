@@ -321,7 +321,7 @@ def test_resolve_root_relative_repoint_is_spelled_with_the_ref(tmp_path: Path) -
     """Keeping the registry with the workset stays expressible — it has to be SAID."""
     workset_root = tmp_path / "myws"
     resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": "@meta.workset.path/sub/reg.yaml"}},
+        workset_root, {"workset": {"registry": "{meta.workset.path}/sub/reg.yaml"}},
                 early=early_record(tmp_path, mode=BoxMode.primary)
     )
     assert resolved == workset_root / "sub" / "reg.yaml"

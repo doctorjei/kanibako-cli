@@ -246,7 +246,7 @@ def test_literal_origin_raw_box_dest_stays_raw() -> None:
         _binding(
             key="lit",
             origin=HostSrcOrigin.LITERAL,
-            box_dest="$XDG_STATE_HOME/kanibako/helper.sock",
+            box_dest="{$XDG_STATE_HOME}/kanibako/helper.sock",
             literal_src=Path("/src"),
         ),
     )
@@ -254,7 +254,7 @@ def test_literal_origin_raw_box_dest_stays_raw() -> None:
     assert isinstance(ro, KeyStore)
     # A raw ``$XDG`` dest is NOT normalized either — R-11 only expands a leading
     # ``~``; everything else is carried through to ``expand``.
-    assert list(dict.keys(ro)) == ["$XDG_STATE_HOME/kanibako/helper.sock"]
+    assert list(dict.keys(ro)) == ["{$XDG_STATE_HOME}/kanibako/helper.sock"]
 
 
 # --------------------------------------------------------------------------- #
