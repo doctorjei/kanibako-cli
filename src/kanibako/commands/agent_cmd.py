@@ -807,6 +807,54 @@ def _label_floor(agent_id: str) -> dict[str, object]:
     return floor
 
 
+def _refuse_null_label(std: "StandardPaths", agent_id: str) -> None:
+    """Raise when ``agent.<agent_id>.label`` resolves to a stored ``null`` (keyspec §2h).
+
+    A ``null`` gives a label no meaning, so the display verbs refuse it, naming the file
+    and the key, as the launch refuses one at its keys: the same check
+    (:func:`~kanibako.commands.start._refuse_null_behavior`) over the same cascade, with
+    no box or workset tier (see :func:`_agent_label`). A ``""`` is not this: it falls
+    through to the declaration.
+    """
+    from kanibako.commands.start import _LABEL_NULL, _refuse_null_behavior
+    from kanibako.errors import ConfigError
+    from kanibako.settings import core_defaults
+    from kanibako.settings.agent_config import agent_settings_path
+    from kanibako.settings.settings_launch import (
+        ResolveSubject,
+        build_launch_snapshot,
+        resolve_inputs,
+    )
+
+    from kanibako.settings.settings_resolve import SettingsError
+
+    floor = _label_floor(agent_id)
+    own = floor.get(f"agent.{agent_id}.label")
+    written: list = []
+    try:
+        inputs = resolve_inputs(
+            subject=ResolveSubject.SYSTEM, std=std, agent_name=agent_id,
+            system_path=std.settings,
+        )
+        snapshot = build_launch_snapshot(
+            **inputs.as_kwargs(),
+            agent_name=agent_id,
+            agent_path=agent_settings_path(std.agents, agent_id),
+            written_out=written,
+            behavior_floor={"label": core_defaults.behavior_default("label")},
+            agent_behavior_floor={"label": own} if own is not None else None,
+            default_categories={
+                **core_defaults.pseudo_tier_defaults(), **inputs.system_floor,
+            },
+            cli_level=None,
+        )
+    except SettingsError:
+        return  # files that do not read: the doors below warn and show the floor
+    refusal = _refuse_null_behavior(snapshot, agent_id, _LABEL_NULL, written=written)
+    if refusal is not None:
+        raise ConfigError(refusal)
+
+
 def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     """*agent_id*'s human-readable DESCRIPTION — ``agent.<node>.label`` RESOLVED (spec §2d).
 
@@ -818,9 +866,10 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
 
     1. the agent FILE's own flat ``label`` — read through the file boundary's slot. This is
        the same SLOT ``agent get <node> label`` reads, but NOT the same read: that verb
-       renders and this one must not (below). An empty or null label there is declined
-       here, and doors 2 and 3 then resolve WITHOUT the agent file, whose level would
-       otherwise carry that empty value over them.
+       renders and this one must not (below). An empty label there is declined here, and
+       doors 2 and 3 then resolve WITHOUT the agent file, whose level would otherwise carry
+       that empty value over them. A ``null`` label, there or at doors 2 and 3, refuses
+       (:func:`_refuse_null_label`).
     2. ``agent.<node>.label`` through the cascade — a per-agent value in the SYSTEM file.
     3. ``agent.default.label`` through the cascade — the all-agents tier.
 
@@ -863,13 +912,14 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     # also what a user who stored the two-character label ``""`` gets back, so the two are
     # INDISTINGUISHABLE once rendered and a door comparing text discards one of them. This
     # is the same test ``effective_value`` makes for the same reason, on the same key.
-    # ⚑ A present-``None`` answers ``None`` here too, together with absent, and both mean
-    # the file names no label — which is exactly the fall-through this door wants.
+    # ⚑ A present-``None`` answers ``None`` here too, together with absent; the refusal
+    # below tells it apart and refuses it, so only absent and ``""`` fall through.
     slot = slot_for(std.agents, agent_id, "label")
     stored = stored_leaf_value(slot)
     if stored is not None and stored != "":
         return stored_leaf_display("label", stored)
-    # ⚑ A label the file HOLDS but this door declined (``""`` or ``null``) sits on the
+    _refuse_null_label(std, agent_id)
+    # ⚑ A label the file HOLDS but this door declined (``""``) sits on the
     # ``agent.<node>`` level too, where it would shadow the system file and the plugin's
     # declaration and send doors 2 and 3 to ``agent.default.label``. So those doors resolve
     # without the file then; a file that names no label is still read whole.

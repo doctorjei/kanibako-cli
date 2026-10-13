@@ -894,6 +894,7 @@ def _bootstrap_choice(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level,
         key="bootstrap", floor=_bootstrap_default(), agent_path=agent_path,
+        refuse=_BOOTSTRAP_NULL,
     )
     from_default = slot == "default"
     box_path, workset_path = box_workset_settings_paths(proj)
@@ -937,7 +938,7 @@ def _no_bootstrap_reason(choice: BootstrapChoice) -> str:
     if setting is None or choice.node is None:
         return "no bootstrap program was resolved for this box's agent."
     if choice.program is None:
-        cause = f"{setting} resolves to no value (null or \"\")"
+        cause = f"{setting} resolves to no value (\"\")"
     else:
         cause = f"{setting} is 'none' (the foreground opt-out)"
     if choice.pref is not None and not choice.from_default:
@@ -965,6 +966,9 @@ class _NullRefused(NamedTuple):
 
 _ALLOW_HELPERS_NULL = _NullRefused("allow_helpers", "true or false", "")
 _CONTINUE_MODE_NULL = _NullRefused("continue_mode", "true or false", "-N, -C, or -R")
+_BOOTSTRAP_NULL = _NullRefused("bootstrap", "a program such as tmux, or none", "")
+_TRANSFORM_NULL = _NullRefused("transform", 'a transform such as tweakcc, or "" for none', "")
+_LABEL_NULL = _NullRefused("label", "the text to show", "")
 
 
 def _access_null(setting_key: str) -> _NullRefused:
@@ -973,11 +977,11 @@ def _access_null(setting_key: str) -> _NullRefused:
 
 
 def _declared_floor(key: str, agent_id: str) -> str | None:
-    """*agent_id*'s declared ``<key>`` floor; ``None`` for a ``<None>`` or absent row.
+    """*agent_id*'s core ``<key>`` floor; ``None`` for a ``<None>`` or absent row.
 
     A pseudo-agent's floor is its own tier's, a true agent's ``agent.default``'s, as in
-    :func:`_declared_behavior_bool`. Unlike that read, this one does not raise: it
-    answers "does the key HAVE a default", which gates :func:`_refuse_null_behavior`.
+    :func:`_declared_behavior_bool`. Unlike that read, this one does not raise. It is the
+    focused snapshot's floor; the plugin's row rides beside it (:func:`_plugin_floor`).
     """
     if pseudo_agent_fence(agent_id) is not None:
         return core_defaults.pseudo_tier_defaults().get(f"agent.{agent_id}.{key}")
@@ -993,12 +997,15 @@ def _refuse_null_behavior(
     early read (:func:`_null_behavior_refusal`) and the main snapshot's reads.
     :func:`~kanibako.settings.settings_launch.null_behavior_setter` keeps a present
     ``None`` apart from an absent key, which keeps its declared default. ⚑ A key whose
-    DECLARED default is ``None`` is never refused: there a ``None`` is the default.
+    EFFECTIVE default (the plugin's row included,
+    :func:`~kanibako.settings.config_interface.effective_behavior_default`) is ``None`` is never
+    refused: there a ``None`` is the default.
     *written* (the snapshot's ``written_out``) names the file; *prefs* the box and
     workset requests, so a ``pref.`` line is named as the user wrote it.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.config import null_path_keys_error
+    from kanibako.settings.config_interface import effective_behavior_default
     from kanibako.settings.messages import (
         ERR_BEHAVIOR_NULL_CURE,
         ERR_BEHAVIOR_NULL_FLAGS,
@@ -1007,7 +1014,7 @@ def _refuse_null_behavior(
     )
     from kanibako.settings.settings_prefs import pref_request_for
 
-    if _declared_floor(rule.key, agent_id) is None:
+    if effective_behavior_default(agent_id, rule.key) is None:
         return None
     hit = settings_launch.null_behavior_setter(
         snapshot, written, active_agent=agent_id, key=rule.key,
@@ -1152,26 +1159,6 @@ def _is_no_bootstrap(program: str | None) -> bool:
     return program is None or program == _BOOTSTRAP_NONE
 
 
-def _effective_agent_scalar(
-    proj,
-    system_settings_path: "Path | None",
-    agent_id: str,
-    *,
-    std,
-    selection_level: "Mapping[str, object] | None",
-    key: str,
-    floor: str | None,
-    agent_floor: "Mapping[str, str | None] | None" = None,
-    agent_path: "Path | None" = None,
-) -> "str | None":
-    """The value half of :func:`_agent_scalar_pick` (see there)."""
-    return _agent_scalar_pick(
-        proj, system_settings_path, agent_id, std=std,
-        selection_level=selection_level, key=key, floor=floor,
-        agent_floor=agent_floor, agent_path=agent_path,
-    )[0]
-
-
 def _agent_scalar_pick(
     proj,
     system_settings_path: "Path | None",
@@ -1183,6 +1170,7 @@ def _agent_scalar_pick(
     floor: str | None,
     agent_floor: "Mapping[str, str | None] | None" = None,
     agent_path: "Path | None" = None,
+    refuse: "_NullRefused | None" = None,
 ) -> "tuple[str | None, str | None]":
     """Resolve ONE agent-scope behavior scalar off a focused launch snapshot.
 
@@ -1220,14 +1208,26 @@ def _agent_scalar_pick(
     :func:`~kanibako.settings.settings_launch.resolve_inputs`, the launch's own, so
     a value spelled ``@meta.workset.path/…`` answers here as it does there;
     *selection_level* is the §1A selection their auth chain needs (REQUIRED, P7).
+    *refuse*, when given, is *key*'s rule: a present ``None`` RAISES its refusal
+    (:func:`_refuse_null_behavior`) instead of reading as no value.
     """
     from kanibako.settings import settings_launch
+    from kanibako.settings.settings_prefs import collect_prefs
 
+    written: list = []
     snapshot = _focused_agent_snapshot(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level, key=key, floor=floor,
-        agent_floor=agent_floor, agent_path=agent_path,
+        agent_floor=agent_floor, agent_path=agent_path, written_out=written,
     )
+    if refuse is not None:
+        box_path, workset_path = box_workset_settings_paths(proj)
+        refusal = _refuse_null_behavior(
+            snapshot, agent_id, refuse, written=written,
+            prefs=collect_prefs(workset_path, box_path),
+        )
+        if refusal is not None:
+            raise ConfigError(refusal)
     value = settings_launch.effective_behavior(
         snapshot, active_agent=agent_id, keys=[key],
     ).get(key) or None
@@ -1330,13 +1330,13 @@ def _effective_transform(
     feeds that snapshot's delivery binds, so the decision must precede it.
     *agent_cfg_path* is the per-agent file, read whole as the main snapshot reads it.
     """
-    return _effective_agent_scalar(
+    return _agent_scalar_pick(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level,
         key="transform", floor=core_defaults.behavior_defaults()["transform"],
         agent_floor=_plugin_floor(target, "transform"),
-        agent_path=agent_cfg_path,
-    )
+        agent_path=agent_cfg_path, refuse=_TRANSFORM_NULL,
+    )[0]
 
 
 def _effective_transform_settings(
@@ -3641,6 +3641,8 @@ def _run_container(
     if not reattach_running:
         _desc = target.descriptor if target is not None else None
         _rules = [_ALLOW_HELPERS_NULL]
+        if target is not None and install:
+            _rules.append(_TRANSFORM_NULL)
         if _desc is not None:
             _rules.append(_CONTINUE_MODE_NULL)
             if _desc.access_realization is not None and _desc.access_realization.setting_key:

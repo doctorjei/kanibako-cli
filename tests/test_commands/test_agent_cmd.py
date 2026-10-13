@@ -200,12 +200,12 @@ class TestRunInfo:
         assert "Command Line Shell (shell)" in out, out
         assert "Mine" not in out, out
 
-    @pytest.mark.parametrize("cleared", ["", None])
+    @pytest.mark.parametrize("cleared", [""])
     def test_a_cleared_shell_label_falls_to_the_shell_floor_not_agent_default(
         self, agent_env, config_file, capsys, cleared,
     ):
         """🛑 §2d: the shell has no ``agent.default`` door.  A system-file
-        ``agent.shell.label`` of ``""`` or ``null`` names no value, and the label falls
+        ``agent.shell.label`` of ``""`` names no value, and the label falls
         to the shell's own floor — never to a user's ``agent.default.label``.
         (Mutation: keep the ``agent.default`` door for ``shell`` → ``Mine`` prints.)"""
         from kanibako.commands.agent_cmd import run_info
@@ -248,14 +248,15 @@ class TestRunInfo:
         assert "Claude Code" in out, out
         assert 'Label: ""' not in out, out
 
-    @pytest.mark.parametrize("stored", ("", None), ids=("empty", "null"))
+    @pytest.mark.parametrize("stored", ("",), ids=("empty",))
     def test_a_label_the_file_declines_does_not_shadow_the_declaration(
         self, agent_env, capsys, stored,
     ):
         """K4 Step 1: the file's root scalars ride the ``agent.claude`` level, so a stored
-        ``""`` or ``null`` label would shadow the plugin's declaration there and send the label
-        to ``agent.default.label``. Door 1 declines it and the later doors resolve without
-        the file (his Q3 answer: keep today's label)."""
+        ``""`` label would shadow the plugin's declaration there and send the label to
+        ``agent.default.label``. Door 1 declines it and the later doors resolve without the
+        file (his Q3 answer: keep today's label). A ``null`` refuses instead
+        (``test_start_access_null.py``)."""
         from kanibako.commands.agent_cmd import run_info
         from kanibako.settings.agent_file import slot_for, write_leaf
 
@@ -265,6 +266,42 @@ class TestRunInfo:
         out = capsys.readouterr().out
         assert "Claude Code" in out, out
         assert "Agent Description (None)" not in out, out
+
+    @pytest.mark.parametrize("verb", ("run_info", "run_show"))
+    def test_a_null_label_refuses_naming_the_file_and_key(self, agent_env, verb):
+        """keyspec §2h: a ``null`` gives a label no meaning, so the display refuses it."""
+        from kanibako.commands import agent_cmd
+        from kanibako.errors import ConfigError
+        from kanibako.settings.agent_file import slot_for, write_leaf
+
+        slot = slot_for(agents_dir(agent_env), "claude", "label")
+        write_leaf(slot, None)
+        run = getattr(agent_cmd, verb)
+        with pytest.raises(ConfigError) as exc:
+            run(argparse.Namespace(agent_id="claude", effective=False))
+        assert str(exc.value).startswith(
+            f"{slot.path} sets this agent key to null:\n  agent.claude.label\n"
+        ), str(exc.value)
+
+    @pytest.mark.parametrize(
+        ("node", "refused"), [("claude", True), ("default", False)],
+    )
+    def test_a_system_file_null_label(self, agent_env, config_file, capsys, node, refused):
+        """``agent.default.label: null`` is not claude's: the plugin's own row wins."""
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        dump_doc(std.settings, {"agent": {node: {"label": None}}})
+        if refused:
+            with pytest.raises(ConfigError, match="agent.claude.label"):
+                run_info(argparse.Namespace(agent_id="claude"))
+        else:
+            assert run_info(argparse.Namespace(agent_id="claude")) == 0
+            assert "Claude Code" in capsys.readouterr().out
 
     @pytest.mark.parametrize("verb", ("run_info", "run_show"))
     def test_unreadable_settings_fall_back_to_the_floor_label_with_one_warning(

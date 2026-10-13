@@ -6226,15 +6226,19 @@ class TestPrefAccessEnumGuard:
         assert msg.startswith("Error:"), msg
         assert "restricted | editing | full" in msg
 
-    def test_the_suppression_request_is_still_legal(self, tmp_path):
-        """``--null`` is §2h's suppression channel and is legal at ANY leaf —
-        the enum guard must not swallow it (present-``None`` is not a value)."""
+    def test_a_null_is_refused_by_the_null_door_not_the_enum_guard(self, tmp_path):
+        """``access`` gives ``null`` no meaning (keyspec §2h), so ``--null`` is refused —
+        by the null door, in its words; the enum guard does not judge a present ``None``."""
         f = tmp_path / BOX_META_FILE
         msg = set_config_value(
             "pref.agent.claude.access", None,
             config_path=f, command_scope=ConfigLevel.box,
         )
-        assert msg.startswith("Set"), msg
+        assert msg.startswith(
+            "Error: the launch refuses a null at this agent key"
+        ), msg
+        assert "restricted | editing | full" not in msg
+        assert not f.exists()
 
 
 class TestPrefIsKnownKey:

@@ -42,6 +42,8 @@ from kanibako._atomic import atomic_write_text
 from kanibako.agent_ref import GENERAL_SLOT, display_agent_ref
 from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
 from kanibako.settings.messages import (
+    ERR_BEHAVIOR_NULL_REASON,
+    ERR_BEHAVIOR_NULL_SET_HEAD,
     ERR_BOX_SCALAR_NULL_REASON,
     ERR_BOX_SCALAR_NULL_SET_HEAD,
     ERR_BOX_STORE_EMPTY_REASON,
@@ -850,7 +852,7 @@ def _overwritten_by(edited: "str | None", entry: "tuple[str, ...]") -> bool:
 
 
 def _set_time_agent_tier(
-    agent_name: str, agent_path: "Path | None",
+    agent_name: str, agent_path: "Path | None", *, floor_only: bool = False,
 ) -> "tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]":
     """The launch's agent tier for *agent_name* whose file is *agent_path*:
     ``(agent_path, behavior_floor, agent_behavior_floor)``, all ``None`` without a file.
@@ -858,9 +860,10 @@ def _set_time_agent_tier(
     The file's own values ride its ``agent.<active>`` level, which the cascade reads from
     *agent_path*. An agent file that does not read is left out, so a ref into it dangles rather
     than the set raising. The two behavior floors come as the launch's do, only from a plugin
-    that resolves and declares settings.
+    that resolves and declares settings. *floor_only* reads the floors with no file
+    (:func:`effective_behavior_default`).
     """
-    if agent_path is None:
+    if agent_path is None and not floor_only:
         return None, None, None
     from kanibako.agent_ref import harness_of
     from kanibako.settings.core_defaults import behavior_defaults
@@ -868,7 +871,7 @@ def _set_time_agent_tier(
     from kanibako.targets import resolve_target
     from kanibako.targets.base import descriptor_floor
 
-    if agent_path.exists():
+    if agent_path is not None and agent_path.exists():
         try:
             agent_record(agent_path, node=agent_name, purpose=ReadPurpose.RESOLVE)
         except KanibakoError:
@@ -881,6 +884,51 @@ def _set_time_agent_tier(
         return agent_path, None, None
     return agent_path, behavior_defaults(), descriptor_floor(
         descriptors, plugin=harness_of(agent_name),
+    )
+
+
+#: The agent behavior scalars a ``null`` gives no meaning to (keyspec §2h): no normal value
+#: is missing that a ``null`` would supply. Each refuses a present ``None`` wherever its
+#: effective default (:func:`effective_behavior_default`) is a value; where that default
+#: is ``None``, a ``null`` is the default and is never refused.
+NULL_REFUSED_BEHAVIOR_KEYS = frozenset({
+    "access", "allow_helpers", "continue_mode", "bootstrap", "transform", "label",
+})
+
+
+def effective_behavior_default(node: str, key: str) -> "str | None":
+    """*node*'s EFFECTIVE declared ``<key>`` default (spec §2d): what an unset key reads.
+
+    ``agent.default``'s own row for ``default``; a pseudo-agent's own tier row; for a true
+    agent, its plugin's declared ``agent.<node>.<key>`` row where it has one (claude's
+    ``transform`` is ``tweakcc`` over core's ``<None>``), else ``agent.default``'s.
+    """
+    from kanibako.settings import core_defaults
+    from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
+    from kanibako.settings.settings_keyspace import pseudo_agent_fence
+
+    if node == AGENT_DEFAULT_SUB:
+        return core_defaults.behavior_defaults().get(key)
+    if pseudo_agent_fence(node) is not None:
+        return core_defaults.pseudo_tier_defaults().get(f"agent.{node}.{key}")
+    floor = _set_time_agent_tier(node, None, floor_only=True)[2] or {}
+    if key in floor:
+        return floor[key]
+    return core_defaults.behavior_defaults().get(key)
+
+
+def refuses_null_behavior_key(canonical: str) -> bool:
+    """True iff the launch refuses a present ``null`` at the agent key *canonical* (§2h).
+
+    *canonical* is ``agent.<node>.<key>``, a box or workset ``pref.`` of one, or the bare
+    ``<key>`` that ``set`` spells ``agent.default.<key>`` with.
+    """
+    parts = canonical.removeprefix("pref.").split(".")
+    if len(parts) == 1:
+        parts = ["agent", "default", *parts]
+    return (
+        len(parts) == 3 and parts[0] == "agent" and parts[2] in NULL_REFUSED_BEHAVIOR_KEYS
+        and effective_behavior_default(parts[1], parts[2]) is not None
     )
 
 
@@ -1636,6 +1684,11 @@ _SET_VALUE_DOORS: "tuple[_SetValueDoor, ...]" = (
         lambda key, value: value is None and refuses_null_box_scalar(key),
         ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, "value",
     ),
+    # §2h — a ``--null`` at an agent behavior key whose default is a value.
+    _SetValueDoor(
+        lambda key, value: value is None and refuses_null_behavior_key(key),
+        ERR_BEHAVIOR_NULL_SET_HEAD, lambda value: ERR_BEHAVIOR_NULL_REASON, "value",
+    ),
     # §0 — a string at the box store key the launch cannot root boxes at.
     _SetValueDoor(
         lambda key, value: value is not None and refuses_box_store_value(key, value),
@@ -1650,26 +1703,17 @@ _SET_VALUE_DOORS: "tuple[_SetValueDoor, ...]" = (
 )
 
 
-def _set_value_error(
-    canonical: str,
-    value: "str | None",
-    *,
-    command_scope: "ConfigLevel | None",
-    config_path: Path,
-    system_settings_path: "Path | None",
-) -> "str | None":
+def _set_value_error(canonical: str, value: "str | None") -> "str | None":
     """Refuse *value* at *canonical* where the LAUNCH refuses it (:data:`_SET_VALUE_DOORS`),
-    or ``None``.  ``reset <key>`` reaches what the read-time cue reaches by hand."""
+    or ``None``.  ``reset <key>`` reaches what the read-time cue reaches by hand.
+
+    The lead names the key and no file: a ``set`` that refused wrote none.
+    """
     door = next((d for d in _SET_VALUE_DOORS if d.refuses(canonical, value)), None)
     if door is None:
         return None
-    dest = _write_dest(
-        canonical, command_scope=command_scope,
-        config_path=config_path, settings_path=system_settings_path,
-    )
-    assert dest is not None  # every key a door refuses has a routing-table slot
     error = null_path_keys_error(
-        dest.file, (canonical,), head=door.head,
+        Path(), (canonical,), head=door.head,
         cure=(
             f"{door.reason(value)} Nothing was written: to use {canonical}'s default, run "
             f"'reset {canonical}', or set the {door.noun} you mean."
@@ -1912,15 +1956,11 @@ def set_config_value(
         return "Error: " + ERR_WORKSET_SET_MAKES_STANDALONE % ws.name
     if makes_standalone:
         _log.warning(WARN_WORKSET_SET_MAKES_STANDALONE, ws.name)
-    # ⚑ A value the LAUNCH refuses (spec §0, §2a, §2b); see :func:`_set_value_error`.  AFTER
+    # ⚑ A value the LAUNCH refuses (spec §0, §2a, §2b, §2h); see :func:`_set_value_error`. AFTER
     # every NAME-level refusal above, so a retired or wrong-scope spelling still gets its own,
     # and BEFORE the E3 probe, which would splice an unusable value into a candidate store.
     # A standalone-making null ``workset.registry`` is a path key no door may refuse.
-    value_err = None if makes_standalone else _set_value_error(
-        canonical, value,
-        command_scope=command_scope, config_path=config_path,
-        system_settings_path=system_settings_path,
-    )
+    value_err = None if makes_standalone else _set_value_error(canonical, value)
     if value_err is not None:
         return value_err
 

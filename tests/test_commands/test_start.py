@@ -710,13 +710,13 @@ class TestEffectiveBootstrapResolution:
         # ([R177]).  :class:`TestShellBootstrapIsTheTiersOwn` pins that side.
         assert _resolved_program(proj, sys_file, "shell") == "tmux"
 
-    @pytest.mark.parametrize("written", [None, ""])
+    @pytest.mark.parametrize("written", [""])
     def test_a_true_agent_with_no_value_has_no_program(self, tmp_path, written):
-        """``agent.claude.bootstrap: null`` or ``""`` is NO program, never the default.
+        """``agent.claude.bootstrap: ""`` is NO program, never the default.
 
-        §2h keeps a terminal ``""`` distinct from unset, and a ``null`` the user wrote
-        is a supplied value ([R177]); both used to fall back to ``tmux``.  The
-        launch reads the ``None`` as no bootstrap (``_is_no_bootstrap``).
+        §2h keeps a terminal ``""`` distinct from unset ([R177]); it used to fall back
+        to ``tmux``.  The launch reads it as no bootstrap (``_is_no_bootstrap``).  A
+        ``null`` refuses instead (``test_start_access_null.py``).
         """
         from kanibako.commands.start import _is_no_bootstrap
         from kanibako.settings.config_io import dump_doc
@@ -847,13 +847,15 @@ class TestShellBootstrapIsTheTiersOwn:
             proj, None, "shell", agent_path=agent_file,
         ) == "zellij"
 
-    def test_a_user_null_on_the_shell_tier_is_no_program(self, tmp_path):
-        """``agent.shell.bootstrap: null`` is a supplied no-value: no program."""
+    def test_a_user_null_on_the_shell_tier_refuses(self, tmp_path):
+        """``agent.shell.bootstrap: null`` has no meaning (its tier's default is tmux)."""
+        from kanibako.errors import ConfigError
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"shell": {"bootstrap": None}}})
-        assert _resolved_program(proj, sys_file, "shell") is None
+        with pytest.raises(ConfigError, match="agent.shell.bootstrap"):
+            _resolved_program(proj, sys_file, "shell")
 
 
 @pytest.mark.usefixtures("config_file")
@@ -894,7 +896,7 @@ class TestBootstrapOrigin:
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
-        dump_doc(sys_file, {"agent": {"claude": {"bootstrap": None}}})
+        dump_doc(sys_file, {"agent": {"claude": {"bootstrap": ""}}})
         choice = _bootstrap_choice(proj, sys_file, "claude", **_focused())
         assert choice.program is None
         assert choice.pref is None
@@ -920,12 +922,12 @@ class TestBootstrapOrigin:
         assert "kanibako system set agent.claude.bootstrap=tmux" in reason
         assert "(or change agent.default.bootstrap, for every agent)" in reason
 
-    def test_a_system_agent_default_null_is_named(self, tmp_path):
+    def test_a_system_agent_default_empty_is_named(self, tmp_path):
         from kanibako.commands.start import _bootstrap_choice, _no_bootstrap_reason
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
-        dump_doc(sys_file, {"agent": {"default": {"bootstrap": None}}})
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": ""}}})
         choice = _bootstrap_choice(proj, sys_file, "claude", **_focused())
         assert (choice.program, choice.from_default) == (None, True)
         reason = _no_bootstrap_reason(choice)

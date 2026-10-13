@@ -8,15 +8,18 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_interface.py
 ## Variables
 
 ```
+NULL_REFUSED_BEHAVIOR_KEYS = frozenset({'access', 'allow_helpers', 'continue_mode', 'bootstrap', 'transform', 'label'})
 FLOOR_TIER = 'built-in default'
 _log = get_logger(__name__)
 _EARLY_KEY_DOORS = frozenset({ConfigLevel.workset, ConfigLevel.system})
-_SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value: value is None and refuses_null_path_key(key), ERR_CONFIG_NULL_PATH_SET_HEAD, lambda value: ERR_CONFIG_NULL_PATH_REASON, 'path'), _SetValueDoor(lambda key, value: value is None and refuses_null_box_scalar(key), ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value: value is not None and refuses_box_store_value(key, value), ERR_BOX_STORE_SET_HEAD, lambda value: (ERR_BOX_STORE_TRAILING_REASON if value is not None and value.endswith('/') else ERR_BOX_STORE_EMPTY_REASON) + '.', 'path'))
+_SET_VALUE_DOORS: 'tuple[_SetValueDoor, ...]' = (_SetValueDoor(lambda key, value: value is None and refuses_null_path_key(key), ERR_CONFIG_NULL_PATH_SET_HEAD, lambda value: ERR_CONFIG_NULL_PATH_REASON, 'path'), _SetValueDoor(lambda key, value: value is None and refuses_null_box_scalar(key), ERR_BOX_SCALAR_NULL_SET_HEAD, lambda value: ERR_BOX_SCALAR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value: value is None and refuses_null_behavior_key(key), ERR_BEHAVIOR_NULL_SET_HEAD, lambda value: ERR_BEHAVIOR_NULL_REASON, 'value'), _SetValueDoor(lambda key, value: value is not None and refuses_box_store_value(key, value), ERR_BOX_STORE_SET_HEAD, lambda value: (ERR_BOX_STORE_TRAILING_REASON if value is not None and value.endswith('/') else ERR_BOX_STORE_EMPTY_REASON) + '.', 'path'))
 ```
 
 ## Functions
 ```
 def parse_config_arg(arg: str | None, *, set_null: bool=False) -> 'tuple[ConfigAction, str, str | None]'
+def effective_behavior_default(node: str, key: str) -> 'str | None'
+def refuses_null_behavior_key(canonical: str) -> bool
 def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None, cascade_system_path: Path | None=None, cascade_workset_path: Path | None=None, node_store: bool=True, std: Any=None, proj: Any=None, ws: Any=None) -> str | None
 def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None, force: bool=False, node_store: bool=True) -> str
 def persist_creation_level(level: 'Mapping[str, object] | None', *, typed_agent: 'str | None', box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
@@ -42,7 +45,7 @@ def _dotted_in(node: object, dotted: str) -> object
 def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', edited: 'str | None'=None, defects: 'Callable[[], Mapping[str, str]] | None'=None) -> _BadEntries
 def _first_dotted(views: 'list[dict]', dotted: str) -> object
 def _overwritten_by(edited: 'str | None', entry: 'tuple[str, ...]') -> bool
-def _set_time_agent_tier(agent_name: str, agent_path: 'Path | None') -> 'tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]'
+def _set_time_agent_tier(agent_name: str, agent_path: 'Path | None', *, floor_only: bool=False) -> 'tuple[Path | None, dict[str, str | None] | None, dict[str, str | None] | None]'
 def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None) -> 'tuple[Any, Any]'
 def _floor_blind_referents(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None') -> list[str]
 def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None)
@@ -57,7 +60,7 @@ def _noun_file_slot(slot: AgentFileSlot, noun_file: Path) -> AgentFileSlot
 def _system_verb_slot(slot: 'AgentFileSlot | str | None', noun_file: 'Path | None', node_store: bool) -> 'AgentFileSlot | str | None'
 def _stored_shape_for(canonical: str, value: object) -> object
 def _set_confirmation(display_key: str, value: object) -> str
-def _set_value_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
+def _set_value_error(canonical: str, value: 'str | None') -> 'str | None'
 def _per_owner_set_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', ws: Any, written: Path, stored: 'Callable[[str], object]') -> 'str | None'
 def _write_creation_prefs(writes: 'list[tuple[str, str]]', *, box_settings_path: Path, workset_settings_path: 'Path | None', std: Any, proj: Any) -> None
 @contextmanager

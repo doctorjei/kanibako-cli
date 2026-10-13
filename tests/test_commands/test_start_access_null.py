@@ -294,7 +294,9 @@ class TestRunContainerWiring:
         m.launch_check.assert_not_called()
         m.runtime.run.assert_not_called()
         kw = m.null_behavior_refusal.call_args.kwargs
-        assert [r.key for r in kw["rules"]] == ["allow_helpers", "continue_mode", "access"]
+        assert [r.key for r in kw["rules"]] == [
+            "allow_helpers", "transform", "continue_mode", "access",
+        ]
 
     @pytest.mark.parametrize(
         ("over", "entry"),
@@ -367,7 +369,7 @@ class TestRunContainerWiring:
 class TestEndToEnd:
     """Through ``kanibako start`` on a box ``create`` made."""
 
-    @pytest.mark.parametrize("key", _KEYS)
+    @pytest.mark.parametrize("key", (*_KEYS, "bootstrap"))
     def test_a_box_pref_null_refuses_the_start(
         self, config_file, tmp_home, credentials_dir, capsys, key,
     ):
@@ -400,3 +402,160 @@ class TestEndToEnd:
         assert "Error: " + _head(box_file, f"pref.agent.claude.{key}") in err
         rig.assert_not_called()
         run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# The same rule at ``bootstrap``, ``transform``, and ``label``
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("config_file")
+class TestBootstrapAndTransform:
+    """``bootstrap`` (default tmux) and claude's ``transform`` (default tweakcc) refuse a null."""
+
+    @pytest.mark.parametrize("node", ["claude", "default"])
+    def test_a_null_bootstrap_refuses_where_it_is_read(self, tmp_path, node):
+        from kanibako.commands.start import _bootstrap_choice
+
+        proj = _focused_box(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {node: {"bootstrap": None}}})
+        with pytest.raises(ConfigError) as exc:
+            _bootstrap_choice(proj, sys_file, "claude", **_focused())
+        msg = str(exc.value)
+        assert msg.startswith(_head(sys_file, f"agent.{node}.bootstrap")), msg
+        assert "Set it to a program such as tmux, or none," in msg
+
+    def test_none_and_empty_bootstrap_are_still_values(self, tmp_path):
+        from kanibako.commands.start import _bootstrap_choice
+
+        proj = _focused_box(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        for value, program in (("none", "none"), ("", None)):
+            dump_doc(sys_file, {"agent": {"claude": {"bootstrap": value}}})
+            assert _bootstrap_choice(proj, sys_file, "claude", **_focused()).program == program
+
+    def test_a_null_transform_refuses_for_claude(self, tmp_path):
+        from kanibako.commands.start import _TRANSFORM_NULL, _effective_transform
+
+        proj = _focused_box(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"claude": {"transform": None}}})
+        msg = _refusal(proj, sys_file, rules=[_TRANSFORM_NULL])
+        assert msg is not None and msg.startswith(_head(sys_file, "agent.claude.transform"))
+        with pytest.raises(ConfigError, match="agent.claude.transform"):
+            _effective_transform(
+                proj, sys_file, "claude", ClaudeTarget(), **_focused(),
+            )
+        # ``""`` is the spelling for no transform, and stays legal.
+        dump_doc(sys_file, {"agent": {"claude": {"transform": ""}}})
+        assert _refusal(proj, sys_file, rules=[_TRANSFORM_NULL]) is None
+        assert _effective_transform(
+            proj, sys_file, "claude", ClaudeTarget(), **_focused(),
+        ) is None
+
+    def test_a_default_slot_null_transform_is_not_claudes(self, tmp_path):
+        """``agent.default.transform``'s default is ``<None>``; claude's own row wins anyway."""
+        from kanibako.commands.start import _TRANSFORM_NULL, _effective_transform
+
+        proj = _focused_box(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"transform": None}}})
+        assert _refusal(proj, sys_file, rules=[_TRANSFORM_NULL]) is None
+        assert _effective_transform(
+            proj, sys_file, "claude", ClaudeTarget(), **_focused(),
+        ) == "tweakcc"
+
+    def test_the_effective_defaults(self):
+        from kanibako.settings.config_interface import effective_behavior_default
+
+        assert effective_behavior_default("claude", "transform") == "tweakcc"
+        assert effective_behavior_default("default", "transform") is None
+        assert effective_behavior_default("shell", "transform") is None
+        assert effective_behavior_default("shell", "bootstrap") == "tmux"
+        assert effective_behavior_default("shell", "continue_mode") is None
+        assert effective_behavior_default("claude", "label") == "Claude Code"
+        assert effective_behavior_default("default", "model") is None
+
+    def test_the_early_check_reads_transform_only_where_the_launch_does(self, start_mocks):
+        with start_mocks() as m:
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False, extra_args=[],
+            )
+        rules = [r.key for r in m.null_behavior_refusal.call_args.kwargs["rules"]]
+        assert rules == ["allow_helpers", "transform", "continue_mode", "access"]
+
+
+def _cli(*argv):
+    import contextlib
+    import io
+
+    from kanibako.cli import main
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        try:
+            main(list(argv))
+            rc = 0
+        except SystemExit as e:
+            rc = e.code if isinstance(e.code, int) else 1
+    return rc, out.getvalue()
+
+
+class TestTheSetDoor:
+    """``set --null`` at a refused key writes nothing, at every noun (keyspec §2h)."""
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "agent.claude.access", "agent.default.allow_helpers", "agent.claude.continue_mode",
+            "agent.default.bootstrap", "agent.claude.transform", "agent.claude.label",
+            "agent.shell.bootstrap", "bootstrap",
+        ],
+    )
+    def test_system_set_null_is_refused(self, config_file, credentials_dir, key):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        settings = load_std_paths(load_config(config_file)).settings
+        before = settings.read_bytes() if settings.exists() else None
+        rc, out = _cli("system", "set", "--null", key)
+        assert rc == 1, out
+        assert "the launch refuses a null at this agent key, so this set is refused" in out
+        assert key in out and "Nothing was written" in out
+        assert (settings.read_bytes() if settings.exists() else None) == before
+
+    @pytest.mark.parametrize(
+        "key", ["transform", "agent.shell.continue_mode", "agent.claude.model"],
+    )
+    def test_a_key_whose_default_is_none_still_takes_a_null(
+        self, config_file, credentials_dir, key,
+    ):
+        rc, out = _cli("system", "set", "--null", key)
+        assert rc == 0, out
+
+    def test_box_and_agent_set_null_are_refused(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        box_dir = tmp_home / "nullset"
+        box_dir.mkdir()
+        rc, out = _cli("create", str(box_dir), "--agent", "claude")
+        assert rc == 0, out
+        rc, out = _cli("box", "set", "nullset", "--null", "pref.agent.claude.bootstrap")
+        assert rc == 1, out
+        assert "pref.agent.claude.bootstrap" in out and "Nothing was written" in out
+        rc, out = _cli("agent", "set", "claude", "--null", "label")
+        assert rc == 1, out
+        assert "Nothing was written" in out
+
+    def test_workset_set_null_is_refused(self, config_file, tmp_home, credentials_dir):
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        create_workset("wsn", (tmp_home / "wsn").resolve(), std)
+        rc, out = _cli("workset", "set", "wsn", "--null", "pref.agent.claude.continue_mode")
+        assert rc == 1, out
+        assert "pref.agent.claude.continue_mode" in out and "Nothing was written" in out
