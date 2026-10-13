@@ -36,8 +36,9 @@ scanner) and does not modify it; it adds transitive snapshot lookup, whole-value
 3-state propagation and the CONFIG-vs-ENV deferral.
 
 The per-leaf case enumeration, LENIENT mode's contract, the ``pref`` rules, the
-resolver split, the out-of-scope boundaries, the authority (design §3/§6a/§6h,
-spec §0/§1/§1A/§2a/§2c/§2h) and the seams S3/S17/S18/S19 are all in
+resolver split, the out-of-scope boundaries, the authority (spec
+§0/§1/§1A/§2a/§2c/§2h; system-design § "Resolution" and § "Host-side and
+box-side resolution") and the seams S3/S17/S18/S19 are all in
 ``llm-docs/kanibako/settings/settings_expand.py.md``.
 """
 
@@ -255,9 +256,10 @@ def expand(
     *snapshot* is block 2b's raw merged store (refs/vars/``~`` intact). *ctx*
     carries the host-side expansion namespace (``host_home``, ``xdg``,
     ``agent_name``, ``workset_name``) consumed for host-side ``$VAR`` / ``~``.
-    Every value is resolved TRANSITIVELY to a fixpoint (§6h), so a multi-hop chain
-    collapses to its terminal regardless of dict order. The per-leaf rules for
-    each value shape are enumerated in the llm-doc.
+    Every value is resolved TRANSITIVELY to its terminal (spec §0
+    "References"), so a multi-hop chain collapses to its terminal regardless of
+    dict order. The per-leaf rules for each value shape are enumerated in the
+    llm-doc.
 
     STRICT mode (``collect_errors=False``, the default — the live launch read-path):
     a CYCLE (whole-value or embedded — B7) raises :class:`SettingsError` with the
@@ -674,7 +676,7 @@ class _Expander:
     def _resolve_ref(
         self, dotted: str, *, chain: tuple[str, ...], absent_ok: bool = False,
     ) -> StoreValue | _Absent:
-        """Fully resolve the value at snapshot path *dotted*, transitively (§6h).
+        """Fully resolve the value at snapshot path *dotted*, transitively (spec §0 "References").
 
         Reads the RAW value at *dotted*, then expands THAT value (recursing) so the
         result is a terminal. MEMOIZED by dotted path — the fixpoint. 3-state: an

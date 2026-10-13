@@ -14,8 +14,9 @@ Covers the brief §5 checklist for the pure ``expand(snapshot, ctx) -> KeyStore`
   RAW (deferred — asserted PRESENT) while a ``box_dest`` ``@``-ref IS expanded;
 * escapes preserved; purity — input snapshot unmutated, idempotent on a terminal.
 
-Authority: design §6h / §6a / §3; spec §0 / §1 / §2c. The pass keys nothing
-by ``box_dest`` (reconcile is §6g) and never merges (block 2b).
+Authority: spec §0 ("References") / §1 / §2c; system-design § "Resolution". The
+pass keys nothing by ``box_dest`` (arbitration is system-design § "Collision
+arbitration") and never merges (block 2b).
 """
 
 from __future__ import annotations
@@ -92,7 +93,8 @@ def test_terminal_scalars_unchanged_and_typed() -> None:
     out = expand(snap, _ctx())
     assert out["a"] == "plain"
     assert out["n"] == 7 and out["f"] == 1.5 and out["b"] is True
-    assert out["z"] is None  # present-None scalar terminal is KEPT (§3).
+    # present-None scalar terminal is KEPT (spec §2h "Values are installed VERBATIM").
+    assert out["z"] is None
     assert out["lst"] == ["x", "y"]
 
 
@@ -182,7 +184,7 @@ def test_multi_hop_whole_value_chain() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Whole-value 3-state propagation (design §6h; spec §0)                       #
+# Whole-value 3-state propagation (spec §0 "References")                      #
 # --------------------------------------------------------------------------- #
 
 
@@ -195,7 +197,7 @@ def test_whole_value_absent_drops_key_full_chain() -> None:
 
 
 def test_whole_value_present_none_propagates_none() -> None:
-    # a = @b, b = @c, c present-None → a, b carry None (the §3 terminal).
+    # a = @b, b = @c, c present-None → a, b carry None (spec §0 "References").
     snap = KeyStore({"a": "@b", "b": "@c", "c": None})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is None
@@ -210,10 +212,11 @@ def test_whole_value_present_none_propagates_none() -> None:
 # ⚑ WHY THIS BLOCK EXISTS. ``@{a.b}`` with nothing following is a WHOLE-VALUE ref
 # and must inherit the referent's 3-state VERBATIM, exactly as ``@a.b`` does. If
 # ``_is_whole_value_ref`` failed to recognize the braced form, the value would
-# fall through to the EMBEDDED path, where ``_lookup_str`` coerces absent/None to
-# "" — silently turning the §3 "omit this bind" None terminal into a real
-# empty-string value. That substitution is invisible at every other layer, so it
-# is pinned here. Each test below mirrors its bare-form sibling above one-for-one.
+# fall through to the EMBEDDED path, where an ABSENT referent becomes ``""``
+# instead of dropping the key (spec §0 "References") — silently turning an
+# absent value into a real empty-string value. That substitution is invisible
+# at every other layer, so it is pinned here. Each test below mirrors its
+# bare-form sibling above one-for-one.
 
 
 def test_braced_whole_value_absent_drops_key_full_chain() -> None:
@@ -528,7 +531,8 @@ def test_bind_box_whole_value_present_none_ref_raises() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Cycle detection (§6h / B7) — hard error, with the chain                     #
+# Cycle detection (system-design § "Resolution", Cycle handling / B7) — hard  #
+# error, with the chain                                                       #
 # --------------------------------------------------------------------------- #
 
 
@@ -1261,7 +1265,7 @@ def test_bind_entry_opts_carried_verbatim() -> None:
 
 def test_bind_entry_whole_value_src_absent_drops_the_entry() -> None:
     # Same 3-state rule as the name-keyed Bind: an absent whole-value src means the
-    # binding cannot point anywhere, so the entry is DROPPED (design §3; spec §0).
+    # binding cannot point anywhere, so the entry is DROPPED (spec §0 "References").
     snap = _arm({"~/a": BindEntry("@box.env.NOPE"), "~/b": BindEntry("/h/b")})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "~/a") is __MISSING__

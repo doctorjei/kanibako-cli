@@ -34,18 +34,18 @@ What this module adds are the three things the single-expression engine lacks (b
    to terminals regardless of dict order — `A=@B`, `B=@C`, `C=term` collapses to `term`. It reuses
    `_expand_ref`'s `chain`-based cycle guard. Results are MEMOIZED, so the pass is a fixpoint, not
    re-resolution per reference.
-2. **Whole-value `@`-ref 3-state propagation (design §6h; spec §0).** A value that IS exactly one `@x`
+2. **Whole-value `@`-ref 3-state propagation (spec §0 "References").** A value that IS exactly one `@x`
    (decided by PARSE — S18, never guessed) inherits the referent's 3-state through every link:
    referent absent → this key ABSENT (dropped from the snapshot); referent present-`None` → `None`
-   (kept, the §3 terminal a bind/category consumer then OMITs); else the terminal value. An EMBEDDED
-   token (`@x` inside a larger string) is SUBSTITUTION via `expand_expr`: an absent referent → empty
-   string (never deletes the key); a present-`None` referent → the WHOLE value is `None` (see
-   *Embedded `None`* below).
-3. **CONFIG-vs-ENV deferral (§6a / B6 — S17).** For a `Bind`: `host_src` expands FULLY host-side
-   (`@`-refs plus `$XDG` / `~`). `box_dest` expands its `@`-refs (CONFIG, the same on both sides) but
-   leaves `$XDG` / `~` (ENVIRONMENT, host ≠ box) RAW — a DEFERRED token resolved box-side at mount.
-   The expanded `Bind.box` may therefore still carry a `$XDG` / `~` token: a known, bounded residue,
-   NOT lazy config re-resolution.
+   (kept — the present-`None` terminal a bind/category consumer then OMITs, spec §2a "PER-ENTRY
+   CASCADE MERGE"); else the terminal value. An EMBEDDED token (`@x` inside a larger string) is
+   SUBSTITUTION via `expand_expr`: an absent referent → empty string (never deletes the key); a
+   present-`None` referent → the WHOLE value is `None` (see *Embedded `None`* below).
+3. **CONFIG-vs-ENV deferral (system-design § "Host-side and box-side resolution"; B6 — S17).** For a
+   `Bind`: `host_src` expands FULLY host-side (`@`-refs plus `$XDG` / `~`). `box_dest` expands its
+   `@`-refs (CONFIG, the same on both sides) but leaves `$XDG` / `~` (ENVIRONMENT, host ≠ box) RAW — a
+   DEFERRED token resolved box-side at mount. The expanded `Bind.box` may therefore still carry a
+   `$XDG` / `~` token: a known, bounded residue, NOT lazy config re-resolution.
 
 ## The per-leaf case enumeration
 
@@ -60,7 +60,8 @@ What this module adds are the three things the single-expression engine lacks (b
 * **`Bind`** → `host_src` expanded FULLY host-side; `box_dest` expands its `@`-refs but leaves
   `$XDG` / `~` RAW (deferred box-side, S17). If a whole-value `host_src` `@`-ref resolves absent, or
   any `host_src` ref resolves present-`None`, the WHOLE Bind is dropped, or carried as that terminal
-  (§3 — a bind/category consumer OMITs it). `opts` is carried verbatim; it never holds tokens.
+  (a bind/category consumer OMITs it — spec §2a "PER-ENTRY CASCADE MERGE"). `opts` is carried
+  verbatim; it never holds tokens.
 * **`BindEntry`** (the dest-keyed shape, R-5 / R-6) → `src` expanded exactly as `Bind.host_src`, with
   the SAME 3-state rule; the destination is the node KEY, so it is expanded on the walk
   (`_expand_dest_key`) in the same `$XDG` / `~`-deferred space `box_dest` uses. Two stored dests that
@@ -272,8 +273,9 @@ attribute it to.
 `_expand_bind` handles the name-keyed `Bind`: `host_src` fully host-side, `box_dest` `@`-refs only.
 If the `host_src` is a whole-value `@`-ref that resolves absent, or any `host_src` ref resolves
 present-`None`, the WHOLE Bind takes that state — the binding cannot point anywhere: an absent host
-→ `_ABSENT` (drop the bind); a `None` host → `None` (the §3 bind/category OMIT terminal). Otherwise
-both halves are strings and `opts` is carried verbatim, since it never holds tokens.
+→ `_ABSENT` (drop the bind); a `None` host → `None` (the bind/category OMIT terminal, spec §2a
+"PER-ENTRY CASCADE MERGE"). Otherwise both halves are strings and `opts` is carried verbatim, since it
+never holds tokens.
 
 `_expand_bind_entry` is the dest-keyed counterpart. It expands ONE half, because the other half — the
 destination — is the mapping KEY and is expanded by `_expand_dest_key` on the node walk (R-5 / R-6).
@@ -365,16 +367,18 @@ chains.
 
 * NO cascade merge / precedence — that is `kanibako.settings.settings_merge`; this consumes its
   output.
-* NO cross-scope `box_dest` collision resolution (§6g) — that is the SEPARATE downstream pass, today
-  the `store_shape` producer plus the assembly collapse. (The collision this module DOES raise on is
-  the narrower same-node case above.)
+* NO cross-scope `box_dest` collision resolution (system-design § "Collision arbitration") — that is
+  the SEPARATE downstream pass, today the `store_shape` producer plus the assembly collapse. (The
+  collision this module DOES raise on is the narrower same-node case above.)
 * NO typed views — `kanibako.settings.settings_views`.
 * NO `config set` — `kanibako.settings.config_interface`.
 
 ## Authority
 
-* `~/vault/rw/keystore-design.md` §6h (transitive expansion + cycle — PRIMARY), §6a (CONFIG-vs-ENV
-  split; box-side `$XDG` / `~` deferred), §3 (the 3-state).
+* System-design `~/canon/workbook/specs/system-design-1.8.0.md` § "Resolution — the staged bootstrap
+  order" (*Cycle handling (per layer)*) and § "Host-side and box-side resolution — who expands what"
+  (CONFIG-vs-ENV split; box-side `$XDG` / `~` deferred). Historical (NOT AUTHORITY):
+  `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §6h, §6a, §3.
 * Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0, §1 (the box-side XDG line, ~line 94), §2c, §2h, §2a, §1A.
 * The merged snapshot this pass consumes is `settings_merge`'s raw output (`d33db5c`).
 

@@ -576,9 +576,10 @@ When `True`, the ENVIRONMENT tokens `~` and `$VAR` / `${VAR}` are NOT expanded; 
 VERBATIM — the exact source span, `${...}` braces included — to be resolved later in a DIFFERENT
 environment. `@`-refs (CONFIG) still expand normally, and escapes are still honored.
 
-This is the box-side deferral of the KeyStore expansion pass (design §6a): `$XDG` / `~` name the
-**box** environment, host ≠ box, so a `box_dest` env token stays deferred (block 3 / S17). Its one
-consumer is `settings_expand`, which passes `defer_env=(space == "defer")`.
+This is the box-side deferral of the KeyStore expansion pass (system-design § "Host-side and box-side
+resolution"): `$XDG` / `~` name the **box** environment, host ≠ box, so a `box_dest` env token stays
+deferred (block 3 / S17). Its one consumer is `settings_expand`, which passes
+`defer_env=(space == "defer")`.
 
 ⚑⚑ **The escape rule INVERTS under deferral, and this is the subtle half.** Host-side, `\x` → `x`
 (the backslash is consumed). Deferred, an escape of an ENVIRONMENT-significant char (`$`, `~`,
