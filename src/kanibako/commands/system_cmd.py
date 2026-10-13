@@ -515,7 +515,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # agent, ``agent set`` is handed the node it was invoked on, and here the key is
         # the only carrier — so a per-node key names its own node and every other key
         # names none. It anchors ``{meta.agent.<node>.path}`` in the set-time snapshot;
-        # withheld, ``system set agent.claude.canon={meta.agent.claude.path}/canon`` was
+        # withheld, ``system set agent.claude.canon=@meta.agent.claude.path/canon`` was
         # refused as a dangling reference while ``agent set claude canon=…`` — the same
         # key, the other spelling — accepted it.
         # ⚑ THE NODE IS READ, NOT GUESSED: ``agent_node_of`` derives it from the same

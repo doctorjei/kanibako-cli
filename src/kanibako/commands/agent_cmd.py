@@ -658,7 +658,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
                 )
         # ⚑⚑ THE ONE SETTER, AND THERE IS NO LONGER A SECOND ARM BESIDE IT. This verb had its
         # OWN writer straight to ``write_leaf``, so none of the set-time validation ran:
-        # measured, ``agent set claude canon={bogus.ref}`` stored the dangling reference at rc 0
+        # measured, ``agent set claude canon=@bogus.ref`` stored the dangling reference at rc 0
         # while the same value through ``system set`` was refused by name. Two writers of one
         # keyspace slot is the defect — so the checks are NOT copied here; the write is routed
         # to where they already live (the E3 resolution probe, the typed-scalar check and the

@@ -110,9 +110,9 @@ _TEMPLATE_LEAF = "template"
 _BOXES_REF = f"workset.{BOXES_DIR_NAME}"
 
 # ⚑ The ONE skeleton dir that names NO KEY: the keyspec declares ``workset.vault_ro``
-# and ``workset.vault_rw`` (``{meta.workset.path}/vault/{ro,rw}``) and no ``workset.vault``
-# at all, so ``vault/`` is only their shared DEFAULT PARENT — there is nothing to resolve
-# it through and it is always ``<root>/vault``.  ⚑ DELIBERATE: it keeps
+# and ``workset.vault_rw`` (``{meta.workset.path}/vault/ro``, ``.../vault/rw``) and no
+# ``workset.vault`` at all, so ``vault/`` is only their shared DEFAULT PARENT — there is
+# nothing to resolve it through and it is always ``<root>/vault``.  ⚑ DELIBERATE: it keeps
 # the skeleton a SINGLE list that ``create_workset`` stamps and ``is_workset_skeleton``
 # tests.
 # ⚑⚑ THE PARENT IS THE NON-KEY; THE TWO ARMS ARE NOT.  ``vault_ro`` and ``vault_rw`` are

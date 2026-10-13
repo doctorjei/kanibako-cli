@@ -1873,7 +1873,7 @@ def _print_effective_derivations(ws, std) -> int:
     :func:`_workset_preview_entries` runs BEFORE the gate, ``expand`` is strict, and
     ``snapshot_category_entries`` refuses an undeclared shape — while the ``show``
     arm's own rendering is a YAML flatten that expands nothing.  So a working set
-    carrying, say, ``bindings.ro`` sourced at an unknown ``{$VAR}`` printed its rows at
+    carrying, say, ``bindings.ro`` sourced at an unknown ``$VAR`` printed its rows at
     rc 0 and now reports ``Error: Unknown variable: …`` at rc 1, with no abstract
     declaration anywhere in the file.  MEASURED both ways.  That is the intended
     answer — a view that cannot resolve the file must not claim rc 0 — but it is a

@@ -2875,8 +2875,8 @@ def _plan_source_teardown(
                 and not state.shell_path.is_relative_to(state.metadata_path)):
             trees_p.append(state.shell_path)
         # ⚑⚑ The PRIMARY vault is NOT under metadata_path: it is a per-box ``<name>`` LEAF
-        # under the primary workset's RESOLVED ``@workset.{vault_ro,vault_rw}``.  Remove the
-        # leaf only — the arm is shared and holds EVERY box's vault.
+        # under the primary workset's RESOLVED ``{workset.vault_ro}``/``{workset.vault_rw}``.
+        # Remove the leaf only — the arm is shared and holds EVERY box's vault.
         # ⚑ The guard's subject is the ARM: naming it admits exactly the leaves that may be
         # deleted, and a root-subject guard would skip an out-of-root repoint and
         # silently leave the box's real vault behind.
