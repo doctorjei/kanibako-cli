@@ -5,7 +5,7 @@ from __future__ import annotations
 
 class TestCommsConfig:
     def test_default_comms_path(self, tmp_path):
-        """With NO stored path set-values, the channel root is ``@config.data/channels``.
+        """With NO stored path set-values, the channel root is ``{config.data}/channels``.
 
         ⚑ NO SET-VALUES, SPELLED AS THE EMPTY MAPPING (R153, 2026-08-31).  This built a
         ``KanibakoConfig()`` for the sole purpose of passing its ``config_paths`` — a
@@ -15,7 +15,7 @@ class TestCommsConfig:
         from kanibako.settings.paths import resolve_system_paths
 
         resolved = resolve_system_paths({}, data_home=tmp_path, home=tmp_path)
-        # channelroot is a Layer-2 system.* SETTING (@config.data/channels).
+        # channelroot is a Layer-2 system.* SETTING ({config.data}/channels).
         assert resolved["system.channelroot"] == tmp_path / "kanibako" / "channels"
 
     def test_comms_from_the_settings_file(self, tmp_path):

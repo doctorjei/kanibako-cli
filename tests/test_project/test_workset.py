@@ -186,7 +186,7 @@ class TestDefaultWorkset:
         ws = default_workset(std)
         assert ws.is_default is True
         assert ws.name == DEFAULT_WORKSET_ID
-        # F4 (spec §2c): the PRIMARY workset roots at @config.primary_workset,
+        # F4 (spec §2c): the PRIMARY workset roots at {config.primary_workset},
         # so its settings/env files derive from root like any named workset's.
         assert ws.root == std.primary_workset
 
@@ -1018,7 +1018,7 @@ class TestWorksetWorkspacesResolved:
 
     def test_boxes_and_logs_resolvers_default_to_the_spec_formula(self, tmp_path):
         """⚑ ``workset.boxes``/``workset.logs`` are declared keys and resolve exactly
-        like ``workspaces``: default ``@meta.workset.path/<leaf>``, an ``@``-ref
+        like ``workspaces``: default ``{meta.workset.path}/<leaf>``, an ``@``-ref
         repoint resolved through the one route, absolute repoint used as-is."""
         from kanibako.project.workset import (
             resolve_workset_boxes,
@@ -1230,10 +1230,10 @@ class TestInTreeWorkspacePredicate:
 
 class TestWorksetBoxesAndLogsResolved:
     """``workset.boxes`` / ``workset.logs`` are DECLARED, repointable keys (keyspec
-    ``@meta.workset.path/boxes``, ``@meta.workset.path/logs``), and the launch seam
+    ``{meta.workset.path}/boxes``, ``{meta.workset.path}/logs``), and the launch seam
     has always resolved them (``settings_launch``, ``meta.box.path |
-    @workset.boxes/@meta.box.name``; ``data/rom/settings/core-defaults.yaml``,
-    ``@workset.logs/@{meta.box.name}.jsonl``).
+    {workset.boxes}/{meta.box.name}``; ``data/rom/settings/core-defaults.yaml``,
+    ``{workset.logs}/{meta.box.name}.jsonl``).
 
     ⚑⚑ THE STATE THIS CLOSES was worse than plain breakage.  Detection resolved both
     keys while ``Workset.projects_dir`` / ``.logs_dir`` composed the default leaf, so a
@@ -1319,7 +1319,7 @@ class TestWorksetBoxesAndLogsResolved:
 
     def test_helper_log_path_honors_a_named_logs_repoint(self, std, tmp_home):
         """⚑⚑ M-14: the helpers.jsonl MOUNT is the spec spelling
-        ``@workset.logs/@{meta.box.name}.jsonl``, so a composed writer path made the
+        ``{workset.logs}/{meta.box.name}.jsonl``, so a composed writer path made the
         hub write where the box does not read.  Both must name one file."""
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.paths import ProjectGroup, ProjectPaths, helper_log_path
@@ -1508,7 +1508,7 @@ class TestWorksetBoxesPresentNone:
                     early=early_record(tmp_path, mode=BoxMode.primary)),
             lambda: resolve_workset_boxes(tmp_path, doc, standalone=True,
                     early=early_record(tmp_path, mode=BoxMode.standalone)),
-            # A lone box's default logs dir is ``@workset.boxes``.
+            # A lone box's default logs dir is ``{workset.boxes}``.
             lambda: resolve_workset_logs(tmp_path, doc, standalone=True,
                     early=early_record(tmp_path, mode=BoxMode.standalone)),
         ):
@@ -1901,7 +1901,7 @@ class TestWorksetSkeletonMarker:
 
     def test_a_repointed_boxes_dir_still_detects(self, std, tmp_home):
         """⚑ ``workset.boxes`` is a DECLARED, repointable key (keyspec:
-        ``workset.boxes | @meta.workset.path/boxes``), so the locator is what it
+        ``workset.boxes | {meta.workset.path}/boxes``), so the locator is what it
         RESOLVES to.  Testing the literal ``<root>/boxes`` made a repointed root
         invisible to detection — the repoint is precisely what removes that dir."""
         from kanibako.project.workset import is_workset_skeleton
@@ -1922,7 +1922,7 @@ class TestWorksetSkeletonMarker:
         assert not is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "boxmoved"))
 
     def test_a_repointed_logs_dir_still_detects(self, std, tmp_home):
-        """⚑ Same for ``workset.logs`` (keyspec: ``@meta.workset.path/logs``).  The
+        """⚑ Same for ``workset.logs`` (keyspec: ``{meta.workset.path}/logs``).  The
         comment that once stood over ``_LOGS_LEAF`` claimed no ``workset.*`` key
         named it; the keyspec has declared one all along."""
         from kanibako.project.workset import is_workset_skeleton

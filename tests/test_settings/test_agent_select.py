@@ -10,7 +10,7 @@ Covers:
   set* and *nothing was ever set* are DIFFERENT answers and get DIFFERENT refusals
   — the installed-agent count rule that used to answer the third state was retired
   2026-09-19 (spec §2b);
-* the §1A SELECTION LEVEL that keeps ``@system.agent`` equal to the node that runs;
+* the §1A SELECTION LEVEL that keeps ``{system.agent}`` equal to the node that runs;
 * the RETIRED-key refusals (``box.agent_name`` / ``system.default_agent``, M-4).
 """
 
@@ -158,12 +158,12 @@ class TestSelectionFailures:
     def test_an_unrelated_defect_does_not_decide_which_agent_runs(self, tmp_path):
         """⚑ WHY THE SELECTION PASS EXPANDS LENIENTLY.
 
-        This pass has no active agent yet, so ``$AGENT`` cannot resolve. A
-        perfectly legitimate ``$AGENT`` in an UNRELATED value must not abort
+        This pass has no active agent yet, so ``{$AGENT}`` cannot resolve. A
+        perfectly legitimate ``{$AGENT}`` in an UNRELATED value must not abort
         selection for a box whose real launch resolves it fine.
 
         INVERT: use strict ``expand`` here -> SettingsError, and a box with any
-        ``$AGENT``-bearing setting can no longer start at all.
+        ``{$AGENT}``-bearing setting can no longer start at all.
         """
         assert _select(
             tmp_path,
@@ -174,7 +174,7 @@ class TestSelectionFailures:
 
 
 # --------------------------------------------------------------------------- #
-# The §1A SELECTION LEVEL — @system.agent equals the node that RUNS            #
+# The §1A SELECTION LEVEL — {system.agent} equals the node that RUNS            #
 # --------------------------------------------------------------------------- #
 
 
@@ -184,7 +184,7 @@ class TestSelectionLevel:
 
         ``--agent claude`` with ``pref.system.agent: goose`` must not leave the
         snapshot saying goose while claude runs — three consumers dereference
-        ``@system.agent`` (both re-pointed §2c anchors, and C-CANON's agent
+        ``{system.agent}`` (both re-pointed §2c anchors, and C-CANON's agent
         chapter next).
 
         INVERT: drop the ``selection_level`` splice -> the snapshot says goose.
@@ -216,7 +216,7 @@ class TestSelectionLevel:
     def test_the_selection_level_supplies_a_cli_named_agent(self, tmp_path):
         """⚑ The THIRD incoherence: a box launched on ``--agent claude`` with
         NOTHING stored runs claude while ``system.agent`` is ABSENT, so every
-        ``@system.agent`` dereference would coerce to ``""``. Installing the
+        ``{system.agent}`` dereference would coerce to ``""``. Installing the
         resolved selection ALWAYS covers it.
 
         ⚑ This used to be written about the commonest host — one agent installed,
@@ -248,7 +248,7 @@ class TestSelectionLevel:
         }
 
     def test_the_workset_auth_anchor_follows_the_selection(self, tmp_path):
-        """The re-pointed §2c anchor resolves through ``@system.agent``, so a
+        """The re-pointed §2c anchor resolves through ``{system.agent}``, so a
         ``--agent`` launch must land in THAT agent's credential dir.
 
         INVERT: interpolate the agent name into the anchor again and this passes
@@ -906,7 +906,7 @@ class TestSuppressedAuthPathIsUnreachable:
     """The E-NULL defect's SECOND symptom, and why it cannot recur.
 
     A suppressed box installs NO selection level (correctly — ``system.agent`` must
-    stay absent), so ``meta.box.auth.workset_path`` = ``@workset.auth.path/@system.agent``
+    stay absent), so ``meta.box.auth.workset_path`` = ``{workset.auth.path}/{system.agent}``
     resolves to the COLLAPSED ``<auth>/``. On bifrost that value was live because an
     agent was actually launched; with the launch honest it is INERT, and these pin
     why: no agent ⇒ no capability ⇒ the workset tier is off ⇒ ``resolve_auth_source``
@@ -946,7 +946,7 @@ class TestSuppressedAuthPathIsUnreachable:
     def test_the_collapsed_path_never_reaches_a_consumer(self, agent_name):
         """Both no-agent shapes: the LAUNCH's ``"shell"`` slot, and a blank name.
 
-        ⚑ The blank case used to CRASH here — ``@meta.agent..auth.share_support`` is
+        ⚑ The blank case used to CRASH here — ``{meta.agent..auth.share_support}`` is
         a malformed ref, and the strict ``as_bool`` rejected the leftover string
         ("expected bool, got str"). No caller passed blank, but P7 made ``""`` a
         meaningful value (the suppression), so the floor now pins ``False`` for it.

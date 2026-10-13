@@ -46,7 +46,7 @@ class TestTheDeclaredDefault:
         assert KanibakoConfig.__annotations__["box_shell"] in ("str | None", "str|None")
 
     def test_the_floor_still_supplies_a_present_none(self):
-        """A declared ``<None>`` is SUPPLIED present, so ``@box.shell`` resolves.
+        """A declared ``<None>`` is SUPPLIED present, so ``{box.shell}`` resolves.
 
         A whole-value ref to a present ``<None>`` is ``<None>`` (spec §0); the ``""``
         spelling would be dropped as a suppression by the fold and the ref would dangle.

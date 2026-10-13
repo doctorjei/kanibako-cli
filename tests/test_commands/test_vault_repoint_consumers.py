@@ -269,7 +269,7 @@ def _standalone_with_vault(config_file, tmp_home, name, vault_repoint=None):
 
 
 class TestStandalonePurgeFollowsAnInRootRepoint:
-    """An IN-ROOT repoint (``vault_ro: @meta.workset.path/store/ro``) is the USER'S folder:
+    """An IN-ROOT repoint (``vault_ro: {meta.workset.path}/store/ro``) is the USER'S folder:
     the box's own ``workset.yaml`` nominated it, so purge KEEPS it and NAMES it.
 
     ⚑ The repoint used to read ``store/ro``; [R147] refuses a bare relative, so the
@@ -375,7 +375,7 @@ class TestTeardownResolvesBeforeItDeletes:
         root.mkdir()
         (root / "file.txt").write_text("x")
         resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
-        # ``@config.registry`` is not reachable on the no-snapshot paths side.
+        # ``{config.registry}`` is not reachable on the no-snapshot paths side.
         _repoint(root, "vault_ro", "{config.registry}/ro")
         return std, config, root
 
@@ -401,7 +401,7 @@ class TestTeardownResolvesBeforeItDeletes:
     def test_a_null_box_store_refuses_the_purge_before_the_unregister(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        """A null ``workset.boxes`` refuses through the logs default (``@workset.boxes``);
+        """A null ``workset.boxes`` refuses through the logs default (``{workset.boxes}``);
         the refusal lands while the box is still REGISTERED, not after the unregister."""
         from kanibako.commands.box._parser import _rm_standalone
         from kanibako.project import registry_store

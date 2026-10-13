@@ -1670,7 +1670,7 @@ class TestStandaloneNullWorkspaceHasNoPath:
 class TestNamedInTreeNullWorkspaceHasNoPath:
     """A named IN-TREE member under a null ``workset.workspaces`` has no workspace either.
 
-    ``@workset.workspaces/<name>`` is a whole-value ``<None>`` (§0), so the launch refuses
+    ``{workset.workspaces}/<name>`` is a whole-value ``<None>`` (§0), so the launch refuses
     and the two display faces must not name the registered folder: it is the RECORD, not
     the resolution.  An external member and a primary box resolve through no workset key
     and keep their own path — the boundary this must not cross.

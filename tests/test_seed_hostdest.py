@@ -26,7 +26,7 @@ WHERE a delivery lands or WHETHER it is emitted at all:
 
 ⚑⚑ ONE DEST SPACE, TWO DELIVERIES (spec §0; 2026-08-08c).  EVERY category
 destination is GUEST-spelled now, copies included, and the seed dest was
-respelled from the absolute host path ``@meta.box.path/home`` to the guest
+respelled from the absolute host path ``{meta.box.path}/home`` to the guest
 ``~/``.  So the collision in §1 is closed AT THE SOURCE, and the three things
 that used to discriminate the two spaces — ``CategoryEntry.dest_space``,
 ``snapshot_category_entries(host_dest_keys=…)`` and ``templates.seed_keys_of`` —
@@ -34,7 +34,7 @@ are DELETED.  Do not reintroduce them under any name; a host-spelled category
 dest would be a guest path taken for a host one, which is exactly the bug above.
 
 ⚑ WHAT STILL CARRIES A HOST DEST.  Exactly one thing, and it is NOT a category
-dest: ``@box.canon/handbook``, the HOST template location nothing in the box
+dest: ``{box.canon}/handbook``, the HOST template location nothing in the box
 reads (§5C-RULING), copied by ``launch.templates.install_box_handbook_template``
 through ``start._host_copy_dest``'s containment guard.  §1 pins that guard from
 the host side and the seed's route through ``container._guest_dest_to_host``
@@ -137,7 +137,7 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
 
     ⚑⚑ INVERTED 2026-08-08c, deliberately.  This class used to guarantee the
     OPPOSITE — that the three §2a keys NEVER touch the translator — and that was
-    true while the seed dest was the absolute HOST path ``@meta.box.path/home``,
+    true while the seed dest was the absolute HOST path ``{meta.box.path}/home``,
     which the translator would have re-rooted under the box home.  The respell to
     the guest ``~/`` made routing through the translator the CORRECT behavior, so
     the guarantee is replaced rather than dropped: the same mis-landing bug is now
@@ -513,7 +513,7 @@ class TestCanonDefaultCategories:
         The KEY keeps the canonical node because it is a key path; the VALUE and the
         store probe that selects it are DIRECTORIES and take the ``+`` form.  Leave
         either on ``℘`` and the probe reads a dir that is not there: the persona
-        degrades to ``@agent.default.canon``, its own canon never loads, and NOTHING
+        degrades to ``{agent.default.canon}``, its own canon never loads, and NOTHING
         reports an error.
         """
         (tmp_path / "raiju+claude" / "canon").mkdir(parents=True)

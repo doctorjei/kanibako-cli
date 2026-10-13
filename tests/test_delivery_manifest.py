@@ -54,7 +54,7 @@ THE TWO DELIVERY LAYERS
      file reaches the slot; the manifest checks BOTH sources ship and that the
      yield holds.
 
-   NOTE on the box guide: the former per-agent ``@system.instructions`` →
+   NOTE on the box guide: the former per-agent ``{system.instructions}`` →
    native-slot bind is RETIRED (see ``test_instructions_bind.py``), AND the per-file
    rom enumerator that replaced the old whole-dir ``playbook_kanibako`` bind is
    itself retired (C-CANON R1). The guide now reaches the box ONLY as a file INSIDE
@@ -152,7 +152,7 @@ class SeedFile:
 #   home/...            → the ``seeded`` category (spec §2a). Delivered at ``~`` by
 #                         the rw home bind (the box's own, agent-writable notebook +
 #                         workbook).
-#   canon/handbook/...  → ``@box.canon/handbook``, a SIBLING of home, filled by the
+#   canon/handbook/...  → ``{box.canon}/handbook``, a SIBLING of home, filled by the
 #                         host-side handbook template copy and bound RO back into the
 #                         box at ``~/canon/handbook/box``. It is NOT under the home: a
 #                         guest-spelled dest would land inside the home bind and the
@@ -442,7 +442,7 @@ class TestSeededManifest:
     def test_the_handbook_chapter_is_not_under_the_home(
         self, std, config, project_dir,
     ):
-        """⚑⚑ THE HOST-DEST REGRESSION. ``@box.canon/handbook`` is a SIBLING of the
+        """⚑⚑ THE HOST-DEST REGRESSION. ``{box.canon}/handbook`` is a SIBLING of the
         home, so nothing from that layer may appear anywhere under the home — where
         the guest translator would have put it, silently, reporting success."""
         store = self._seed_primary_claude_box(std, config, project_dir)
@@ -552,7 +552,7 @@ class TestRomBindManifest:
         """The guide has NO bind of its own — it is a file inside the ``general``
         CHAPTER bind, at ``~/canon/charter/general/ROM_GENERAL.md``.
 
-        The former per-agent ``@system.instructions`` → native-slot bind is retired,
+        The former per-agent ``{system.instructions}`` → native-slot bind is retired,
         and so is the per-file rom enumerator that used to give the guide its own
         mount. Under R1 it rode a whole-dir ``canon_bible`` bind; J-7 replaced that
         with per-chapter siblings, so it now rides the chapter it belongs to. This is

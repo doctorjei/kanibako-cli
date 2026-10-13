@@ -121,7 +121,7 @@ class TestKanibakoLazyInit:
 
         # The SETTINGS-KEY half, also retired (MBR-2/D1-4).  ``cli._ensure_initialized``
         # used to write ``COLORTERM=truecolor`` at box scope, downward into the system
-        # settings file (``@config.settings`` = ``@config.data/global/settings.yaml``).
+        # settings file (``{config.settings}`` = ``{config.data}/global/settings.yaml``).
         # A declared default is RESOLVED, not stored, so the file must carry neither
         # spelling.  ⚑ MEASURED CONSEQUENCE, and the reason the file is no longer
         # REQUIRED here: that write was the ONLY thing creating

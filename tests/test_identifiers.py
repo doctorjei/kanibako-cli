@@ -164,7 +164,7 @@ class TestAgentNodeCase:
     def test_it_LOWERCASES_rather_than_casefolding(self):
         """``%tolower(…)%`` is a CASE change; ``casefold`` is a LETTER change.
 
-        Keyspec §2d spells the store-path fold ``%tolower(@meta.agent.<agent>.name)%``
+        Keyspec §2d spells the store-path fold ``%tolower({meta.agent.<agent>.name})%``
         (``[R176]``) and §0 says the node is the name *in lowercase*.
         ``"Straße".casefold()`` is ``"strasse"`` — a different word — so a
         casefolded node would spell a plugin's store ``agents/strasse/`` where the

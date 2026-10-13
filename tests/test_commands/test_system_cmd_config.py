@@ -6,7 +6,7 @@ SETTINGS key to the Layer-1 config file was a write-only no-op (at the time
 ``resolve_system_paths`` dropped unknown ``[system]`` entries; since 2026-08-31
 ``bootstrap_config_paths`` REFUSES any settings table in ``kanibako.cfg``),
 while the launch reads those keys from the system SETTINGS file
-(``@config.settings`` = ``global/settings.yaml``).  The rule now:
+(``{config.settings}`` = ``global/settings.yaml``).  The rule now:
 
 * ``kanibako.cfg`` carries ``config.*`` ALONE, so no ``system.*`` key routes
   there.  ``system.setup_completed`` was the last file-only holdout: it became
@@ -17,7 +17,7 @@ while the launch reads those keys from the system SETTINGS file
 * system-scope SETTINGS (``system.auth.share_allowed``,
   ``system.agent``, ``env.*``, agent settings) route to the SAME
   storage the launch cascade reads: the system settings file for keyed
-  settings, ``@config.data/env`` for the env tier.  set → get → show
+  settings, ``{config.data}/env`` for the env tier.  set → get → show
   --effective → launch agree on ONE location per key.
 
 These tests exercise the integrated ``system_cmd`` set/reset/get/show paths
@@ -236,7 +236,7 @@ class TestSystemDefaultAgentSetting:
 class TestSystemEnvTier:
     """``system set system.env.<VAR>`` — the system env tier.
 
-    ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote ``@config.data/env``,
+    ⚑ FLIPPED by B9. The bare ``env.<VAR>`` spelling wrote ``{config.data}/env``,
     a docker ``.env`` FILE the launch layered as its system tier. R-39 retired
     the spelling and Jei's RQ-1 re-ruling retired the launch READ, so the file is
     gone from both ends. The system env tier is now the settings key
@@ -330,7 +330,7 @@ class TestSystemStructuralFileOnly:
     write is not a safety property; it is the surface failing to keep a declared
     promise, and the hand-edit had exactly the same lack of validation.
 
-    ⚑⚑ THE FILE IS ``@config.settings`` SINCE 2026-08-26, and the invariant is
+    ⚑⚑ THE FILE IS ``{config.settings}`` SINCE 2026-08-26, and the invariant is
     unchanged: every verb names the file ``read_setup_completed`` reads, because a
     verb aimed anywhere else is accepted, persisted and INERT.  What moved was the
     STORAGE — Jei closed the delta spec §2g had recorded all along (a Layer-2

@@ -729,7 +729,7 @@ class TestAgentConfigFirstUse:
 
         * the box HOME — the keystore-routed ``seeded`` category (spec §2a layers
           1-3), applied by ``_apply_init_seeds`` (Q1);
-        * ``@box.canon/handbook`` — the HOST-side handbook template copy
+        * ``{box.canon}/handbook`` — the HOST-side handbook template copy
           (``_install_box_handbook``, step 3), which since 2026-08-07g is the only
           route that fills it — no ``seeded`` entry names that dest any more.
 
@@ -754,8 +754,8 @@ class TestAgentConfigFirstUse:
             dests = {call[0][0] for call in mock_fn.call_args_list}
             box_root = m.proj.shell_path.parent
             assert dests == {
-                m.proj.shell_path,                      # @meta.box.path/home
-                box_root / "canon" / "handbook",        # @box.canon/handbook
+                m.proj.shell_path,                      # {meta.box.path}/home
+                box_root / "canon" / "handbook",        # {box.canon}/handbook
             }, dests
             # Each dest gets its THREE ordered layers (system -> agent -> workset).
             assert all(len(call[0][1]) == 3 for call in mock_fn.call_args_list)

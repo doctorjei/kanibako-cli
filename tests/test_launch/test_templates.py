@@ -241,7 +241,7 @@ class TestTemplateSeedDefaults:
 
     def test_the_only_seed_dest_is_the_box_home(self, primary_proj):
         """⚑ THE H2 PIN, RESPELLED. Every declared seed dest is the GUEST home
-        ``~/`` and NOTHING targets ``@box.canon/handbook`` any more.
+        ``~/`` and NOTHING targets ``{box.canon}/handbook`` any more.
 
         The handbook layers left the category on 2026-08-07g (HOST templates, not
         GUEST templates), so no declared ``seeded`` entry names the handbook dest any
@@ -251,7 +251,7 @@ class TestTemplateSeedDefaults:
         also catches a fourth layer added at a dest of its own.
 
         ⚑ It ALSO pins the 2026-08-08c RESPELL: the dest used to be the absolute
-        HOST path ``@meta.box.path/home``, which needed a per-entry space
+        HOST path ``{meta.box.path}/home``, which needed a per-entry space
         discriminator to stop the guest translator re-rooting it (see
         ``settings_categories.CategoryEntry``). A host-spelled dest coming back
         makes this RED, which is the point — the discriminator that made one safe
@@ -294,7 +294,7 @@ class TestTemplateSeedDefaults:
 
         defs = template_seed_defaults(primary_proj, "claude")
         # Layer 2's SOURCE, with its @-ref head resolved the way the cascade does:
-        #   @agent.claude.template -> @config.agents/claude/<store rel>
+        #   {agent.claude.template} -> {config.agents}/claude/<store rel>
         source = defs["agent.claude.seeded"]["~/"][0]
         store_ref = defs["agent.claude.template"]
         assert source.startswith("{agent.claude.template}/")
@@ -325,7 +325,7 @@ class TestTemplateSeedDefaults:
         (``TestLayeredHomeSeed`` pins both).  The default arm still answers, because
         the agent tier exists for a shell box.
         (Mutation: drop the ``GENERAL_SLOT`` branch and this goes RED with
-        ``@config.agents/shell/template``; OMIT the key instead and it goes RED on the
+        ``{config.agents}/shell/template``; OMIT the key instead and it goes RED on the
         missing ``None``; gate the layer on the default's VALUE and it goes RED on the
         missing layer.)
         """
@@ -344,13 +344,13 @@ class TestTemplateSeedDefaults:
 
     def test_the_workset_source_key_is_the_floors_not_this_tables(self, primary_proj):
         """⚑⚑ Layer 3's SOURCE key is the floor's, not this table's (2026-08-29).  This
-        table only ``@``-REFERENCES ``@workset.template``; ``settings_launch
+        table only ``@``-REFERENCES ``{workset.template}``; ``settings_launch
         .workset_anchor_floor`` declares it, beside ``workset.registry``.  A source key
         spelled only here answered for a box being CREATED and for no box that already
         existed — this table's one consumer is the create-time seed resolve.
 
         The other half, the layer's ``~/`` entry, is the ``workset-seeded-layer``
-        kinemata view's, and the floor's ``@meta.workset.path/template`` value is
+        kinemata view's, and the floor's ``{meta.workset.path}/template`` value is
         ``workset-anchor-floor``'s.
         """
         defs = template_seed_defaults(primary_proj, "claude")
@@ -491,7 +491,7 @@ class TestLayeredHomeSeed:
         self, std, config, primary_proj,
     ):
         """⚑⚑ THE H2 CUT, end to end. ``_apply_init_seeds`` ALONE must leave
-        ``@box.canon/handbook`` untouched: the three handbook layers left the
+        ``{box.canon}/handbook`` untouched: the three handbook layers left the
         ``seeded`` category (2026-08-07g), so the only route that fills the chapter
         is step 3's host-side copy.
 
@@ -542,7 +542,7 @@ class TestLayeredHomeSeed:
         assert (home / "shared.txt").read_text() == "USER OWNED"
 
     def test_absent_workset_template_skipped(self, std, config, primary_proj):
-        """No @workset.template dir on disk -> the layer is skipped (skip-if-
+        """No {workset.template} dir on disk -> the layer is skipped (skip-if-
         absent) and base + agent still seed (no crash)."""
         install_packaged_templates(std, ["claude"])
         # Deliberately do NOT create std.primary_workset/template.
@@ -594,7 +594,7 @@ class TestLayeredHomeSeed:
     ):
         """PRIMARY ``workset.workspaces`` is ``<None>`` (spec §2c), SUPPLIED present (Q82).
 
-        The floor used to OMIT it at primary, so ``@workset.workspaces`` dangled there.
+        The floor used to OMIT it at primary, so ``{workset.workspaces}`` dangled there.
         """
         from kanibako.commands.start import _resolve_launch_snapshot
         from kanibako.settings.kb_store import __MISSING__
@@ -631,7 +631,7 @@ class TestLayeredHomeSeed:
     def test_a_standalone_seed_entry_naming_workset_template_takes_no_host_path(
         self, std, config, standalone_proj,
     ):
-        """A user's ``seeded`` entry ``@workset.template/box/home`` in a STANDALONE box is
+        """A user's ``seeded`` entry ``{workset.template}/box/home`` in a STANDALONE box is
         SKIPPED — spec §2a: a layer whose source is ``<None>`` is skipped, and §2c declares
         ``workset.template`` ``<None>`` for standalone.  With the key OMITTED the embedded
         ref rendered ``""`` and the entry seeded from the HOST path ``/box/home``.  The seed
@@ -713,7 +713,7 @@ class TestLayeredHomeSeed:
 
         The spec declares it ``<None>`` — a SUPPLIED value, so the §2d pick lands on it
         and never falls back to ``agent.default.template`` ([R177]).  The floor used to
-        carry ``@config.agents/shell/template``; omitting the key instead let the pick
+        carry ``{config.agents}/shell/template``; omitting the key instead let the pick
         read the default arm back into ``meta.box.agent.template``.
         ``agent.default.template`` still answers, so the ``None`` is the shell arm's
         alone, not a missing agent tier.
@@ -746,7 +746,7 @@ class TestLayeredHomeSeed:
         ``store_ref`` is the route MIGRATION.md gives a user whose v1.7.2 plain-shell
         template lived in ``agents/general/template``: move the files to
         ``<data>/agents/shell/template/box/home`` and set ``agent.shell.template`` to
-        ``@config.agents/shell/template`` in the system settings file
+        ``{config.agents}/shell/template`` in the system settings file
         (``<data>/global/settings.yaml``).  ``plain_path`` names any other directory.
         Either way the layer must seed: a table that gated ``agent.shell.seeded`` on
         the DEFAULT's value dropped a user's value here.
@@ -908,7 +908,7 @@ class TestLayeredHomeSeed:
         self, std, config, primary_proj,
     ):
         """``agent.claude.template: null`` in the system settings file SKIPS layer 2 —
-        spec §2a: a layer whose source is ``<None>`` is skipped.  The layer source ``@agent.claude.template/box/home`` EMBEDS the
+        spec §2a: a layer whose source is ``<None>`` is skipped.  The layer source ``{agent.claude.template}/box/home`` EMBEDS the
         ref, and the embedded rule renders a ``None`` as ``""``: unskipped, the
         layer read the HOST path ``/box/home``.  The seed list is the observable —
         on a host without ``/box/home`` the copy would skip it silently either way.
@@ -995,7 +995,7 @@ class TestLayeredHomeSeed:
     ):
         """A ``seeded`` entry whose WHOLE-VALUE source ref resolves to a present
         ``None`` is SKIPPED, not refused — spec §2a: a layer whose source is
-        ``<None>`` is skipped.  ``@agent.shell.template`` is the shell fence's
+        ``<None>`` is skipped.  ``{agent.shell.template}`` is the shell fence's
         ``<None>``; the entry used to reach the collapse as ``None`` and raise
         ``SettingsError … is NoneType``.  The base layer still seeds.
         """
@@ -1072,14 +1072,14 @@ class TestLayeredHomeSeed:
 #
 # ⚑ THE TWIN IS GONE (phase H2).  The three ``<scope>.seeded.handbook`` layers are
 # no longer declared and ``_apply_init_seeds`` no longer touches
-# ``@box.canon/handbook``, so this is the ONE route that fills the box's chapter and
+# ``{box.canon}/handbook``, so this is the ONE route that fills the box's chapter and
 # the tests below observe it directly — no wipe, no isolation.  That the seeded
 # route no longer writes there is pinned by
 # ``TestLayeredHomeSeed.test_the_seed_route_no_longer_writes_the_handbook_chapter``.
 # ---------------------------------------------------------------------------
 
 def _handbook_dir(proj):
-    """``@box.canon/handbook`` at its DEFAULT resolution — a sibling of the home."""
+    """``{box.canon}/handbook`` at its DEFAULT resolution — a sibling of the home."""
     return proj.shell_path.parent / "canon" / "handbook"
 
 
@@ -1098,7 +1098,7 @@ def _seed_snapshot(std, proj, *, agent="claude"):
     ``_install_box_handbook`` reads its dest and layer roots off.
 
     No wipe is needed: since H2 the ``seeded`` route writes nothing at
-    ``@box.canon/handbook``, so anything the caller then observes there came from
+    ``{box.canon}/handbook``, so anything the caller then observes there came from
     step 3."""
     from kanibako.commands.start import _apply_init_seeds
 
@@ -1157,7 +1157,7 @@ class TestPersonaTemplateLayerThroughTheLink:
     Two halves that must both hold, because either alone is satisfiable by the wrong
     implementation:
 
-    * the SOURCE is ``@config.agents/<node>/template`` (pinned in
+    * the SOURCE is ``{config.agents}/<node>/template`` (pinned in
       ``TestTemplateSeedDefaults``), and
     * ``commands.start.ensure_persona_share_symlinks`` links that path at the
       harness's store, so the source RESOLVES TO CONTENT.
@@ -1380,7 +1380,7 @@ class TestInstallBoxHandbookTemplate:
         return roots
 
     def _box(self, tmp_path):
-        """The DEST alone — ``@box.canon/handbook`` at its default resolution.
+        """The DEST alone — ``{box.canon}/handbook`` at its default resolution.
 
         The copier takes no box root: there is ONE dest policy on this path and it
         lives at the caller (``start._host_copy_dest``).  See
@@ -1423,7 +1423,7 @@ class TestInstallBoxHandbookTemplate:
         assert (dest / "shared.md").read_text() == "agent"
 
     def test_absent_layer_dir_is_skipped(self, tmp_path):
-        """An unpopulated ``@workset.template`` is the NORMAL case — the layer is
+        """An unpopulated ``{workset.template}`` is the NORMAL case — the layer is
         skipped and the others still land (no crash, no empty-dir sentinel)."""
         dest = self._box(tmp_path)
         roots = self._roots(tmp_path, [
@@ -1714,7 +1714,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
     ):
         """⚑⚑ THE H2 DELIVERY CHECK, and the point of the phase: with the ``seeded``
         handbook layers GONE, a box created the way ``box create`` creates one still
-        has its full three-layer ``@box.canon/handbook`` — delivered by this route
+        has its full three-layer ``{box.canon}/handbook`` — delivered by this route
         alone.
 
         Both halves are asserted against the SAME populated store, so neither is
@@ -1800,7 +1800,7 @@ class TestInstallPackagedTemplates:
     with its own owner and therefore its own copy rule."""
 
     def test_box_and_workset_molds_staged(self, std):
-        """``template/{box,workset}`` → ``@system.template/{box,workset}`` (STAGING)."""
+        """``template/{box,workset}`` → ``{system.template}/{box,workset}`` (STAGING)."""
         install_packaged_templates(std, ["claude", "goose", "codex"])
         assert (
             std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
@@ -1825,8 +1825,8 @@ class TestInstallPackagedTemplates:
         ).is_file()
 
     def test_handbook_goes_straight_to_system_canon(self, std):
-        """P-S2: the packaged handbook installs DIRECTLY to ``@system.canon/handbook``
-        — never staged under ``@system.template``, which would leave a second,
+        """P-S2: the packaged handbook installs DIRECTLY to ``{system.canon}/handbook``
+        — never staged under ``{system.template}``, which would leave a second,
         never-read copy (the duplicated-shared-data defect)."""
         install_packaged_templates(std, ["claude"])
         assert (std.canon / "handbook" / "SYS_CONTENTS.md").is_file()
@@ -1912,7 +1912,7 @@ class TestInstallPackagedTemplates:
     def test_kanibako_md_not_installed_to_host(self, std):
         """The box guide is delivered live (RO bundle + launch-flatten), NOT
         flat-copied to a host runtime path by the template install (the retired
-        ``@system.instructions`` vestige)."""
+        ``{system.instructions}`` vestige)."""
         install_packaged_templates(std, ["claude"])
         assert not (std.data / "global" / "KANIBAKO.md").exists()
 
@@ -2473,7 +2473,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         skeleton dirs (seven directories in all) outside the workset root, and nothing
         refused — the skeleton loop never reached a guard.
 
-        ⚑ Spelled ``@meta.workset.path/../escaped`` since [R147]; it read ``../escaped``
+        ⚑ Spelled ``{meta.workset.path}/../escaped`` since [R147]; it read ``../escaped``
         when it was written.  The escape is unchanged — it is the ANCHOR that now has to
         be stated, and stating it is what lets this case still reach the scope guard
         instead of dying earlier on an ambiguous value."""
@@ -2813,7 +2813,7 @@ class TestPackagedTemplatesDigest:
     def test_kanibako_md_hashed_exactly_once(self, monkeypatch, tmp_path):
         """Regression: the guide is enumerated ONCE (only via the RO bundle).
 
-        The retired ``@system.instructions`` flat-copy used to add a SECOND
+        The retired ``{system.instructions}`` flat-copy used to add a SECOND
         ``instructions/KANIBAKO.md`` manifest entry beside the bundle's own —
         double-hashing the same bytes so a relocation flipped the digest and
         spuriously tripped the setup gate.

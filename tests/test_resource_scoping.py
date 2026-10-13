@@ -595,11 +595,11 @@ class TestDisplayAnswersLikeTheLaunch:
     def test_a_workset_anchored_template_matches_the_main_launch(
         self, std, config, project_dir,
     ):
-        """``agent.claude.template: @meta.workset.path/tpl`` — one answer at both reads.
+        """``agent.claude.template: {meta.workset.path}/tpl`` — one answer at both reads.
 
         The oracle is the MAIN launch resolve (``_resolve_launch_snapshot``), not a
         restated path.  INVERT: build the display's snapshot without the
-        ``resolve_inputs`` floors and ``@meta.workset.path`` has nothing to name.
+        ``resolve_inputs`` floors and ``{meta.workset.path}`` has nothing to name.
         """
         from kanibako.commands.start import (
             _effective_behavior_for_display,
@@ -639,11 +639,11 @@ class TestDisplayAnswersLikeTheLaunch:
 
 @pytest.mark.usefixtures("config_file")
 class TestXdgFallbackRegression:
-    """Stored ``$XDG_*`` values must expand through the ``config --effective``
+    """Stored ``{$XDG_*}`` values must expand through the ``config --effective``
     behavior-snapshot ctx — the 2026-07-02 live-dogfood XDG-fallback bug.
 
     Pre-fix, ``start._effective_behavior_for_display`` built its ResolveCtx with
-    ``xdg={}``, so ANY stored ``$XDG_CACHE_HOME/...`` value (e.g. the
+    ``xdg={}``, so ANY stored ``{$XDG_CACHE_HOME}/...`` value (e.g. the
     setup-materialized ``system.cache`` in a 1.6.0-era global config, expanded
     eagerly by the strict launch-snapshot pipeline) raised ``Variable
     $XDG_CACHE_HOME is not set in this context`` — even with the env var
@@ -657,7 +657,7 @@ class TestXdgFallbackRegression:
     """
 
     def _seeded_setup(self, tmp_path):
-        """Build a target + stored configs carrying raw ``$XDG_CACHE_HOME``.
+        """Build a target + stored configs carrying raw ``{$XDG_CACHE_HOME}``.
 
         The system SETTINGS file mirrors the live carrier state: the
         setup-materialized ``system.cache`` entry (the value that crashed the
@@ -670,7 +670,7 @@ class TestXdgFallbackRegression:
         ⚑ The leaf is ``template`` — a DECLARED §2d agent leaf (the keyspace is
         CLOSED, so a made-up probe name is not a key).  Its NAME is incidental
         to the subject: what is under test is the expansion of a stored
-        ``$XDG_CACHE_HOME`` value through the agent tier, and ``template`` is
+        ``{$XDG_CACHE_HOME}`` value through the agent tier, and ``template`` is
         the path-valued leaf, so a path value reads honestly there.
         """
         from kanibako.settings.config import persist_creation_flags

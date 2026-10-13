@@ -46,7 +46,7 @@ def helpers_env(tmp_path, monkeypatch):
     # ⚑ THE TWO XDG REDIRECTS ARE THE LOAD-BEARING HALF, not the file — and the
     # ``Path.home`` patch above does NOT subsume them.  ``run_spawn`` reads its own
     # ``system.helpers.*`` tier from ``config.system_settings_path()``, which resolves
-    # ``@config.settings`` off ``$XDG_CONFIG_HOME`` (the Layer-1 file) and
+    # ``{config.settings}`` off ``$XDG_CONFIG_HOME`` (the Layer-1 file) and
     # ``$XDG_DATA_HOME`` (the store the settings file sits in), and
     # ``settings.paths.resolve_xdg`` honors the ENV VAR OVER ``Path.home()``: it falls
     # back to ``Path.home() / …`` only when the var is UNSET or set to a RELATIVE value
@@ -214,7 +214,7 @@ class TestRunSpawn:
         assert "breadth" in capsys.readouterr().err
 
     def test_own_budget_is_read_from_the_system_settings_file(self, helpers_env, capsys):
-        """This box's own tier IS ``@config.settings``, the declared system tier.
+        """This box's own tier IS ``{config.settings}``, the declared system tier.
 
         ⚑ This pins WHERE the caller looks: ``resolve_spawn_budget`` takes budgets,
         so its own tests cannot catch the caller reading a retired place.
@@ -257,7 +257,7 @@ class TestRunSpawn:
 
         ⚑ STRENGTHENED 2026-09-19 with the declaration.  It used to assert rc=0 — the
         table bought nothing because ``run_spawn`` never opened the Layer-1 file at all.
-        Reading the budget from ``@config.settings`` means the spawn verb now loads that
+        Reading the budget from ``{config.settings}`` means the spawn verb now loads that
         file like every other verb, so [R158]'s refusal reaches it: *"a user running a
         different image than their file says should learn it"*.  Silently ignoring was
         the weaker half of that rule, kept only by an accident of which files were read.

@@ -2,7 +2,7 @@
 ROOTING (spec §2a).
 
 The rule under test: an author writes a bare LEAF in a plugin's defaults file, and
-the LOADER stores the full self-resolving ``@meta.agent.<a>.path/<category>/<leaf>``.
+the LOADER stores the full self-resolving ``{meta.agent.<a>.path}/<category>/<leaf>``.
 Nothing prepends a root later — that mechanism (``scope_roots``) is what P3 deleted.
 
 These drive the REAL loader over SYNTHETIC declaration files (written to a temp
@@ -131,7 +131,7 @@ class TestLoadCommonRooting:
         — the root is a default for RELATIVE sources, not a universal law).
 
         (Mutation: drop the prefix test in ``root_relative_source`` → each of
-        these gains an ``@meta.agent.*`` prefix → RED.)"""
+        these gains an ``{meta.agent.*}`` prefix → RED.)"""
         package, filename = declfile(
             "common:\n"
             f"  - host_src: \"{src}\"\n"
@@ -487,7 +487,7 @@ class TestLayoutSingleSource:
     """
 
     def test_the_declaration_root_resolves_to_the_store_dir(self):
-        """``@meta.agent.<a>.path/<category>`` must land on ``agents/<dir>/<category>``.
+        """``{meta.agent.<a>.path}/<category>`` must land on ``agents/<dir>/<category>``.
 
         ⚑ Both sides are CALLS to the two production builders, never a literal
         composed here — a hand-spelled expectation would agree with itself.

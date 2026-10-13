@@ -27,7 +27,7 @@ prove that declaration for all three first-party agents:
 * ``default_envs()["agent.<agent>.env.KANIBAKO_DIRECTIVE_FINAL"]`` is the right
   native slot.
 
-The former Route-A ``@system.instructions`` → native-slot category bind is RETIRED
+The former Route-A ``{system.instructions}`` → native-slot category bind is RETIRED
 (the guide now reaches the box inside the RO ``~/canon/charter/general`` bind + the flattened
 FINAL file), so we also prove no plugin still emits it.  The start-time flatten +
 hook is a LATER increment and is NOT exercised here.
@@ -255,9 +255,9 @@ def test_goose_context_file_names_lists_additional_context_md():
 
 @pytest.mark.parametrize("agent", _AGENTS)
 def test_route_a_instructions_bind_retired(agent: str):
-    """No plugin emits the old ``@system.instructions`` → native-slot category bind."""
+    """No plugin emits the old ``{system.instructions}`` → native-slot category bind."""
     binds = resolve_target(agent).default_category_binds()
-    # And nothing left points a category bind at @system.instructions.
+    # And nothing left points a category bind at {system.instructions}.
     assert not any(
         isinstance(v, tuple) and v and v[0] in ("@system.instructions", "{system.instructions}")
         for v in binds.values()

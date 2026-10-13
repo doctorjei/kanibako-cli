@@ -1006,7 +1006,7 @@ class TestCoreDefaultCategories:
         )
         # 🛑 HOME IS NOT HERE, AND THAT IS THE ASSERTION. Cutover 6-H deleted the
         # `key: home` row: home does NOT route through bindings.rw (spec `:1015`), it
-        # is pid 0 and the assembly seam builds it from the RO DERIVED @meta.box.home.
+        # is pid 0 and the assembly seam builds it from the RO DERIVED {meta.box.home}.
         # A row producing an entry at /home/agent would be a SECOND bind at the
         # foundation's point, which the collapse refuses by name.
         assert "/home/agent" not in binds["box.bindings.rw"]
@@ -1025,7 +1025,7 @@ class TestCoreDefaultCategories:
                 assert ":" not in dest
 
     def test_home_is_mode_independent_and_vault_roots_at_workset(self, tmp_path):
-        """No home row in ANY mode; vault roots at @workset.* in all of them.
+        """No home row in ANY mode; vault roots at {workset.*} in all of them.
 
         🛑 INVERTED AT CUTOVER 6-H. This used to assert that ``box.bindings.rw``'s home
         entry was one mode-independent line — the A9 form. Home has left the arm
@@ -1033,9 +1033,9 @@ class TestCoreDefaultCategories:
         declaration to check: it is a property of ``meta.box.path``, and the seam reads
         one key in every mode. What remains checkable here is that NO mode grew a home
         row back.  The vault bind stays per-mode (a lone box has no per-box
-        ``/@meta.box.name`` subdir) but BOTH arms now root at the SAME
-        ``@workset.vault_*`` anchor; the standalone arm used to carry a SECOND spelling
-        of that root (``@meta.workset.path/vault/*``).
+        ``/{meta.box.name}`` subdir) but BOTH arms now root at the SAME
+        ``{workset.vault_*}`` anchor; the standalone arm used to carry a SECOND spelling
+        of that root (``{meta.workset.path}/vault/*``).
         """
         from kanibako.settings import core_defaults
 
@@ -1150,8 +1150,8 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         ))
         ctx = make_ctx()
-        # workspace routes through @meta.box.workspace; vault through
-        # @workset.vault_*/@meta.box.name (PRIMARY).  Provide the materialized anchors
+        # workspace routes through {meta.box.workspace}; vault through
+        # {workset.vault_*}/{meta.box.name} (PRIMARY).  Provide the materialized anchors
         # (as the launch floor does) so the refs resolve.  Each anchor carries its
         # @-REF FORMULA, not a resolved literal, so this stays sensitive to a wrong
         # formula: the oracle resolves @-refs TRANSITIVELY, exactly as the launch
@@ -1213,7 +1213,7 @@ class TestCoreDefaultCategories:
             str(proj.project_path), "/home/agent/workspace/sub", "Z,U",
         )
         ctx = make_ctx()
-        # workspace via @meta.box.workspace; vault via @workset.vault_*/@meta.box.name
+        # workspace via {meta.box.workspace}; vault via {workset.vault_*}/{meta.box.name}
         # (PRIMARY).  Each anchor carries its @-REF FORMULA (the oracle resolves
         # @-refs transitively), so a wrong formula would show up here; every key it
         # walks must be LISTED, since this dict IS the oracle's whole keyspace.

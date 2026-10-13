@@ -2000,8 +2000,8 @@ class TestDefaultWorksetCli:
         # the workset scope by construction (same-scope write; lands nested under
         # the [workset] table).
         # F4: the write lands in the spec §2c file
-        # ``@config.primary_workset/workset.yaml`` (the old
-        # ``@config.data/config.yaml`` target was a launch-invisible dead write).
+        # ``{config.primary_workset}/workset.yaml`` (the old
+        # ``{config.data}/config.yaml`` target was a launch-invisible dead write).
         from kanibako.commands.workset_cmd import run_set
         std = self._std(config_file)
 
@@ -2074,13 +2074,13 @@ class TestWorksetParser:
 
 class TestPrimaryWorksetSpecConvergence:
     """F4: the PRIMARY workset's settings write path AND every launch reader
-    converge on the spec location ``@config.primary_workset/workset.yaml``
-    (spec §2c: PRIMARY ``meta.workset.path`` = ``@config.primary_workset``;
-    ALL-WORKSETS ``meta.workset.settings`` = ``@meta.workset.path/workset.yaml``).
+    converge on the spec location ``{config.primary_workset}/workset.yaml``
+    (spec §2c: PRIMARY ``meta.workset.path`` = ``{config.primary_workset}``;
+    ALL-WORKSETS ``meta.workset.settings`` = ``{meta.workset.path}/workset.yaml``).
 
     Pins the fix for the 1.6.0 three-file split: the CLI wrote
-    ``@config.data/config.yaml`` (a silent dead write) while the cascade read
-    ``@config.data/settings.yaml`` — neither the spec file.
+    ``{config.data}/config.yaml`` (a silent dead write) while the cascade read
+    ``{config.data}/settings.yaml`` — neither the spec file.
     """
 
     def _set_default(self, key_value: str) -> int:
@@ -2107,7 +2107,7 @@ class TestPrimaryWorksetSpecConvergence:
     def test_set_default_no_longer_writes_legacy_file(
         self, config_file, tmp_home, capsys,
     ):
-        """The legacy dead-write target ``@config.data/config.yaml`` stays absent."""
+        """The legacy dead-write target ``{config.data}/config.yaml`` stays absent."""
         std = load_std_paths(load_config(config_file))
         rc = self._set_default("box.shell=/bin/zsh")
         assert rc == 0
@@ -2238,7 +2238,7 @@ class TestWorksetEnv:
         assert load_doc(ws.root / "workset.yaml")["workset"]["env"]["EDITOR"] == "vim"
 
     def test_set_env_default_workset(self, config_file, tmp_home, capsys):
-        """PRIMARY: the value lands under ``@config.primary_workset``."""
+        """PRIMARY: the value lands under ``{config.primary_workset}``."""
         from kanibako.commands.workset_cmd import run_set
 
         std = load_std_paths(load_config(config_file))
@@ -2391,13 +2391,13 @@ class TestWorksetEnv:
 
 class TestPrimaryWorksetMigration:
     """The approved F4 migration behavior (director ruling (c), 2026-07-02):
-    DROP the legacy locations — ``@config.data/settings.yaml`` is never read
+    DROP the legacy locations — ``{config.data}/settings.yaml`` is never read
     into the cascade and never touched on disk."""
 
     def test_legacy_data_settings_yaml_dropped(self, config_file, tmp_home):
         """Approved migration behavior (ruling (c) 2026-07-02: drop the legacy location).
 
-        The legacy 1.6.0 read location ``@config.data/settings.yaml`` is
+        The legacy 1.6.0 read location ``{config.data}/settings.yaml`` is
         DROPPED — never read into the cascade, never touched on disk.
         """
         from kanibako.settings.keystore import KeyStore
@@ -2878,7 +2878,7 @@ class TestWorksetShowDerivesTheAbstractTrio:
     parked in it is a trap for whoever gates next.
 
     ⚑ Nothing below hard-codes a host path: the expected source is derived from the
-    working set's own root, which is what ``@meta.workset.path`` names (§2a
+    working set's own root, which is what ``{meta.workset.path}`` names (§2a
     "Declaration roots"), so a layout change reds instead of quietly outdating.
     """
 
@@ -2935,7 +2935,7 @@ class TestWorksetShowDerivesTheAbstractTrio:
         assert "workset.common[/home/agent/shared/docs]" in out
 
     def test_the_root_anchor_resolves(self, config_file, tmp_home, capsys):
-        """🛑 The REGRESSION this pins: ``@meta.workset.path`` was absent from the
+        """🛑 The REGRESSION this pins: ``{meta.workset.path}`` was absent from the
         preview floor, so a rooted declaration resolved to a bare ``/common/<src>``
         — a path that exists nowhere.  Derived from ``ws.root``, never a literal."""
         ws = self._ws(config_file, tmp_home, "derivroot")
@@ -2996,13 +2996,13 @@ class TestWorksetShowDerivesTheAbstractTrio:
 
 
 class TestWorksetPreviewResolvesTheDeclarationRoot:
-    """``@meta.workset.path`` must resolve in BOTH ``--effective`` listings.
+    """``{meta.workset.path}`` must resolve in BOTH ``--effective`` listings.
 
     ⚑ The anchor is §2a's workset ``<scope-root>``, so every rooted declaration and
     every value a user spells against it depends on it.  It was absent from the
     preview floor — ``paths.system_path_floor`` carries no ``meta.*`` key — and
     ``settings_expand`` renders an unresolvable anchor as the EMPTY string, so a
-    share sourced ``@meta.workset.path/refdir`` listed as ``/refdir`` at rc 0 with no
+    share sourced ``{meta.workset.path}/refdir`` listed as ``/refdir`` at rc 0 with no
     warning.  MEASURED on the shipped ``workset share list --effective``.
     """
 
@@ -3195,8 +3195,8 @@ class TestWorksetShareListArbitrates:
         A mask dest is canonicalized at parse (spec §2a "A MOUNT DESTINATION IS
         CANONICALIZED"), so the key and the collapsed destination now agree on
         ``~``; the tilde spelling must not survive into the line.  The read-not-rebuilt
-        proof now rests on a ``$VAR`` mask dest, which is NOT canonicalized, so its key and
-        its destination still differ (``test_categories_live.py``'s ``$XDG_DATA_HOME/z`` case).
+        proof now rests on a ``{$VAR}`` mask dest, which is NOT canonicalized, so its key and
+        its destination still differ (``test_categories_live.py``'s ``{$XDG_DATA_HOME}/z`` case).
         """
         from kanibako.settings.settings_resolve import GUEST_HOME
 
