@@ -221,7 +221,7 @@ A workset spans multiple boxes and agents, so there is no single agent to config
 
 > ⚑ **A FALSE CLAIM WAS DROPPED HERE, NOT RELOCATED.** The old comment ended *"The box scope
 > instead redirects the read to its `box.agent.*` mirror."* `box.agent.<key>` is **RETIRED (P7,
-> spec §2b)** — `settings/config_interface.py:485`, `:713`, `:881` each refuse it by name — and the
+> spec §2b)** — `settings/config_interface.py` refuses it by name — and the
 > box arm of `bare_agent_key_scope_error` redirects to `pref.agent.<agent>.<key>` (§2h), not to a
 > `box.agent.*` mirror. The only surviving `box.agent` spelling in the spec is the RO read-back
 > mirror `meta.box.agent.<key>`, which is a different key and not what that arm names. The comment

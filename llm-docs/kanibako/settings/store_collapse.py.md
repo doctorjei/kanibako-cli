@@ -122,9 +122,7 @@ Consequences, all of them removals rather than patches:
   that went with it are both GONE.
 * ⚑⚑ **the module no longer touches the filesystem.** The directory rule was decided by a live
   `Path(src).is_dir()`, which made one config refuse or permit according to whether the source
-  happened to exist yet. `settings_categories.py:492` states the standard for its own module:
-  *"never by a resolve-time `exists()` probe: this module is PURE."* The probe is removed by
-  removing its cause.
+  happened to exist yet. The probe is removed by removing its cause.
 
 **Its one error case:** a SEED whose dest is not inside home. Every seed shipped today is
 home-relative by construction, so this is structural rather than a behavior change — and it is

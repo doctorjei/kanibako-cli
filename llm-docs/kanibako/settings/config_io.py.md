@@ -347,8 +347,7 @@ that reads as current. Each was measured, not inferred.
    covered by the list's own "agent configs", and one of its write sites deliberately bypasses
    `dump_doc`. **Dropped; replaced by the scope section above.**
 4. **"*All* kanibako-owned config files … are serialized … through `load_doc`/`dump_doc`."** —
-   `runtime/rig_meta.py:67` and `vscode/vscode_config.py:803` both call `yaml.safe_dump` directly,
-   each with a documented reason. **Rewritten to the true scope (settings-cascade documents).**
+   `runtime/rig_meta.py` calls `yaml.safe_dump` directly, with a documented reason. **Rewritten to the true scope (settings-cascade documents).**
    The adjacent sentence "there is no hand-rolled serializer" is TRUE and was kept.
 5. **`load_doc`'s parenthetical `("Configuration file missing or malformed")`** — a quotation of
    `ConfigError`'s docstring that no longer matches it. Live `errors.py` reads

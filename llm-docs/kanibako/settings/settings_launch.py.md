@@ -522,9 +522,8 @@ shared with the §0 verdict.
 `meta_agent_path_floor` is THE single builder for `meta.agent.<a>.path`, used by BOTH the launch
 floor (`meta_identity_floor`) and the `config set` SET-TIME validation snapshot. That sharing is
 load-bearing, not tidiness: an abstract-category source is **rooted at ASSEMBLY** into
-`@meta.agent.<agent>.path/<category>/<name>` — `_declaration_root_ref`
-(`settings/settings_assemble.py:88`) supplies the root and `parse_bind_map` joins a bare-relative
-leaf under it (spec §2a). That spelling is therefore what the file's own walk PRODUCES, and it is
+`@meta.agent.<agent>.path/<category>/<name>` — `settings_assemble._declaration_root_ref` supplies
+the root and `parse_bind_map` joins a bare-relative leaf under it (spec §2a). That spelling is therefore what the file's own walk PRODUCES, and it is
 what the set-time snapshot must resolve: without the key, the bare leaf a user just wrote is refused
 as a dangling `@`-reference.
 
@@ -1240,15 +1239,12 @@ ways — reading the raw doc reds the two dropped-table pins, and a `cascade_vie
 nothing reds all five retirement pins plus the control, so the fix is a narrowing rather than a
 silencing.
 
-⚑ **NEITHER SUBJECT IS GUESSED, AND THE COST IS USER-VISIBLE.** `box_ref` and the agent `subject`
-keep their `<box>` / `<agent>` placeholders. 🛑 **THE REASON IS ORDERING, NOT ABSENCE.**
-`commands/start.py:6394` DOES build `meta_identity` carrying `meta.box.name` and DOES pass it to
-`build_launch_snapshot` (`:6075`, `:6161`, `:6819`) — the claim that "no production path arrives
-with an identity floor" was simply false. What is true is narrower and sufficient:
-`load_merged_config` (`start.py:2417`) runs well before `select_agent` (`:2666`), so the resolve
-that REACHES this refusal is always the narrow, identity-free one, and a `meta.box.name` read here
-would find nothing on the path that matters. `MIGRATION.md`'s "Settings keys renamed or retired"
-section states the placeholder rather than leaving a user to notice it.
+⚑ **THE CURE NAMES ITS SUBJECT WHERE THE RESOLVE KNOWS IT.** At the box tier the subject is
+*box_ref*, the box's shell-quoted cure reference (`paths.project_cure_ref`), carried on
+`LaunchInputs`; `meta.box.name` is bare and would miss a member from outside its set. The agent
+subject is the resolve's agent, except under `GENERAL_SLOT`: that name is also the agent-less system,
+workset, and box-scalar resolves, so it cannot tell a selected `shell` from no agent, and the cure
+prints `<agent>` for both.
 
 ⚑ **THE `base` TIER IS SCANNED** when the resolve read it: the launch passes `("base", base_path)`
 last in *files*, the same path it handed `assemble_levels`. `_loaded_tiers` used to append it
