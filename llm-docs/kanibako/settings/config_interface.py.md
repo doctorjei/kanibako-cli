@@ -63,10 +63,10 @@ FILE and builds no snapshot.
 
 Three retirements shape almost every branch in this module:
 
-* **R-39 + the RQ-1 re-ruling — the docker `.env` files.** The bare `env.<VAR>` spelling and the
-  `.env` files it wrote are retired outright: no verb writes them, no launch reads them. The live
-  family is `<scope>.env.<VAR>`. The vestigial `env_path` / `env_global` / `env_project`
-  parameters survive only for call-site stability (see below).
+* **R-39 + the RQ-1 re-ruling [Jei:2026-08-02] — the docker `.env` files.** The bare `env.<VAR>`
+  spelling and the `.env` files it wrote are retired outright: no verb writes them, no launch reads
+  them. The live family is `<scope>.env.<VAR>`. The vestigial `env_path` / `env_global` /
+  `env_project` parameters survive only for call-site stability (see below).
 * **R-9 — the two bind CLI write routes**, `{system,workset,box}.bindings.{ro,rw}.<name>` and
   `agent.<node>.bindings.{ro,rw}.<name>`.
 * **DS-BL1 = (a) (*"accept the loss uniformly"*) — the direct category set/reset route** for
@@ -304,7 +304,7 @@ NOT re-implemented), then:
   every scope's settings FILE plus the resolved `system.*` floor; the runtime-gathered default
   binds (core/kani/channel/target tables, launch-only floor) are NOT in it.
 
-### FULL CASCADE at set-time (ruling (b))
+### FULL CASCADE at set-time ([Jei:2026-06-29] (b))
 
 The visible keyspace is the SAME resolved cascade the launch would see (spec §2a "layer the
 target's settings in precedence order"): every scope's settings file (*system_path* /
@@ -499,7 +499,7 @@ of the `kanibako.cfg` CONFIG file. When `None` (box/workset) writes go to `confi
 as before. Returns a human-readable confirmation message.
 
 The `cascade_*` kwargs supply the FULL launch cascade (every scope's settings file + the active
-agent name) for the set-time E3 resolution probe (ruling (b)): the three set handlers
+agent name) for the set-time E3 resolution probe ([Jei:2026-06-29] (b)): the three set handlers
 (`box/_parser.py` / `workset_cmd.py` / `system_cmd.py`) already hold this context and thread it
 here so a cross-scope `@`-ref resolves at set-time exactly as it would at launch. They are
 additive; absent, the command-scope file is still placed in its true slot. (The older wording
@@ -630,7 +630,7 @@ respelled the key and the guard followed it). It routes VERBATIM below (bare →
 `_is_agent_setting`; per-node → `_is_persona_agent_key`), so a typo (`config set access=fll`)
 would otherwise be STORED and then re-read at launch. An off-enum value is rejected NOW, with the
 SAME message and the SAME truth table the launch resolver uses
-(`settings_keyspace.ACCESS_TIERS`). ONLY `access` is guarded (Jei: only the auth-critical key),
+(`settings_keyspace.ACCESS_TIERS`). ONLY `access` is guarded (only the auth-critical key),
 not `allow_helpers` / `model`.
 
 ### The set-time resolution probe

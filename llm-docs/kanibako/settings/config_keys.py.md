@@ -145,7 +145,7 @@ map. **Read what that does and does not decide:**
 
 * It answers at the key's OWN noun; it does not CHOOSE the readable form. The
   `repr()` is what falls out of the generic scalar renderer, not a designed rendering, and
-  🛑 **THE PROMISED SURFACE IS STILL UNCHOSEN AND STILL JEI'S** — this paragraph governs it.
+  🛑 **THE PROMISED SURFACE IS STILL UNCHOSEN** — this paragraph governs it.
 * 🛑🛑 **CROSS-SCOPE IS OUT.** ``system get box.caches`` — the outcome the DECLINED derivation would
   produce — is refused by :func:`foreign_scope_read_error` (*"i dont see any justification for
   crosscope 'get'. it makes no sense at the cli."*). ⚑ A SAME-SCOPE read (``workset get <ws>
@@ -159,9 +159,9 @@ what a reader re-derives.
 
 1. **THE WRITE ROUTE** (`has_no_cli_write_route`) — selects the right rows, REJECTED anyway. It
    derives a `get` gate from whether `set` works, and the two verbs are held apart on purpose:
-   **Jei — *"set is different tho"*, and *"i did not say anything about set. set is different, i
-   said, specifically."*** Right rows, wrong reason: if `set`'s rules move, `get` follows for a
-   reason that has nothing to do with reading.
+   **[Jei:2026-08-28] — *"set is different tho"*, and *"i did not say anything about set. set is
+   different, i said, specifically."*** Right rows, wrong reason: if `set`'s rules move, `get`
+   follows for a reason that has nothing to do with reading.
 2. **"DOES THIS NOUN'S OWN FILE CARRY THE KEY?"** — REJECTED BY MEASUREMENT, and the most likely
    to be re-derived because it sounds obviously right. **It distinguishes nothing: a higher tier
    carrying a lower scope's key IS the cascade.** A `box.<category>` table authored in the SYSTEM
@@ -264,11 +264,11 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 * `workset.auth.path`, `workset.boxes`, `workset.vault_ro`, `workset.vault_rw`, `workset.logs` —
   workset-scope LAYOUT anchors. These path anchors are floor-materialized
   (`settings_launch.workset_anchor_floor` / start.py) as OVERRIDABLE base-level defaults, but were
-  NOT reachable through the settable surface — a Type-A "meta ⟺ not-settable" violation. Jei ruled
-  them SETTABLE: they are per-workset REPOINTABLE dirs (the same nested-settings STRING-path keys as
-  `workset.auth.share_allowed`/`workset.registry`). A ``config set workset workset.boxes=…`` writes
-  an EXPLICIT workset-level value that WINS over the base floor default by cascade precedence
-  (workset ⊐ base). `KEY_TYPES` type `path` (STRING paths, no coercion); routed to the
+  NOT reachable through the settable surface — a Type-A "meta ⟺ not-settable" violation. They were
+  ruled SETTABLE: they are per-workset REPOINTABLE dirs (the same nested-settings STRING-path keys
+  as `workset.auth.share_allowed`/`workset.registry`). A ``config set workset workset.boxes=…``
+  writes an EXPLICIT workset-level value that WINS over the base floor default by cascade
+  precedence (workset ⊐ base). `KEY_TYPES` type `path` (STRING paths, no coercion); routed to the
   ``workset:`` nested slot. Downward-default-able from a containing scope per R2.
 * `workset.workspaces` / `workset.channelroot` — the two RESOLVED workset dir keys (§3.3: real and
   USED; manifest ``set: cli+file``). Declared in the keyspace and consumed live
@@ -296,7 +296,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 
 **Layer-1 `config.*` foundation** (bootstrap paths; ``[config]`` table, spec §1).
 
-* `config.journal` — the lifecycle-journal location (§3.3 ruling "needs to be recognized"):
+* `config.journal` — the lifecycle-journal location ([Jei:2026-08-01] "needs to be recognized"):
   resolved/consumed as ``std.journal`` all along, but absent from this list, so the config verbs
   treated the key name as a project name. Recognition here gives it EXACT sibling parity: the
   get/show path reads it through `is_config_file_only_key`'s ``config.`` branch, and set/reset refuse it
@@ -776,7 +776,7 @@ Matches both DIRECT settable forms: the BARE any-agent `agent.default` tier key 
 (routed via :func:`_is_persona_agent_key`). Used to WRITE-VALIDATE the value at `config set` time
 (:func:`access_value_error`): ``access`` decides whether the box's agent prompts at all, so an
 unrecognized value must be REJECTED at the write, never stored to be re-read at launch. Only
-``access`` gets this guard (Jei: only the auth-critical key), not ``allow_helpers`` / ``model``.
+``access`` gets this guard (only the auth-critical key), not ``allow_helpers`` / ``model``.
 
 ⚑ It answers False for the §2h REQUEST spelling ``pref.agent.<node>.access``, and that is correct
 rather than a gap: this predicate names TARGET keys, and a pref is not its target. The request form is
@@ -893,10 +893,10 @@ never reach here: ``agent set <node> env.FOO=bar`` passes a key TAIL under an al
 which the agent file's write address rule puts at the DECLARED ``agent.<node>.env.FOO``. That arm exists so the
 GENERIC engine cannot emit the illegal spelling if an agent-scope caller is ever wired into it.)
 
-⚑ The docker ``.env`` FILES are RETIRED OUTRIGHT (the RQ-1 re-ruling; the ratified manifest records
-the files as DROPPED): the launch reads none, so a hand edit does not reach the box either. The
-message says so — a cure that implied "edit the file instead" would send the user to a surface
-nothing reads.
+⚑ The docker ``.env`` FILES are RETIRED OUTRIGHT (the RQ-1 re-ruling [Jei:2026-08-02]; the ratified
+manifest records the files as DROPPED): the launch reads none, so a hand edit does not reach the
+box either. The message says so — a cure that implied "edit the file instead" would send the user
+to a surface nothing reads.
 
 *verb* is the op word for the message (``"set"`` / ``"reset"`` / ``"read"``). Like
 :func:`bare_agent_key_scope_error` this gates itself — `None` for every other key — so every verb door
@@ -1112,7 +1112,8 @@ ONE family and no more: the Layer-1 ``[config]`` foundation keys (``config.*``, 
 ⚑⚑ **THAT IS THE DEFINITION, NOT A COINCIDENCE.** ``system.setup_completed`` was the
 last non-``config.*`` member; its STORAGE moved to ``{config.settings}`` (spec §2g), so what is left
 is exactly the set of keys whose job is to LOCATE the files everything else lives in.
-*"kanibako_config.yaml <-- cannot have settings. Period."* (Jei, on what is now `kanibako.cfg`)
+*"kanibako_config.yaml <-- cannot have settings. Period."* ([Jei:2026-08-26], on what is now
+`kanibako.cfg`)
 
 ⚑⚑ **IT IS A READ ROUTE, NOT ALSO A REFUSAL.** Doubling as *"and therefore the write verbs refuse
 it"* would make a key declared `set: cli+file`, *"PERSISTS, user-resettable"* (spec §2g),
@@ -1151,7 +1152,7 @@ rather than turning a clean refusal into a traceback.
 ```_config_key_refusal(canonical: str, *, action: str) -> str```
 Error string refusing a CLI set/reset of a ``config.*`` foundation key.
 
-RATIONALE (Jei, load-bearing): ``config.*`` keys LOCATE the files everything else is stored in
+RATIONALE (load-bearing): ``config.*`` keys LOCATE the files everything else is stored in
 (``config.settings`` IS where the settings file lives; ``config.registry`` IS the registry). A key
 cannot live IN the file it locates → they live in the bootstrap config file, resolved BEFORE anything
 loads. So the CLI is a *settings* manager: it READS ``config.*`` (to find where to write settings) but
@@ -1261,10 +1262,10 @@ Two clauses, and what differs between them is now the PROVENANCE, not the outcom
 
 * ``bindings.{ro,rw}`` — the SHAPE removed the key first (R-5/R-6/R-9). The arm is a
   single TERMINAL key holding a dest-keyed map, so a per-name dotted key does not exist to name.
-* ``caches`` / ``seeded`` / ``common`` / ``synced`` — the RULING removed the route first: DS-BL1 = (a)
-  made every bind-shaped category YAML-only *"uniformly"*, an accepted user-surface
-  loss, while their per-name key was still real. The SHAPE caught up — they are
-  dest-keyed TERMINAL keys too now, so a per-name key does not exist for them either.
+* ``caches`` / ``seeded`` / ``common`` / ``synced`` — the RULING removed the route first:
+  DS-BL1 = (a) [Jei:2026-08-07g] made every bind-shaped category YAML-only *"uniformly"*, an
+  accepted user-surface loss, while their per-name key was still real. The SHAPE caught up — they
+  are dest-keyed TERMINAL keys too now, so a per-name key does not exist for them either.
 
 ⚑⚑ THIS DOCSTRING USED TO SAY THE OPPOSITE, and the correction is the point: it claimed the four
 "still carry a per-name key that `config get` reads back fine", and warned that giving them the shape
@@ -1414,11 +1415,11 @@ launch owes a file to open.
 
 ⚑⚑ **`key_validity`, NEVER `is_known_key`, AND THE DIFFERENCE IS MEASURED.**
 `is_known_key("agent.claude.self.model")` is **True** — `_parse_persona_agent_key` splits on the LAST
-segment and reads the node as ``claude.self`` — so a literal `is_known_key` gate would leave ruling
-55's exact hole open while REFUSING ``run_args`` and ``name``, both live and both pinned.
-`is_known_key` answers *"is this key-SHAPED, as opposed to a project name"*; §0 asks *"is this a
-DECLARED key"*, and only `key_validity` answers that. **Do not "simplify" this to the other
-predicate.**
+segment and reads the node as ``claude.self`` — so a literal `is_known_key` gate would leave the
+exact [spec:15-21, "self"] hole open while REFUSING ``run_args`` and ``name``, both live and both
+pinned. `is_known_key` answers *"is this key-SHAPED, as opposed to a project name"*; §0 asks
+*"is this a DECLARED key"*, and only `key_validity` answers that.
+**Do not "simplify" this to the other predicate.**
 
 ⚑ **The node is supplied AS the valid-agent set** (`valid_agents=(node,)`): it is the on-disk store
 dir, known good, so an agent-DISCOVERY result must never be able to refuse a key on an agent the user

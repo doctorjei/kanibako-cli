@@ -4,7 +4,7 @@ The "grand unification": four per-scope `StoreShape`s plus the home bind, merged
 bindings map and TWO scope-ordered copy LISTS. Scope order — `system`, `agent`, `workset`, `box` — IS
 the precedence; a later scope beats an earlier one.
 
-**Authority:** `~/canon/workbook/designs/grand-unification-collapse-DESIGN.md` §2 (Jei's algorithm, verbatim) and
+**Authority:** `~/canon/workbook/designs/grand-unification-collapse-DESIGN.md` §2 (the algorithm, verbatim) and
 **§2a, which supersedes §2's head** · its §0 ruling 1 (parent-first per scope) · the SUBSUMPTION
 RULES, verbatim at `~/canon/workbook/designs/collapse-implementation-DESIGN.md` **§7**, with the worked refusability
 table and the operations at **§8** · **§9, which rules that copies apply to the HOME bind ALONE** ·
@@ -38,9 +38,10 @@ whether or not anything reads the result.
 takes the launch's parsed `-e` map and, AFTER the containment walk, hands it to `_apply_cli_env`:
 per variable, an owned slot has its VALUE replaced (provenance kept — the key still owns the
 variable) and an unowned one gets a slot of its own with `("cli", "-e <VAR>")` provenance. ⚖️
-A ruling — *"-e should override the key values, not the environment variables themselves"* — plus
-Jei's *"e must win… so it must be part of the collapse"* (spec `env.<VAR>`: *"`-e` beats a
-realization uniformly (the CLI level overrides the owning key — §1A)"*).
+system-design § "Delivery at launch", [Jei:2026-08-14] —
+*"-e should override the key values, not the environment variables themselves"* — plus
+[Jei:2026-08-14] *"e must win… so it must be part of the collapse"* (spec `env.<VAR>`:
+*"`-e` beats a realization uniformly (the CLI level overrides the owning key — §1A)"*).
 
 🛑 **AFTER the walk, never inside it.** `-e` has
 no scope and must never CONTEST a slot: it overrides an owner or fills a vacancy, so no refusal can
@@ -79,16 +80,17 @@ one later is additive.
 ## Three passes, in the ONE order that is a ruling
 
 ⚖️ **A ruling: the two copy categories resolve at OPPOSITE ENDS of the fold**, and the
-order below is the ruling itself — *"could we simply copy it last instead? After binds are done?"*
+order below is the ruling itself (system-design § "Collision arbitration"; [Jei:2026-08-10]) —
+*"could we simply copy it last instead? After binds are done?"*
 
 1. **the SEED pass** — every scope's `seed` arm, concatenated. It reads no binding at all.
 2. **the MOUNT fold** — the bind and mask arms, over the home foundation.
 3. **the SYNC pass** — every scope's `sync` arm, concatenated. It, too, reads no binding at all.
 
-⚑⚑ **Step 3 touches the bind map NOT AT ALL** — ⚖️ a ruling, *"don't check for sync. Let it
-clobber whatever it wants."* It takes no bind map, so the two copy arms are structurally identical
-passes. Nothing is pruned, no mount is deleted, no copy competes with a mount, and step 3 is not
-even a lookup.
+⚑⚑ **Step 3 touches the bind map NOT AT ALL** — ⚖️ system-design § "Collision arbitration"
+([Jei:2026-08-12]), *"don't check for sync. Let it clobber whatever it wants."* It takes no bind
+map, so the two copy arms are structurally identical passes. Nothing is pruned, no mount is
+deleted, no copy competes with a mount, and step 3 is not even a lookup.
 
 ### The seed pass: a copy applies to the HOME bind alone
 
@@ -153,8 +155,8 @@ is a fact about the create path, and it belongs there.
 
 ### `refuse_uncovered_synced` — a copy destination must be covered by a mount
 
-⚖️ **A ruling** — *"I don't think we should be checking for XDG; we should be checking that the
-paths resolve. That's it."* A `synced` dest that no mount covers is refused.
+⚖️ **[Jei:2026-08-28]** — *"I don't think we should be checking for XDG; we should be checking
+that the paths resolve. That's it."* A `synced` dest that no mount covers is refused.
 
 **Why it is a refusal and not a warning.** `synced` resolves THROUGH the mount containing its dest,
 so with nothing bound at or above it the copy is written into the container's own ephemeral storage
@@ -200,8 +202,9 @@ and shadowed. Home is simply the pid-0 foundation among those binds. ⚑ Applyin
 🛑 **That resolution is DELIVERY and is NOT done here.** The emitted row carries the GUEST dest,
 exactly as a seed row does; `commands.start._synced_host_dest` does the innermost-bind lookup.
 
-**It has NO error case.** ⚖️ **A ruling** — *"don't check for sync. Let it clobber whatever it
-wants."* A sync dest that EXACTLY EQUALS a bind dest is not refused, even for a file bind.
+**It has NO error case.** ⚖️ **system-design § "Collision arbitration"** ([Jei:2026-08-12]) —
+*"don't check for sync. Let it clobber whatever it wants."* A sync dest that EXACTLY EQUALS a bind
+dest is not refused, even for a file bind.
 
 ⚑ **The file-bind concern is narrow; a blanket refusal is not the ruling.** The consistent ruling is
 the opposite — *"sometimes we want to copy onto a bind"*, *"copy | bind, same, OK"*, *"copy | bind copies on top of the bind, and most of
@@ -231,11 +234,12 @@ rule added:
   subsume side;
 * **everything inside home nests freely, at any scope.**
 
-⚖️ **A ruling — that first property is ABSOLUTE and covers MASKS too.** The BIND refusal counts
-BINDINGS only, so without a rule of its own a mask at `~` (or at `/`) would sweep the home binding
-away and the box would launch with no home. The ruling: *"of course we should prohibit masking
-home directly or allowing a mask that would have home as a child path (ie that would shadow home)"*.
-That one IS a rule added rather than a consequence, and it is the mask arm's second refusal.
+⚖️ **[Jei:2026-08-09d] — that first property is ABSOLUTE and covers MASKS too.** The BIND refusal
+counts BINDINGS only, so without a rule of its own a mask at `~` (or at `/`) would sweep the home
+binding away and the box would launch with no home. The ruling: *"of course we should prohibit
+masking home directly or allowing a mask that would have home as a child path (ie that would shadow
+home)"*. That one IS a rule added rather than a consequence, and it is the mask arm's second
+refusal.
 
 The key is `normalize_bind_dest("~")` = `/home/agent`, not the literal `~`. A dest is a GUEST path
 and the guest home is fixed machinery, so the foundation key normalizes like every other dest —
@@ -270,15 +274,15 @@ silently overwrite each other, where at the point of use the second one meets th
 So the test is `d == dest or d.startswith(dest.rstrip("/") + "/")`. `rstrip` makes a bare `/`
 behave: it yields the prefix `/`, and everything is inside root.
 
-⚑ **Equality is on the SUBSUME side, not in a branch of its own.** Jei's rules say *"same or parent
+⚑ **Equality is on the SUBSUME side, not in a branch of its own.** The rules say *"same or parent
 mount point"* in one breath, so `is_within` is inclusive and the `d != dest` guards disappear with
 it. Exactly ONE equality guard survives, in `_refuse_bind_under_mask`, and it states a RULE rather
 than patching a predicate: a bind may take a mask's own point, and may only never sit inside one.
 
 ## The rules: one refusal set and one sweep, per arrival
 
-⚑⚑ **The direction of prohibition is REVERSED between the two mounts** (his words). A mask is the
-INVERSE of a bind, not its mirror.
+⚑⚑ **The direction of prohibition is REVERSED between the two mounts** [Jei:2026-08-09d]. A mask is
+the INVERSE of a bind, not its mirror.
 
 | arriving | refuses | sweeps |
 |---|---|---|
@@ -298,16 +302,16 @@ rule).
 ## Two intra-scope sorts, in OPPOSITE directions
 
 Neither answer may turn on the order keys happen to sit in a dict. Within a scope there is no
-precedence to express, so a SORT — not a diagnostic — is the answer (ruling 1).
+precedence to express, so a SORT — not a diagnostic — is the answer (collapse DESIGN §0 ruling 1).
 
 * **binds collapse PARENT-FIRST**, across BOTH `ro` and `rw` arms together, so a parent always lands
   before its children and intra-scope subsumption cannot arise at all. The refusal then fires
   exactly when a LATER SCOPE introduces a bind at or above an earlier scope's — the genuine
-  cross-scope conflict. The sort is STABLE, so Jei's `ro`-before-`rw` walk survives at equal length:
+  cross-scope conflict. The sort is STABLE, so the `ro`-before-`rw` walk survives at equal length:
   at one dest, the `ro` entry is the occupant the collision names.
 * **masks collapse CHILD-FIRST** — the inverse order, for the inverted prohibition. A mask refuses a
   PARENT and subsumes a CHILD, so masks must arrive innermost-first or `{~/x, ~/x/y}` would raise
-  while `{~/x/y, ~/x}` would not. Ruling 1's argument with its direction flipped.
+  while `{~/x/y, ~/x}` would not. The §0 ruling 1 argument with its direction flipped.
 
 Masks merge AFTER the scope's bind arms, so a mask and a binding at one dest in ONE scope is not an
 error: the mask applies and the cure is not declaring it (S3, ruled).
@@ -327,7 +331,7 @@ arms arrive with their options ALREADY CONCRETE (`StoreShape`'s own words), appl
 is DOWNSTREAM of that line, reading `CategoryEntry.options`, so a stored `None` — what
 `parse_bind_map` records for a 1-element entry — never reaches `fold_opt` at all. An options-less
 `bindings.rw` entry therefore arrives as `Z,U` and collapses to **`Z,U,rw`**; `Z,U` cannot be lost
-here. ⚖️ A ruling: *"We should have `Z,U` survive the collapse, yes. … we should just be
+here. ⚖️ [Jei:2026-08-10]: *"We should have `Z,U` survive the collapse, yes. … we should just be
 adding to it."*
 
 🛑 **The phantom this paragraph exists to refuse.** `BindEntry.opts` is typed `str | None`, so the

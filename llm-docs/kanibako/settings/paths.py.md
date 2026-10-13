@@ -413,7 +413,7 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]
 Build the canonical HOST-side `{$XDG_*}` map for a `ResolveCtx`.
 
 THE single builder for the `xdg=` argument of every host-side
-`kanibako.settings.settings_resolve.ResolveCtx` (a ruling: XDG vars must have
+`kanibako.settings.settings_resolve.ResolveCtx` ([Jei:2026-07-02]: XDG vars must have
 fallbacks). A hand-rolled partial map would make a stored value like `{$XDG_CACHE_HOME}/kanibako` (the
 setup-materialized `system.cache`) raise `Variable {$XDG_CACHE_HOME} is not set in this context` at
 expand time — the resolver reads ONLY this map, never the environment, so a missing key is
@@ -502,9 +502,9 @@ foundation and the Layer-2 `system.*` path settings, then handed to `resolve_sys
 fills in the defaults and resolves `@`-/`$XDG_*`-references.
 
 ⚑⚑ **EACH FILE CONTRIBUTES EXACTLY ONE LAYER.** A `system:` table hand-written into a CONFIG file
-never enters the Layer-2 path tier — *"kanibako_config.yaml <-- cannot have settings. Period."* (a
-ruling on the Layer-1 file, `kanibako.cfg`). It mirrors the filter layer 3 applies in the other
-direction (a `config:` table in a SETTINGS file never reaches Layer 1, spec §1), and
+never enters the Layer-2 path tier — *"kanibako_config.yaml <-- cannot have settings. Period."*
+([Jei:2026-08-26], on the Layer-1 file, `kanibako.cfg`). It mirrors the filter layer 3 applies in
+the other direction (a `config:` table in a SETTINGS file never reaches Layer 1, spec §1), and
 `resolve_data_path` applies the same filter to the same two files.
 
 A user with only `~/.config/kanibako.cfg` (no `/etc` file) gets the base layer empty, so the user
@@ -685,9 +685,9 @@ deferred-create is handled by the journal block above.)
 
 ### `resolve_project` — home and vault are not stored paths
 
-A ruling: there is no per-box custom home/vault path. home/vault are SOLELY the spec-derived
-location (`{meta.box.home}` + `{workset.vault_<arm>}/{meta.box.name}`); the launch routes the
-home/vault binds through those refs. `{meta.box.home}` is the RO DERIVED key, itself
+[Jei:2026-06-29h]: there is no per-box custom home/vault path. home/vault are SOLELY the
+spec-derived location (`{meta.box.home}` + `{workset.vault_<arm>}/{meta.box.name}`); the launch
+routes the home/vault binds through those refs. `{meta.box.home}` is the RO DERIVED key, itself
 `{meta.box.path}/home` — the bind names the key and does not re-derive it.
 
 A user customizing home/vault sets the `box.bindings.{rw,ro}.{home,vault}` CASCADE override (which
@@ -1602,7 +1602,7 @@ register after the home seed. Defaults True.
 The hash + identity key off the ROOT (the standalone workset root), which is stable; the workspace
 subdir is the bind source, not the identity.
 
-`project_path` is the resolved `workset.workspaces` (a ruling): the STANDALONE default
+`project_path` is the resolved `workset.workspaces` [Jei:2026-08-02]: the STANDALONE default
 is `{meta.workset.path}/workspace` == the `workspace/` subdir, and a set `workset: {workspaces: …}`
 in the ROOT `workset.yaml` repoints it ("changeable from workset level", spec §2e).
 A `null` there makes it `None` (never the default subdir), and the `initialize` recovery then makes

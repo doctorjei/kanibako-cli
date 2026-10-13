@@ -716,7 +716,7 @@ real file SHADOWS the fallback. No branch, no gate, no second mechanism.
 mask a genuinely missing system handbook — which is exactly what `canon_hb_general` being
 NON-optional exists to surface.
 
-⚑ **MACHINERY, NOT CONTENT.** Jei's D2 cut stands: the global handbook STORE still ships `general`
+⚑ **MACHINERY, NOT CONTENT.** The D2 cut stands: the global handbook STORE still ships `general`
 only. These files live in the BOX's skeleton, are root-owned like the rest of it, and are never
 installed anywhere.
 

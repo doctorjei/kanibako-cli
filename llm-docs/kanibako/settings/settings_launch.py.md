@@ -1324,8 +1324,8 @@ THREE distinguishable states, which the caller MUST keep apart (see `settings/ag
 * `__MISSING__` — nothing ever set it ⇒ setup has never chosen one, and the caller REFUSES naming
   `kanibako setup`.
 
-🛑 **BOTH ARE REFUSALS, NEVER AN IMPLICIT PICK** (a ruling: no installed-agent count rule). Keeping
-the two states apart is what decides WHICH refusal prints.
+🛑 **BOTH ARE REFUSALS, NEVER AN IMPLICIT PICK** ([Jei:2026-09-19]: no installed-agent count rule).
+Keeping the two states apart is what decides WHICH refusal prints.
 
 **Why this is a SEPARATE resolve.** `build_launch_snapshot` needs the active agent BEFORE it
 assembles: it discriminates the agent tier, wraps the per-agent file's state, and builds the

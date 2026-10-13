@@ -220,7 +220,7 @@ the empty string, which yields a group that matches the EMPTY string and would a
 
 ### No CLI write route for any of the six
 
-A ruling: *"accept the loss uniformly"*. It is a KNOWN, ACCEPTED user-surface loss — a
+[Jei:2026-08-07g]: *"accept the loss uniformly"*. It is a KNOWN, ACCEPTED user-surface loss — a
 bind-shaped entry is authored in YAML, full stop. Every retired spelling is
 RECOGNIZED so the verbs refuse it BY NAME instead of degrading to "unknown config key"; the
 closed keyspace (spec §0) refuses, never accepts quietly. All six are READABLE via

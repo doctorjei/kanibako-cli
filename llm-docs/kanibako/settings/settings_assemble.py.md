@@ -189,9 +189,9 @@ one.
 enum `access` (`restricted|editing|full`, default `full`). Under the closed keyspace the old spelling
 is UNDECLARED; on a PERMISSION axis a silently ignored `auto_approve: false` would bring a box up at
 the `full` default with nothing printed — a safety-class silent regression in the UNSAFE direction.
-So the stale key is REFUSED (a ruling) with a level-appropriate cure that NAMES `access` and QUOTES
-the user's own value through the ruled mapping (`true` → `full`, `false` → `restricted`). ⚑ The
-generic refusal says none of that, which is why `retired_cure` runs first.
+So the stale key is REFUSED [Jei:2026-08-02] with a level-appropriate cure that NAMES `access` and
+QUOTES the user's own value through the ruled mapping (`true` → `full`, `false` → `restricted`). ⚑
+The generic refusal says none of that, which is why `retired_cure` runs first.
 ⚑ NOT EVERY SITE ARRIVES HERE, and none of the others is a silence. A
 `pref.agent.<node>.auto_approve` request is refused by `apply_prefs` naming the key, the level, and
 the file, but WITHOUT the tier translation. A `workset`/`box` file's `agent.<sub>.auto_approve` is

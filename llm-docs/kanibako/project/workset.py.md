@@ -99,8 +99,8 @@ They are read on the DETECTION / paths side — the pass that FINDS the workset 
 be built for — which is why that route exists separately from `settings_expand.expand` at all.
 
 The leaf constants exist so the spec's per-mode default formula `{meta.workset.path}/<leaf>` is
-spelled ONCE. §3.3's ruling is that these keys are "real and USED — not hard-coded"; the per-mode
-default TABLE is the source, never a second literal at a consumer site.
+spelled ONCE. The ruling [Jei:2026-08-01] is that these keys are "real and USED — not hard-coded";
+the per-mode default TABLE is the source, never a second literal at a consumer site.
 
 * **`workset.workspaces`** — spec §2c NAMED default `{meta.workset.path}/workspaces`. PRIMARY
   declares `<None>` (primary boxes have EXTERNAL workspaces), but the synthesized default workset
