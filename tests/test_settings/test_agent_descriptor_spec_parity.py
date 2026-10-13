@@ -341,6 +341,17 @@ class TestTheCellClassification:
             == kinemata_views.MEMBERSHIP
         assert kinemata_views.classify_spec_cell("k", "true") == kinemata_views.STATED
 
+    def test_a_reference_cell_states_no_floor(self):
+        """A braced key ref is delivered elsewhere, as the old `@` cell was; a
+        `{}` is no ref and stays the ABSENCE cell."""
+        assert kinemata_views.classify_spec_cell("k", "{meta.box.name}") \
+            == kinemata_views.NOT_EXPRESSIBLE
+        assert kinemata_views.classify_spec_cell("k", "{meta.box.name}/x") \
+            == kinemata_views.NOT_EXPRESSIBLE
+        assert kinemata_views.classify_spec_cell("k", "@meta.box.name") \
+            == kinemata_views.NOT_EXPRESSIBLE
+        assert kinemata_views.classify_spec_cell("k", "{}") == kinemata_views.MEMBERSHIP
+
 
 class TestTheDescriptorSideIsTheRealWiring:
     """The values above are read the way the product reads them.  This pins the

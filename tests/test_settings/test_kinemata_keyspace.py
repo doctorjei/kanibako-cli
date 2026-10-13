@@ -436,6 +436,27 @@ class TestCandidatesAreKeyLiteralsAndRefs:
     assert registry.candidates(f"defaults to @{key}/common") == [key]
     assert registry.candidates(f"defaults to @{{{key}}}.bak") == [key]
 
+  @pytest.mark.parametrize("key", _CONCRETE)
+  def test_a_braced_ref_in_prose_is(self, registry: KeyspaceRegistry, key: str) -> None:
+    assert registry.candidates(f"defaults to {{{key}}}/common") == [key]
+
+  def test_a_braced_ref_ends_at_its_closing_brace(self, registry: KeyspaceRegistry) -> None:
+    key = _CONCRETE[0]
+    assert registry.candidates(f"{{{key}}}.jsonl") == [key]
+
+  def test_doubled_braces_are_literal_and_open_no_ref(self, registry: KeyspaceRegistry) -> None:
+    key = _CONCRETE[0]
+    assert registry.candidates(f"{{{{{key}}}}}") == []
+    # ``{{`` is consumed whole, so the third ``{`` opens the ref: ``{ value }``.
+    assert registry.candidates(f"{{{{{{{key}}}}}}}") == [key]
+
+  def test_a_braced_variable_is_not_a_key(self, registry: KeyspaceRegistry) -> None:
+    assert registry.candidates("{$XDG_CONFIG_HOME}/kanibako") == []
+
+  def test_a_braced_name_outside_the_keyspace_is_not(self, registry: KeyspaceRegistry) -> None:
+    assert registry.candidates("{name}") == []
+    assert registry.candidates("{nosuchroot.thing}") == []
+
   def test_the_ref_name_is_the_ref_parsers_whole_extent(self, registry: KeyspaceRegistry) -> None:
     key = _CONCRETE[0]
     assert registry.candidates(f"@{key}.jsonl") == [f"{key}.jsonl"]

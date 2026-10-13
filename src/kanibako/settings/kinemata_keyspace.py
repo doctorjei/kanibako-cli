@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP
 from kanibako.settings.keyspace_manifest import manifest_doc
-from kanibako.settings.settings_resolve import SettingsError, match_ref
+from kanibako.settings.settings_resolve import SettingsError, match_braced, match_ref
 
 if TYPE_CHECKING:
   from kinemata.contract import Entry  # type: ignore[import-not-found, import-untyped]
@@ -556,11 +556,11 @@ class KeyspaceRegistry:
     return list(seen)
 
   def candidates(self, text: str) -> list[str]:
-    """Key mentions in one string literal: the whole of it, or an ``@``-ref in it.
+    """Key mentions in one string literal: the whole of it, or a key ref in it.
 
     A literal that is not wholly key-shaped is PROSE -- help text, a message --
-    and a key it names is ``kinemata claims``' business, not a use. An ``@``-ref
-    is a use wherever it sits, so it is taken from prose too.
+    and a key it names is ``kinemata claims``' business, not a use. A ``{a.b}``
+    or ``@``-ref is a use wherever it sits, so it is taken from prose too.
     """
     seen: dict[str, None] = {}
     if self._candidate_re.fullmatch(text):
@@ -570,12 +570,27 @@ class KeyspaceRegistry:
     return list(seen)
 
   def _ref_names(self, text: str) -> Iterator[str]:
-    """Names of the ``@``-refs in *text*, read by the product's own ref parser.
+    """Names of the key refs in *text*, read by the product's own ref parsers.
 
-    An ``@`` abutting an identifier character (``user@box.host``) opens no ref,
-    and a name must pass the same candidate syntax as a whole literal. That
-    syntax's segments admit no ``℘``, so a persona node's ref is not seen.
+    A braced ``{a.b.c}`` is read by ``match_braced``, left to right so a ``{{``
+    literal brace is consumed whole and opens no ref; a ``{$NAME}`` variable is
+    not a key. An ``@`` abutting an identifier character (``user@box.host``)
+    opens no ref. A name must pass the same candidate syntax as a whole literal;
+    that syntax's segments admit no ``℘``, so a persona node's ref is not seen.
     """
+    i = 0
+    while i < len(text):
+      if text.startswith(("{{", "}}"), i):
+        i += 2
+        continue
+      braced = match_braced(text, i) if text[i] == "{" else None
+      if braced is None:
+        i += 1
+        continue
+      kind, name, i = braced
+      if kind == "ref" and self._candidate_re.fullmatch(name):
+        yield name
+    # The ``@`` spelling: B1b deletes this branch when ``@`` stops being a sigil.
     for at in re.finditer("@", text):
       i = at.start()
       if i and re.match(self.boundary, text[i - 1]):
