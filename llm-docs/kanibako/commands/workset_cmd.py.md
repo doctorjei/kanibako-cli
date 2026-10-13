@@ -7,8 +7,9 @@ enumerated (`list`), inspected (`info`), unregistered (`rm`), gains and loses me
 directories its boxes mount (`share add` / `rm` / `list`).
 
 Two facts shape almost everything below. First, **the workset tier is ONE file** —
-`<root>/workset.yaml`, for every mode — so identity (`meta.workset`) and cascade settings coexist
-in it and every write here must MERGE rather than overwrite. Second, **a share is a binding keyed
+`<root>/workset.yaml`, for every mode — holding SETTINGS ONLY, so every write here must MERGE
+rather than overwrite. A workset's identity is its entry in the global registry's `worksets:`
+section, and `meta.workset` is refused. Second, **a share is a binding keyed
 BY ITS BOX DESTINATION** (R-10): a binding has no entry name, so the destination is the identity,
 the `share list` DEST column, and the `share rm` argument, all at once.
 
@@ -28,7 +29,7 @@ and R-39; the J2 lifecycle journal.
 | `rm` | `delete` | Unregister; with `--purge` also delete the directory tree |
 | `connect` | — | Add an externally-existing project dir to a workset (REGISTERS, never seeds) |
 | `disconnect` | — | Drop a member; with `--remove-files` also delete its per-project dirs |
-| `info` | `inspect` | Name, root, creation date, members |
+| `info` | `inspect` | Name, root, members |
 | `set` / `reset` / `get` / `show` | — | The workset-scope config verbs |
 | `share` | — | `add` / `rm` (`remove`) / `list` (`ls`) — the workset's bind mounts |
 
@@ -37,41 +38,45 @@ and R-39; the J2 lifecycle journal.
 ## The workset settings file
 
 `_workset_config_path` is the ONE derivation for every mode (spec §2c: `meta.workset.settings` =
-`@meta.workset.path/workset.yaml`) — always `<root>/workset.yaml`. A NAMED workset's file also
-carries the workset identity (`meta.workset`); the cascade tables (`box`/`agent`/`workset.bindings`)
-coexist there without colliding, which is why `run_create` and `share add` both LOAD-then-MERGE.
+`@meta.workset.path/workset.yaml`) — always `<root>/workset.yaml`. The cascade tables
+(`box`/`agent`/`workset.bindings`) coexist there, which is why `run_create` and `share add` both
+LOAD-then-MERGE.
 
-The PRIMARY ("default") workset roots at `@config.primary_workset`. Its old
-`@config.data/config.yaml` write target was a DEAD WRITE — the launch cascade never read it — which
-is finding **F4** (*"PRIMARY workset = three-file split"*, MED-HIGH, a genuine bug) of the ARCHIVED
-`~/canon/notebook/archives/resources/reference/2026-07-02-scoping-cascade-audit.md`.
+The PRIMARY ("default") workset roots at `@config.primary_workset`, so its settings file is
+`<primary_workset>/workset.yaml`, the file the launch cascade reads (finding **F4** of
+`~/canon/notebook/archives/resources/reference/2026-07-02-scoping-cascade-audit.md`).
 
-⚑ The audit MOVED to the archive and this citation did not move with it. The bare `reference/…`
-spelling was worse than dangling — it was PLAUSIBLE: `~/canon/workbook/reference/` exists and still
-holds this audit's siblings, so the citation resolved to a real directory that does not hold this
-file — and there is no `reference/` in this repo at all. **Cite the surviving location in full.**
-An archived document is still the record; it is the elided prefix, not the archiving, that lost it.
+## `create`: refusals, pre-flight, then stamp
 
-## `create`: pre-flight, then stamp
+`run_create` refuses, in order, before anything is written:
 
-`check_workset_template` runs BEFORE `create_workset`, and the order is the point. A whitelist
-refusal part-way through the stamp would be loud but NOT atomic: it would leave a REGISTERED
-workset with a root, its own `workset.yaml` and a partial chapter copy, recoverable only by
-`workset rm`. Checking first is also the order `create_workset` already uses for its own name
-guards (reserved-name, same-kind uniqueness, and the cross-kind primary-box guard all raise
-BEFORE any on-disk side effect).
+1. **`--standalone`** (`_STANDALONE_REFUSAL`), before any path work: standalone is a single box's
+   mode, not a working set's, with the cure `kanibako box create --standalone [path]`.
+2. **A root nested in another box's tree** — inside another box's workspace, root, or store
+   (`_lifecycle._dest_nesting_refusal`, judging the root as a nameless named box). Checked only
+   when nothing exists at the path; skipped with `--force`. An existing path is `create_workset`'s
+   "already exists" refusal.
+3. **The mold pre-flight**, `check_workset_template`, BEFORE `create_workset`, and the order is the
+   point. A whitelist refusal part-way through the stamp would be loud but NOT atomic: it would
+   leave a REGISTERED workset with a root, its own `workset.yaml` and a partial chapter copy,
+   recoverable only by `workset rm`. Checking first is also the order `create_workset` uses for
+   its own guards, which all raise BEFORE any on-disk side effect.
+
+The name is `--name` as typed, else `identifiers.derived_name` of the directory (`_` for each `-`
+and `.`). `--force` also reaches `create_workset` as `force_logs_share`: a `workset.logs` directory
+another workset resolves to is accepted.
 
 `install_workset_template` is the **J-6 A-action (INSTANTIATION)**: it stamps the new workset store
 from the host workset mold (`@system.template/workset`) under the WORKSET whitelist. This is what
-gives a workset its own handbook chapter dir and its own box template; before this step existed,
-neither did. The pre-flight above already proved the mold passes that whitelist, so this call
+gives a workset its own handbook chapter dir and its own box template. The pre-flight above already proved the mold passes that whitelist, so this call
 cannot refuse half-way.
 
 Credential SHARING is a settable cascade key (`workset.auth.share_allowed`, via the config verbs),
 NOT a create-time flag — `--distinct-auth` is retired.
 
-The `image` / `standalone` / `no_vault` writes MERGE into the existing file rather than overwriting
-it, so the `meta.workset` identity `create_workset` just wrote survives.
+`--image` and `--no-vault` set BOX-scope keys at the workset tier: they MERGE `box.image` /
+`box.enable_vault: false` into the file's `box:` table (reaching inside it, so other `box.*` keys
+survive), as overridable downward defaults for contained boxes.
 
 ## `connect`: the J2 write-ahead journal
 
@@ -99,23 +104,21 @@ every leaf parser by `flags._walk`, so `workset disconnect` really does have one
 The winner is then resolved path-or-name through the SHARED box resolver `resolve_box_target`
 (§Design 8 — the same resolver even though "box" reads oddly for a workset member; consistency
 wins). A bare member name that is not an independently-registered box falls back to the raw token,
-which `remove_project` matches against the workset's member list by name. *(Verified end-to-end:
-`workset disconnect <ws> <member>` from an unrelated cwd removes the member.)*
+which `remove_project` matches against the workset's member list by name.
 
 The `OSError` arm is not redundant with the `WorksetError` arm. A box tree can refuse deletion —
 a root-owned canon skeleton, or any file a rootless container wrote as root. `remove_project`
-reports that by raising, and only `WorksetError` was caught, so the `PermissionError` escaped as a
-raw traceback. It is now reported like every other verb does, with the `podman unshare rm -rf`
-escalation the user can actually run.
+reports that by raising a `PermissionError`, which is reported like every other verb does, with
+the `podman unshare rm -rf` escalation the user can actually run.
 
 ## The config verbs
 
 `run_set` / `run_reset` / `run_get` / `run_show` are thin argument shims onto `_run_workset_config`,
 which dispatches into the `config_interface` engine. Credential sharing is an ordinary settable
 cascade key (`workset.auth.share_allowed`) routed through the engine like any other — no
-special-casing (the old `group_auth` `meta.workset` identity key is retired).
+special-casing.
 
-**The workset-tier docker env FILE is GONE (R-39/RQ-1).** The env family is the settings key
+**There is no workset-tier docker env FILE (R-39/RQ-1).** The env family is the settings key
 `workset.env.<VAR>`, stored in `ws_config` like every other workset key, so there is no second
 write target at this scope.
 
@@ -127,11 +130,10 @@ apart from its config file"*. A workset does — its Layer-1 config file and its
 two different documents — so this arm passes them as the **system noun** does:
 `config_path=config_file`, `system_settings_path=ws_config`.
 
-⚑ **The pair used to be spelled the other way** (`config_path=ws_config`, no settings argument),
-and that cost two things. `load_merged_config` read the settings document as a **BOX-tier** file and
-dropped it with an upward-scope warning, and the nested-settings flatten — the block that renders a
-noun's own settings file — was never fed. The result: a workset's `common` / `caches` / `seeded`
-declarations were invisible in **both** views at the one noun that owns them, against spec §0
+⚑ **Do not spell the pair the other way** (`config_path=ws_config`, no settings argument):
+`load_merged_config` would read the settings document as a **BOX-tier** file and drop it with an
+upward-scope warning, and the nested-settings flatten would never be fed — so a workset's
+`common` / `caches` / `seeded` declarations would be invisible in **both** views, against spec §0
 (*"They remain real, declared keys: … `config show` lists them"*).
 
 ⚑ **ONE CARRIER.** The rows come from `config_display._nested_settings_overrides`, the same flatten
@@ -174,9 +176,8 @@ so a working set that declares none of the trio can no longer meet one from this
 built BEFORE the gate, `expand` is strict, and `snapshot_category_entries` refuses an undeclared
 shape — while the `show` arm's own rendering is a YAML flatten that expands nothing. So a working
 set carrying only `bindings.ro: {/opt/x: ["$NOPE/y"]}`, with no abstract declaration anywhere,
-printed its rows at rc 0 and now prints `Error: Unknown variable: $NOPE` and returns 1. MEASURED
-both ways, 2026-09-19: the `show_config` call alone still returns 0 on that file, so the new rc is
-this block's.
+prints `Error: Unknown variable: $NOPE` and returns 1. The `show_config` call alone returns 0 on
+that file, so the rc is this block's.
 
 ⚑ **THAT IS THE INTENDED ANSWER, and it is why the code is not "fixed" to suppress it.** A view
 whose whole claim is *these are the resolved values* must not report rc 0 over a file it could not
@@ -211,21 +212,17 @@ first and every tailored cure disappears behind a vaguer sentence. The box handl
 pair the same way, and additionally judges the key AFTER the bare-agent redirect — there is no such
 arm here, because a workset spans several boxes and has no single agent to mirror.
 
-The three verbs ARE symmetric in OUTCOME. *(Verified on the production path: `workset set|get|reset
-<ws> model` all print "agent settings can't be set|read|reset at workset scope …", and
-`workset set|get|reset <ws> env.FOO` all print the R-39 retirement + the `workset.env.FOO` cure.)*
+The three verbs ARE symmetric in OUTCOME: `workset set|get|reset <ws> model` all print "agent
+settings can't be set|read|reset at workset scope …", and `workset set|get|reset <ws> env.FOO` all
+print the R-39 retirement + the `workset.env.FOO` cure.
 
 A workset spans multiple boxes and agents, so there is no single agent to configure and no
 `workset.agent.*` mirror; the refusal points at system scope (all agents) or at the per-box
 `pref.agent.<agent>.<key>` request form (spec §2h).
 
-> ⚑ **A FALSE CLAIM WAS DROPPED HERE, NOT RELOCATED.** The old comment ended *"The box scope
-> instead redirects the read to its `box.agent.*` mirror."* `box.agent.<key>` is **RETIRED (P7,
-> spec §2b)** — `settings/config_interface.py` refuses it by name — and the
-> box arm of `bare_agent_key_scope_error` redirects to `pref.agent.<agent>.<key>` (§2h), not to a
-> `box.agent.*` mirror. The only surviving `box.agent` spelling in the spec is the RO read-back
-> mirror `meta.box.agent.<key>`, which is a different key and not what that arm names. The comment
-> described a superseded design (the 2026-07-08b convergence) that P7 later reversed.
+⚑ The box scope does not redirect to a `box.agent.*` mirror either: `box.agent.<key>` is retired
+(spec §2b), and the box arm of `bare_agent_key_scope_error` redirects to
+`pref.agent.<agent>.<key>` (§2h).
 
 ### Cascade threading
 
@@ -245,13 +242,11 @@ at the workset command level.
 
 ### Why there is no destination validator
 
-`_SHARE_NAME_RE` (`^[A-Za-z0-9._-]+$`) was RETIRED 2026-08-06c under R-10 — a binding has no entry
-NAME, the box DESTINATION is the identity. It was NOT converted into a destination validator,
-deliberately:
+There is no share-name regex (R-10): a binding has no entry NAME, the box DESTINATION is the
+identity. A name rule does not convert into a destination validator, deliberately:
 
-* its character class excludes `/`, so it cannot describe a path at all — "converting" it would
-  mean writing a different rule, i.e. inventing a NEW refusal on a surface that has never validated
-  the destination;
+* a name character class excludes `/`, so it cannot describe a path at all — a validator would
+  be a different rule, i.e. a NEW refusal on a surface that has never validated the destination;
 * the destination's real rule IS ruled, and it is R-11 — a dest is normalized to an ABSOLUTE guest
   path (`~` expanded, the SOURCE never) — which lands with the floor producers, not here. A weaker
   second rule now would be two rules for one thing, which is the drift Code Convention 0 opens with.
@@ -404,38 +399,24 @@ is the canonical FULL host map anchored on the resolved `std.data_home` — a da
 map RAISES on a stored `$XDG_CACHE_HOME/…` value.
 
 ⚑⚑ **THE `ctx.config` FOUNDATION IS `settings/paths.host_config_map`, AND IT IS SHARED WITH THE
-LAUNCH TOO** — the identical repair, one layer down, made 2026-08-28 for the identical reason. The
-Layer-1 map was written out by hand here and again in `settings/agent_select.launch_resolve_ctx`,
-five string literals in each, while `CONFIG_PATH_DEFAULTS` has declared six since `config.journal`
-landed the day after those literals were written. `config.journal` is a fully declared, settable key,
-so a workset binding sourced at `@config.journal` was accepted by `config set` and then reached
-neither this display nor the launch: `_lookup_raw` answered `_ABSENT` and the row was dropped, rc 0.
-`host_config_map` derives the tier from the declared table, so a Layer-1 key declared tomorrow
-reaches both call sites without an edit.
+LAUNCH TOO** (`settings/agent_select.launch_resolve_ctx`). It derives the tier from the declared
+`CONFIG_PATH_DEFAULTS` table, so every Layer-1 key — `config.journal` included — reaches both call
+sites, and a key declared tomorrow does too without an edit. A hand-written map here would drop a
+binding sourced at an omitted key: `_lookup_raw` answers `_ABSENT` and the row vanishes, rc 0.
 
 ⚑⚑ **THE FLOOR IS `settings/paths.system_path_floor`, AND IT IS SHARED WITH THE LAUNCH** — the
-`system_floor` of `settings_launch.resolve_inputs` is the same call. It was written out
-by hand in both places, under paired comments telling each other they had to agree, and they did
-not: this one carried three keys and none of the five `system.channels.*` leaves. So a workset
-binding sourcing `@system.channels.chat` mounted correctly at launch and was **silently omitted
-from this listing** — rc 0, no error, the row simply absent, because an unresolvable `@`-ref is a
-legitimately-absent referent rather than a failure. A user reading `--effective` to check their
-bindings saw one they had configured not appear at all. (The launch side of the same split was
-missing `system.channels.broadcast`, so a bind through that key was dropped from the collapse.)
+`system_floor` of `settings_launch.resolve_inputs` is the same call, derived from
+`SYSTEM_PATH_DEFAULTS` entire. Two hand-written floors would disagree, and an unresolvable `@`-ref
+is a legitimately-absent referent rather than a failure — so a binding sourcing a key one floor
+lacked (say `@system.channels.chat`) would mount at launch and be **silently omitted from this
+listing**, rc 0. This display folds the map into a resolve floor and prints collapsed BINDINGS,
+never the floor.
 
-⚑ **THE SHARED FLOOR WIDENED 8 → 11 ON 2026-08-28** and this display widened with it, for free:
-`system_path_floor` now derives from `SYSTEM_PATH_DEFAULTS` entire, so a workset binding sourced at
-`@system.backup`, `@system.cache` or `@system.runtime` resolves and PRINTS here instead of being
-dropped from the listing exactly as it was dropped from the launch. Measured both ways: with the
-retired hand list those three rows are absent and the literal and `@system.channelroot` controls
-still print, rc 0 either way. This display gains no row of its own from the widening — it folds the
-map into a resolve floor and prints collapsed BINDINGS, never the floor.
-
-⚑⚑ **THE FLOOR ALSO CARRIES `meta.workset.path`, AND WITHOUT IT THIS LISTING PRINTED A PATH THAT
-EXISTS NOWHERE.** `system_path_floor` is the `system.*` tier and carries no `meta.*` key at all,
-while `settings_expand` renders an anchor with no referent as the EMPTY STRING — so a share written
-`@meta.workset.path/refdir` was listed as mounting `/refdir`, at the filesystem root, rc 0, no
-warning. MEASURED on the shipped listing, 2026-09-19. The anchor is spec §2a's workset
+⚑⚑ **THE FLOOR ALSO CARRIES `meta.workset.path`, AND WITHOUT IT THIS LISTING WOULD PRINT A PATH
+THAT EXISTS NOWHERE.** `system_path_floor` is the `system.*` tier and carries no `meta.*` key at
+all, while `settings_expand` renders an anchor with no referent as the EMPTY STRING — so a share
+written `@meta.workset.path/refdir` would be listed as mounting `/refdir`, at the filesystem root,
+rc 0, no warning. The anchor is spec §2a's workset
 `<scope-root>`, so the same gap mis-rooted every `common` / `caches` / `seeded` declaration by
 definition — which is what made this a PREREQUISITE of rendering the derived half at all, not a
 neighboring fix. 🛑 **THIS IS NOT A ROOT-JOIN** (the section above still holds): nothing is
@@ -463,20 +444,19 @@ TEXT against four hard-coded names, so it was green through the whole of the abo
 
 The DEST column is the share's IDENTITY (R-10) and is exactly the argument `share rm` takes.
 
-⚑⚑ **AND IT ARBITRATES — the launch's own collapse, not a second walk (2026-08-26).** Resolving is
-only half of what a launch does. Until this date the display printed the ENTRY LIST that came out of
-`snapshot_category_entries`: every stored binding, pre-collapse, with no mask arm, no containment and
-no collision rule applied. So a workset that ALSO declared `workset.masks` over a share's
-destination listed that share as a live mount while the box received **nothing** at that path — rc
-0, no message — and a workset whose declarations a launch REFUSES outright (a `common` extending
-onto a bound dest, which §0 refuses) listed cleanly at rc 0.
+⚑⚑ **AND IT ARBITRATES — the launch's own collapse, not a second walk.** Resolving is only half of
+what a launch does. Printing the ENTRY LIST out of `snapshot_category_entries` — every stored
+binding, pre-collapse, with no mask arm, no containment and no collision rule — would list a share
+under a `workset.masks` entry as a live mount while the box receives **nothing** at that path, and
+would list cleanly a workset whose declarations a launch REFUSES outright (a `common` extending onto
+a bound dest, which §0 refuses).
 
 The two calls are `store_shape.build_store_shape_set` then `store_collapse.collapse_store_shapes` —
 the same pair `commands/start._install_assembly_collapse` makes — and the per-share outcome is read
 off `store_collapse.pair_declarations`, the function `box show --effective` already pairs its own
 declarations with. **The shares stay the SUBJECT**: a share the collapse swallowed keeps its ROW and
-gains a reason rather than vanishing, because dropping a row silently is the failure this display was
-already measured wrong for once (the floor above).
+gains a reason rather than vanishing, because dropping a row silently is the failure the floor
+above guards against.
 
 * **A delivered share earns the ARROW**: `<src> -> <dest>  [<mode>]`, exactly as before — this half
   of the output did not move.
@@ -561,28 +541,18 @@ refusal nobody ruled.
 
 ### The dead options bracket
 
-> ⚑ **A FALSE CLAIM WAS DROPPED HERE, NOT RELOCATED — and it points at a live display defect.**
+⚑ It points at a live display defect: `_share_source_display`'s options bracket is dead code.
 
-`_share_source_display`'s old docstring said it renders "the host source, plus any per-entry mount
-options in brackets", and its inline comment said "Element 1 is the stored destination (already the
-DEST column); anything beyond it is the per-entry options override." **Both are false under the live
-entry shape.**
-
-* Element 1 is the **OPTIONS** (`BindEntry.opts`), not the destination. The destination is not in the
-  entry at all — the store refuses a 3-element entry with exactly that message.
+* Element 1 of an entry is the **OPTIONS** (`BindEntry.opts`), not the destination. The destination
+  is not in the entry at all — the store refuses a 3-element entry with exactly that message.
 * `_workset_raw_shares` emits `[leaf.src, leaf.opts]` or `[leaf.src]`, so `value[2:]` is **always
-  empty** and the bracket is dead code. Per-entry options are never shown in the raw listing.
+  empty**. Per-entry options are never shown in the raw listing: a hand-written
+  `workset.bindings.ro: {/box/withopts: [/host/src2, "ro,noexec"]}` prints
+  `  /box/withopts   ro   /host/src2` — no bracket. The same entry under `--effective` renders as a
+  mount, so the entry itself is live and only the raw view drops its options.
 
-Both claims are residue of the retired 2-element `[src, dest]` era, in which options WOULD have been
-element 2 and later. R-6 moved options to element 1 and the slice was never moved with them.
-
-*(Proven on the production path, not by reasoning: a hand-written
-`workset.bindings.ro: {/box/withopts: [/host/src2, "ro,noexec"]}` prints
-`  /box/withopts   ro   /host/src2` — no bracket. The same entry under `--effective` renders as a
-mount, so the entry itself is live and only the raw view drops its options.)*
-
-The source now carries a one-line `⚑` marker at the slice so a future reader does not take it for
-live behavior. **The code was not changed** — the fix is a decision, not a prose pass.
+The source carries a one-line `⚑` marker at the slice so a future reader does not take it for live
+behavior; the fix is a decision, not a prose change.
 
 ## Functions
 
@@ -605,8 +575,9 @@ The workset-tier settings file — ONE derivation for every mode (spec §2c). Se
 ```python
 def run_create(args: argparse.Namespace) -> int
 ```
-Pre-flight the mold, create + register the workset, stamp it, then MERGE the create-time cascade
-settings into its file. See "`create`: pre-flight, then stamp".
+Refuse `--standalone` and a nested root, pre-flight the mold, create + register the workset, stamp
+it, then MERGE the create-time `box.*` keys into its file. See "`create`: refusals, pre-flight,
+then stamp".
 
 ```python
 def run_list(args: argparse.Namespace) -> int
@@ -634,7 +605,7 @@ OSError arm".
 ```python
 def run_info(args: argparse.Namespace) -> int
 ```
-Print name, root, creation date and members.
+Print name, root and members.
 
 ```python
 def run_set(args: argparse.Namespace) -> int
@@ -715,5 +686,5 @@ def _print_effective_derivations(ws, std) -> int
 The DERIVED half of §0 at this noun: every `common` / `caches` / `seeded` declaration with the
 binding it produces, paired against the same collapse. Runs only under `--effective`; the COLLAPSE
 runs only when there is an abstract declaration to arbitrate, but the RESOLVE always does — so this
-verb can now exit 1 on a file it cannot resolve where it printed at rc 0 before. See "Which two
+verb exits 1 on a file it cannot resolve. See "Which two
 files the SHOW arm hands the engine".

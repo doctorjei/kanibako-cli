@@ -18,7 +18,7 @@ Two flags are added to (nearly) every subcommand via a post-construction walk of
   cascade). It feeds the C2 resolver seam (`getattr(args, "agent", None)`) so a command resolves as
   if NAME were the configured agent. Relevant only to agent-touching commands. ⚑ It is
   this-invocation-only on `start` / `box start` / `agent reauth`, but `create` (both spellings)
-  SAVES it — see "The two claims the `--agent` help text makes" below.
+  SAVES it — see "The three claims the `--agent` help text makes" below.
 * `--box VALUE` — the SUBJECT selector: which box/project the command acts on (path OR registered
   box name; name precedence), even when not cwd. Routed through
   `kanibako.settings.paths.resolve_box_target`. Relevant only to commands that act on a subject
@@ -64,13 +64,15 @@ per-invocation: `create` and `box create`. `run_create` writes the §2h request 
 into the new box's own settings file (`commands/box/_parser.py`), so the box keeps that agent and a
 later bare `kanibako start` launches it. `AGENT_FLAG_PERSISTS_AT_CREATION` (`start`, `box start`)
 saves it only on a launch that creates the box (§1A CREATE EXCEPTION); on any other launch, and on
-`agent reauth`, nothing is written.
+`agent reauth`, nothing is written. A launch never creates an unregistered box: the one creating
+launch is a `workset connect` member's FIRST launch, which materializes and seeds the box
+`workset connect` registered (`proj.is_new`), and saves the typed `--agent` through
+`start._persist_or_announce_flags`.
 
 `_add_agent_flag` picks `AGENT_FLAG_HELP_PERSISTED`, `AGENT_FLAG_HELP_SAVED_AT_CREATION`, or
-`AGENT_FLAG_HELP_PER_RUN` on that membership. Before the split, ONE string told every command's user the choice was "ephemeral …
-not persisted" — true for the launch pair, FALSE for both create spellings, and a reader had already
-built instructions on the false half. `TestTheAgentFlagHelpSaysWhetherItSticks` asserts the split
-over the whole parser tree, so the two strings cannot silently re-merge.
+`AGENT_FLAG_HELP_PER_RUN` on that membership. One string for every command would tell a `create`
+user their choice is not persisted, which is false. `TestTheAgentFlagHelpSaysWhetherItSticks`
+asserts the split over the whole parser tree, so the strings cannot silently re-merge.
 
 `BOX_FLAG_COMMANDS` is the subject/anchor selector's set: every command that acts on a subject
 box/project rather than on cwd — the launch/shell paths, `code`, the box lifecycle and inspection
@@ -109,8 +111,8 @@ the oracle must widen with them.
 ## The shared `--null` suppression flag (B-6)
 
 `NULL_FLAG_HELP_TEMPLATE` is ONE help string for every scope's `set` verb (box / workset / system /
-agent). It has to TEACH the feature, because suppression has no verb of its own: Jei rejected a
-dedicated `suppress` command as "unnecessary and redundant" (2026-07-31), which makes this help text
+agent). It has to TEACH the feature, because suppression has no verb of its own (a dedicated
+`suppress` command was rejected as unnecessary and redundant), which makes this help text
 the whole discoverability surface. So it says both halves — what `--null` DOES (it suppresses the
 value the key would otherwise inherit, writing an explicit null (present-None) at this scope, so the
 scopes above it stop supplying the key and the consumer sees it as dropped, spec section 2h) and how
@@ -159,8 +161,8 @@ version-dependent:
    `[1, 0]` (both actions consumed, `key_value` matched empty) where 3.13 returns `[1]`. CPython
    3.13 added the trailing-zero strip — *"if the next pattern char is an optional, defer the empty
    positionals"* — which is exactly this repair, upstream. We support `>=3.11` (`requires-python`;
-   CI pins 3.11), so the rewrite must not lean on it: 3.13 masked the defect locally while CI
-   reddened.
+   CI tests 3.11 and 3.13), so the rewrite must not lean on it: 3.13 masks the defect that 3.11
+   shows.
 
 ### What the rewrite does
 
@@ -249,8 +251,7 @@ The split exists because the two properties want opposite answers. Parsing must 
 command outside the declared set would fail with argparse's bare *"unrecognized arguments"* instead
 of `check_flag_relevance`'s message, which names the commands the flag DOES apply to — the useful
 error is only reachable if the flag parses first. Advertising must NOT be universal, because a
-`--help` that lists a flag the command answers with exit 2 is help that promises a refusal. Before
-this split, 95 command keys offered `--agent` and 82 offered `--box` that way.
+`--help` that lists a flag the command answers with exit 2 is help that promises a refusal.
 
 ⚑ Aliases share ONE parser object (`add_parser(aliases=[...])`), so advertisement is a property of
 the parser, not of the key: `box rm` and `box delete` cannot differ. Relevance agrees, because
@@ -300,19 +301,3 @@ un-given flag is `None` rather than a value.
 `shell` (and `box shell`) is a shell — it never launches an agent, so `--agent` is meaningless
 rather than wrong. Product decision: IGNORE it with a clear note (don't hard-error), then proceed to
 open a plain shell. `run_shell` never reads `args.agent`, so the value is dropped here.
-
----
-
-## Notes from the prose pass (2026-08-20)
-
-**One drifted reference corrected, not relocated.** The pre-pass module docstring named a
-`:data:` role pointing at `NULL_FLAG_HELP`. No such symbol exists in the module; the constant is
-`NULL_FLAG_HELP_TEMPLATE` (it is a `.format()` template, which is the whole point of the *undo*
-argument). The surviving docstring names the real symbol.
-
-**What stayed in the `.py`.** The `⚑` warnings that name a specific bug or invariant at the line
-they protect: the `default=None` absent-vs-set distinction; `reset` not `--reset`; the per-verb undo
-example; the CPython-3.13 non-reliance on `hoist_optionals`; the REMAINDER veto being checked first;
-the abbreviation arm; the bail that would otherwise bind a positional as a flag's value; the
-`parse_known_args` hook; the subparsers-plus-`set_defaults` fallback; the plain-string-compare
-equality; and the shell ignore. Each is the warning plus a pointer here for the reasoning.
