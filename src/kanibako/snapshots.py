@@ -784,6 +784,7 @@ def adopt_standalone_store(
 def relocate_snapshot_store(
     old_vault_rw: Path, new_vault_rw: Path, *, old_box: str, new_box: str,
     new_base_exclusive: bool = False, old_base_exclusive: bool = False,
+    old_root: Path | None = None,
 ) -> Path | None:
     """Carry *old_box*'s snapshot store to *new_box* across a rename or a move.
 
@@ -798,6 +799,8 @@ def relocate_snapshot_store(
     overwrites: a taken destination name gets a suffix.
 
     Each side's base is :func:`snapshot_base`'s, by its own *_exclusive* flag.
+    *old_root*, when given, is where the old store's link checks start instead of
+    that base's parent: a vacated standalone root the box can now write.
     """
     new_store = _box_store(new_vault_rw, new_box)
 
@@ -819,6 +822,7 @@ def relocate_snapshot_store(
     else:
         old_base, carried_root = snapshot_base(old_vault_rw, exclusive=old_base_exclusive)
         carried = old_base / old_box
+        carried_root = old_root or carried_root
     new_store, store_root = store_path(new_vault_rw, box_name=new_box,
                                        exclusive=new_base_exclusive)
     if stores_overlap(carried, new_store):  # one store, or nested: nothing to carry

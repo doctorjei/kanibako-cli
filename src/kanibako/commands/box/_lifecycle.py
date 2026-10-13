@@ -1430,9 +1430,13 @@ def _validate(
     )
     no_rename = _same_box_name(new_name, state.name)
     if not relocating and no_owner_change and no_rename:
-        raise ProjectError(
-            "Nothing to do: target equals the current location, owner, and name."
-        )
+        # ⚑ A retry after an interrupted tail: the store step 4c did not carry is moved now.
+        vacated = None if spec.records_only else _vacated_root_store(state, std)
+        if vacated is None:
+            raise ProjectError(
+                "Nothing to do: target equals the current location, owner, and name."
+            )
+        return {"stranded_snapshots": vacated}
 
     # --- workset -> workset with INTERNAL workspace requires relocation ---
     is_ws_to_ws = (
@@ -1884,6 +1888,9 @@ def execute_lifecycle(
 
     if confirm is not None and not confirm():
         raise ProjectError("Aborted by user.")
+    if "stranded_snapshots" in plan:
+        _carry_vacated_root_store(state, *plan["stranded_snapshots"])
+        return state
 
     mounted = (
         [] if spec.records_only
@@ -3349,6 +3356,99 @@ def _snapshot_cure(old: ProjectState, new: ProjectState) -> str | None:
         note += (f"\n  It leaves {', '.join(taken)} in {src}: {dst} already has "
                  f"snapshots of those names. Rename them there and run it again.")
     return note
+
+
+def _vacated_root_store(state: ProjectState, std: StandardPaths) -> tuple[Path, str] | None:
+    """``(old vault_rw, old name)`` of the snapshot store an interrupted in-place convert OUT
+    of standalone left in the root it vacated, which is now the box's workspace; or ``None``.
+
+    Step 4c carries it into the box's own base, so an interrupt before 4c leaves it there and
+    a retry finds the box already converted.  The store is the one named for this box, or
+    else the only store in a base kanibako marked (a convert to the default workset renames
+    the box): that base was this box's alone.  ⚑ Raises ``ProjectError`` before any write
+    when a symlink stands between the root and the store, or the box's own store already
+    holds snapshots: two stores are never merged.
+    """
+    import os
+    import stat
+
+    from kanibako import boxfs
+    from kanibako.project.workset import resolve_workset_vault_pair
+    from kanibako.snapshots import (
+        LAYOUT_MARKER_NAME, RESERVED_STORE_KEYS, box_snapshot_store, checked_store,
+        link_refusal, refusal_text, stores_overlap,
+    )
+
+    if state.mode is BoxMode.standalone or state.vault_rw is None:
+        return None
+    root = state.workspace_path
+    try:
+        old_rw = resolve_workset_vault_pair(root, early=_early_scope(std, BoxMode.standalone))[1]
+    except (KanibakoError, OSError):
+        return None
+    if old_rw is None:
+        return None
+    old_rw = Path(os.path.normpath(old_rw))
+    if root not in old_rw.parents:
+        return None  # ⚑ only a store inside the box's own tree is ever picked
+    base = box_snapshot_store(old_rw, state.name).parent
+    link = boxfs.first_symlink(base, root)
+    if link is not None:
+        try:
+            os.stat(base)
+        except FileNotFoundError:
+            return None  # nothing behind it to carry
+        except OSError:
+            pass  # a loop, or unreadable: fail closed
+        raise ProjectError(f"Refusing: '{state.name}'s vault snapshots may still be under "
+                           f"{base}, but {link_refusal(link)}, then run this again.")
+    if not base.is_dir():
+        return None
+    entries = {n: os.lstat(base / n).st_mode for n in boxfs.listdir(base, root)
+               if n not in RESERVED_STORE_KEYS}
+    marked = (base / LAYOUT_MARKER_NAME).exists()
+    name = (state.name if state.name in entries
+            else next(iter(entries)) if marked and len(entries) == 1 else None)
+    if name is None or not (stat.S_ISDIR(entries[name]) or stat.S_ISLNK(entries[name])):
+        return None
+    if stat.S_ISLNK(entries[name]):
+        raise ProjectError(f"Refusing: '{state.name}'s vault snapshots may still be at "
+                           f"{base / name}, but {link_refusal(base / name)}, then run "
+                           f"this again.")
+    try:
+        # ⚑ The box's own store is in the shared base: a link at it is the user's repoint,
+        # followed as everywhere else; only a broken one is refused.
+        new_store, new_root = checked_store(state.vault_rw, box_name=state.name, exclusive=False)
+    except boxfs.SymlinkRefusedError as exc:
+        raise ProjectError(f"Refusing: '{state.name}'s vault snapshots are still at "
+                           f"{base / name}, but {refusal_text(exc)}, then run this "
+                           f"again.") from exc
+    if stores_overlap(base / name, new_store):
+        return None  # the box's store is repointed here: it is already the box's
+    if os.path.lexists(new_store) and (
+            not new_store.is_dir() or boxfs.listdir(new_store, new_root)):
+        raise ProjectError(
+            f"Refusing: '{state.name}' has vault snapshots both at {base / name}, left "
+            f"there by an interrupted run, and at {new_store}. kanibako does not merge two "
+            f"snapshot stores: move the snapshots you want into {new_store} by hand, "
+            f"then remove {base / name}.")
+    return old_rw, name
+
+
+def _carry_vacated_root_store(state: ProjectState, old_rw: Path, old_name: str) -> None:
+    """Move the store :func:`_vacated_root_store` found into the box's own base."""
+    import sys
+
+    from kanibako.snapshots import box_snapshot_store, relocate_snapshot_store
+
+    assert state.vault_rw is not None  # the finder returned a store
+    carried = relocate_snapshot_store(
+        old_rw, state.vault_rw, old_box=old_name, new_box=state.name,
+        old_base_exclusive=True, old_root=state.workspace_path)
+    if carried is not None:
+        print(f"Moved '{state.name}'s vault snapshots from "
+              f"{box_snapshot_store(old_rw, old_name)} to {carried}, where an interrupted "
+              f"run had left them.", file=sys.stderr)
 
 
 def _retire_old_store(

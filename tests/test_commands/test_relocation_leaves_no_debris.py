@@ -653,9 +653,156 @@ class TestAnInterruptLosesNothingAndLeavesOneRow:
             assert sorted(_rows(sc.tmp_home)) == sorted(sc.src_rows)
             new = sc.run()
             assert _digest(_homes(new, sc.std)["XHOME"] / "XHOME") == sc.digests["XHOME"]
+        elif sc.inplace and kind in _VACATING and (sc.src_homes["XSNAP"] / "XSNAP").exists():
+            # The retry carries the store step 4c left in the vacated standalone root,
+            # marked as a real snapshot write leaves it.
+            _mark(sc.src_homes["XSNAP"])
+            new = sc.run()
+            assert _digest(_homes(new, sc.std)["XSNAP"] / "XSNAP") == sc.digests["XSNAP"]
+            assert not (sc.src_homes["XSNAP"] / "XSNAP").exists()
         elif sc.inplace:
             with pytest.raises(ProjectError, match="Nothing to do"):
                 sc.run()
+
+
+#: The in-place converts OUT of standalone: the root they vacate becomes the workspace.
+_VACATING = ("C", "E")
+
+
+def _mark(store):
+    """Mark *store*'s base as every snapshot write does (``kanibako.snapshots``)."""
+    from kanibako.snapshots import LAYOUT_MARKER_NAME, LAYOUT_MARKER_VALUE
+    (store.parent / LAYOUT_MARKER_NAME).write_text(LAYOUT_MARKER_VALUE)
+
+
+@pytest.mark.usefixtures("stash_dir")
+@pytest.mark.parametrize("kind", _VACATING)
+class TestARetryCarriesTheStoreAnInterruptedTailLeft:
+    """Interrupted before step 4c, the convert leaves the snapshot store in the standalone
+    root it vacated; running the same convert again moves it, and never merges or follows
+    a link to do so."""
+
+    def _stranded(self, env, monkeypatch, kind):
+        sc = _Scenario(env, kind)
+        with monkeypatch.context() as m:
+            _interrupt_at(m, "_relocate_snapshot_store", "before")
+            with pytest.raises(KeyboardInterrupt):
+                sc.run()
+        box = resolve_lifecycle_target(str(sc.src), sc.std, sc.config)
+        old, new = sc.src_homes["XSNAP"], _homes(box, sc.std)["XSNAP"]
+        assert (old / "XSNAP").is_dir() and not new.exists()
+        _mark(old)
+        return sc, old, new
+
+    def test_an_unmarked_base_is_never_guessed_from(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        from kanibako.snapshots import LAYOUT_MARKER_NAME
+        (old.parent / LAYOUT_MARKER_NAME).unlink()
+        other = old.parent / "someone_else"
+        old.rename(other)
+        with pytest.raises(ProjectError, match="Nothing to do"):
+            sc.run()
+        assert _digest(other / "XSNAP") == sc.digests["XSNAP"]
+
+    def test_old_only_is_moved(self, env, monkeypatch, capsys, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        capsys.readouterr()
+        sc.run()
+        assert _digest(new / "XSNAP") == sc.digests["XSNAP"]
+        assert not old.exists()
+        assert f"from {old} to {new}" in capsys.readouterr().err
+
+    def test_new_only_has_nothing_to_do(self, env, monkeypatch, kind):
+        sc = _Scenario(env, kind)
+        new = _homes(sc.run(), sc.std)["XSNAP"]
+        with pytest.raises(ProjectError, match="Nothing to do"):
+            sc.run()
+        assert _digest(new / "XSNAP") == sc.digests["XSNAP"]
+
+    def test_an_empty_store_under_the_new_name_takes_the_old(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        new.mkdir(parents=True)
+        sc.run()
+        assert _digest(new / "XSNAP") == sc.digests["XSNAP"]
+        assert not old.exists()
+
+    def test_both_empty_leaves_one_empty_store(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        shutil.rmtree(old / "XSNAP")
+        new.mkdir(parents=True)
+        sc.run()
+        assert new.is_dir() and not os.listdir(new)
+        assert not old.exists()
+
+    def test_both_holding_snapshots_is_refused_naming_both(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        (new / "20260101T000000Z").mkdir(parents=True)
+        with pytest.raises(ProjectError, match="does not merge") as exc:
+            sc.run()
+        assert str(old) in str(exc.value) and str(new) in str(exc.value)
+        assert _digest(old / "XSNAP") == sc.digests["XSNAP"]
+        assert os.listdir(new) == ["20260101T000000Z"]
+
+    def test_a_link_at_the_old_store_is_refused_not_followed(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        outside = sc.tmp_home / "outside"
+        shutil.move(str(old), str(outside))
+        old.symlink_to(outside)
+        with pytest.raises(ProjectError, match="is a symlink") as exc:
+            sc.run()
+        assert str(old) in str(exc.value)
+        assert _digest(outside / "XSNAP") == sc.digests["XSNAP"]
+        assert not new.exists()
+
+    def test_a_link_above_the_old_store_is_refused_not_followed(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        vault = old.parent.parent
+        outside = sc.tmp_home / "outside"
+        shutil.move(str(vault), str(outside))
+        vault.symlink_to(outside)
+        with pytest.raises(ProjectError, match="is a symlink") as exc:
+            sc.run()
+        assert str(vault) in str(exc.value)
+        assert _digest(outside / old.parent.name / old.name / "XSNAP") == sc.digests["XSNAP"]
+        assert not new.exists()
+
+    def test_a_repointed_box_store_is_honored(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        target = sc.tmp_home / "elsewhere"
+        target.mkdir()
+        new.parent.mkdir(parents=True, exist_ok=True)
+        new.symlink_to(target)
+        sc.run()
+        assert _digest(target / "XSNAP") == sc.digests["XSNAP"]
+        assert new.is_symlink() and not old.exists()
+
+    def test_a_broken_box_store_repoint_is_refused(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        new.parent.mkdir(parents=True, exist_ok=True)
+        new.symlink_to(sc.tmp_home / "gone")
+        with pytest.raises(ProjectError, match="does not lead to a directory"):
+            sc.run()
+        assert _digest(old / "XSNAP") == sc.digests["XSNAP"]
+
+    def test_a_box_store_repointed_at_the_old_store_is_left(self, env, monkeypatch, kind):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        new.parent.mkdir(parents=True, exist_ok=True)
+        new.symlink_to(old)
+        with pytest.raises(ProjectError, match="Nothing to do"):
+            sc.run()
+        assert _digest(old / "XSNAP") == sc.digests["XSNAP"]
+
+    @pytest.mark.parametrize("where", ["store", "base"])
+    def test_a_looped_link_is_refused(self, env, monkeypatch, kind, where):
+        sc, old, new = self._stranded(env, monkeypatch, kind)
+        looped = old if where == "store" else old.parent
+        held = sc.tmp_home / "held"
+        shutil.move(str(looped), str(held))
+        looped.symlink_to(looped)
+        with pytest.raises(ProjectError, match="is a symlink") as exc:
+            sc.run()
+        assert str(looped) in str(exc.value)
+        assert not new.exists()
 
 
 class TestTheTailKeepsWhatItCouldNotCarry:
