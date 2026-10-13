@@ -2966,7 +2966,7 @@ class TestEarlySystemTierIsData:
 
         resolved, rec = self._tier()
         assert rec.system_paths["system.canon"].endswith("/kanibako/global/canon")
-        assert "@" not in rec.system_paths["system.canon"]
+        assert "{" not in rec.system_paths["system.canon"]
         # The primary root came from the early tier, resolved after system.*.
         assert resolved["_primary_boxes"] == Path(f"/srv/kb/{resolved['config.primary_workset']}")
 
