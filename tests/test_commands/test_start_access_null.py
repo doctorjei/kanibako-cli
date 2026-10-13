@@ -1,8 +1,8 @@
 """A stored ``null`` at ``access``, ``allow_helpers``, or ``continue_mode`` refuses the launch.
 
-The rulings (182-NA): "'null' should be an error, then", widened to every key that
-has a default but no meaning for ``None``. Each of the three keys is never read as
-unset (which takes its default). Four layers are pinned here:
+The rulings (182-NA, [Jei:2026-10-13]): "'null' should be an error, then", widened to
+every key that has a default but no meaning for ``None``. Each of the three keys is
+never read as unset (which takes its default). Four layers are pinned here:
 
 - the EARLY check, :func:`~kanibako.commands.start._null_behavior_refusal`, over a
   REAL box, for each key at each scope (box pref, system ``agent.<a>`` and

@@ -96,7 +96,7 @@ def _sync(std, proj, *, logger, bindings=None, gated=True, **kw):
     mount set the collapse validated it over.
 
     ⚑ *gated* picks WHICH of the two passes this is — the LAUNCH refresh (mtime
-    gate, the default) or the once-at-create UNGATED write (2026-08-11 ruling).
+    gate, the default) or the once-at-create UNGATED write [Jei:2026-08-11].
     """
     from kanibako.commands.start import (
         _apply_synced_copies,
@@ -1042,7 +1042,7 @@ class TestTheFoundationIsBuiltAtTheSeam:
     def test_a_synced_dest_NO_MOUNT_COVERS_refuses_the_real_resolve(
         self, std, config, project_dir,
     ):
-        """⚖️ RULED 2026-08-28 — *"we should be checking that the paths resolve."*
+        """⚖️ RULED [Jei:2026-08-28] — *"we should be checking that the paths resolve."*
 
         On the REAL launch seam. With nothing bound at or above ``/data/z`` the copy
         would be written into the container's own ephemeral storage and lost when the
@@ -1071,7 +1071,7 @@ class TestTheFoundationIsBuiltAtTheSeam:
     ):
         """The other half, and it is what makes the refusal above a rule not a ban.
 
-        ⚑ THE MIRRORING USER (Jei, 2026-08-28: *"a clever user might want to
+        ⚑ THE MIRRORING USER ([Jei:2026-08-28]: *"a clever user might want to
         replicate"*). Same destination as the refusal above; the bind is the whole
         difference. A check on the SPELLING could not tell these two apart.
         """
@@ -1924,11 +1924,11 @@ class TestTheSeedApplierConsumesTheLeaf:
     def test_a_SEED_at_a_SYNCED_dest_IS_OVERWRITTEN_BY_THE_CREATE_TIME_SYNC(
         self, std, config, project_dir, tmp_path,
     ):
-        """⚖️ RULED 2026-08-11 — SEED-THEN-OVERWRITE, and the collapse prunes NOTHING.
+        """⚖️ RULED [Jei:2026-08-11] — SEED-THEN-OVERWRITE, and the collapse prunes NOTHING.
 
         🛑 THIS TEST WAS INVERTED. It used to pin the opposite outcome (the collapse
         DROPPED the seed row at a synced dest, so the dest stayed absent until the
-        sync wrote it). Jei replaced that rule with a DELIVERY one — *"at box
+        sync wrote it). That rule was replaced with a DELIVERY one — *"at box
         creation … write synced to it once at creation, irrespective of date"* — and
         confirmed the prune comes out with it.
 
@@ -2278,10 +2278,11 @@ class TestTheSyncApplierConsumesTheLeaf:
     ):
         """🔴 Spec §0's first ``synced`` refusal — a mask as the copy's PARENT.
 
-        The collapse refuses a sync NOTHING (ruling 2026-08-12), so every declared row
-        reaches delivery — a dest whose cover is a mask included. The table's word for
-        this one is REFUSE, and until 2026-08-23 delivery only WARNED: the box started
-        and the credential was not there, with nothing naming the configuration.
+        The collapse refuses a sync NOTHING (system-design § "Collision arbitration"),
+        so every declared row reaches delivery — a dest whose cover is a mask included.
+        The table's word for this one is REFUSE, and until 2026-08-23 delivery only
+        WARNED: the box started and the credential was not there, with nothing naming
+        the configuration.
 
         MUTATION-PROVED against reverting ``_refuse_synced_under_mask``'s parent arm to
         a ``continue``: ``DID NOT RAISE``, and the launch proceeds.
@@ -2406,7 +2407,7 @@ class TestTheSyncApplierConsumesTheLeaf:
     def test_a_dest_NO_BINDING_COVERS_now_REFUSES_before_delivery_runs(
         self, std, config, project_dir, tmp_path,
     ):
-        """⚖️ RULED 2026-08-28 — no cover is a REFUSAL now, not a warn-and-skip.
+        """⚖️ RULED [Jei:2026-08-28] — no cover is a REFUSAL now, not a warn-and-skip.
 
         ⚑⚑ THIS TEST INVERTED, and the inversion is the change. It used to assert the
         skip: *"No cover ⇒ no host location the copy could arrive at"*, warned and

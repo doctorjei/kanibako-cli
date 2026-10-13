@@ -214,8 +214,8 @@ own transitive upstream chain resolved cleanly. Agent selection
 (`settings_launch.resolve_selected_agent`) expands the narrow selection cascade leniently and reads
 `system.agent`'s entry in the error map.
 
-An embedded dangling ref is a set-time DEFECT rather than the strict `""` coercion, (a
-ruling), and it is attributed to the owning edited leaf. A present-`None`
+An embedded dangling ref is a set-time DEFECT rather than the strict `""` coercion, (keyspec §2a
+"VALIDATION at set-time"), and it is attributed to the owning edited leaf. A present-`None`
 referent is NOT a defect: it makes the leaf `None`, in lenient mode as in strict. Lenient differs
 from strict only for an absent referent, and only when `collect_errors=True`.
 

@@ -353,8 +353,8 @@ class TestFlagCombinations:
 # ---------------------------------------------------------------------------
 
 class TestFirstBootImagePersistence:
-    """The launch side of the §1A CREATE EXCEPTION (B6, R-11a + the 2026-08-02
-    materialization ruling): a CREATING launch hands its whole CLI level to the
+    """The launch side of the §1A CREATE EXCEPTION (B6, R-11a + the materialization
+    ruling [Jei:2026-08-02]): a CREATING launch hands its whole CLI level to the
     ONE helper (``config_interface.persist_creation_level``); a launch that does
     not create never calls it.  The helper's writes are pinned in
     ``tests/test_commands/test_create_exception.py``.
@@ -416,7 +416,7 @@ class TestFirstBootImagePersistence:
 
 
 class TestPersistWindow:
-    """Ruling #12 arm (a) — the persist WINDOW (Jei 2026-08-02, "(c) BOTH").
+    """Arm (a) — the persist WINDOW ([Jei:2026-08-02], "(c) BOTH").
 
     A materializing launch that fails between materialization and the persist
     leaves the box EXISTING with the flag unstored, so the user's retry is
@@ -448,7 +448,7 @@ class TestPersistWindow:
             assert m_gate.call_args.args[0]["box.image"] == "custom:v1"
 
     def test_no_persist_when_the_rig_prep_fails(self, start_mocks):
-        """The other side of the tension Jei named: an image that never pulled
+        """The other side of the tension named: an image that never pulled
         is NEVER stored, so the gate is not reached when the prep fails."""
         with start_mocks() as m:
             m.proj.is_new = True
@@ -464,9 +464,9 @@ class TestPersistWindow:
 
 
 class TestEphemeralImageHint:
-    """Ruling #12 arm (b) — a shadowing flag on a NON-materializing launch says so.
+    """Arm (b) [Jei:2026-08-02] — a shadowing flag on a NON-materializing launch says so.
 
-    Jei, 2026-08-02b — *"yes, same hint"*: ``--share-images`` has the identical
+    [Jei:2026-08-02b] — *"yes, same hint"*: ``--share-images`` has the identical
     silent gap as ``--image`` and gets the identical treatment.
     """
 
@@ -511,7 +511,7 @@ class TestEphemeralImageHint:
             err = capsys.readouterr().err
         assert "applies to THIS launch only" not in err
 
-    # -- ``--share-images``: the same hint (Jei 2026-08-02b) ----------------
+    # -- ``--share-images``: the same hint [Jei:2026-08-02b] ----------------
 
     def test_share_images_hint_names_the_ephemerality_and_the_cure(
         self, start_mocks, capsys,
@@ -2272,7 +2272,8 @@ class TestTheRealizedVariablesReachTheContainerEndToEnd:
             assert env.get("ANTHROPIC_BASE_URL") == "https://flag.example"
 
     def test_a_declared_twin_of_a_realized_variable_stops_the_launch(self, start_mocks):
-        """Ruling 59: the refusal ships, and it stops the box rather than the display."""
+        """system-design § "Delivery at launch": the refusal ships, and it stops the box
+        rather than the display."""
         from kanibako.settings.settings_resolve import SettingsError
 
         with start_mocks() as m:

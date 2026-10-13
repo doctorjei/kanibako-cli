@@ -2900,7 +2900,7 @@ class TestPersonaShareSymlinks:
     def test_template_link_points_at_the_harness_template(self, tmp_path):
         """``agents/<node>/template`` -> ``agents/<harness>/template``.
 
-        The other half of the 2026-08-27 ruling: ``template_seed_defaults`` now
+        The other half of [Jei:2026-08-27]: ``template_seed_defaults`` now
         roots layer 2 at the NODE (``{config.agents}/<node>/template``), so without
         this link a persona box would seed from an absent directory.
 
@@ -2932,9 +2932,9 @@ class TestPersonaShareSymlinks:
 
     def test_a_persona_owned_real_template_dir_is_left_alone(self, tmp_path):
         """THE ESCAPE HATCH — *"the user can always remove the symlink if they want
-        to create a separate template for the persona-based agent"* (Jei,
-        2026-08-27).  A real ``agents/<node>/template`` is the persona's OWN and is
-        never replaced by a link, so the shim can be re-run for ever without
+        to create a separate template for the persona-based agent"*
+        [Jei:2026-08-27].  A real ``agents/<node>/template`` is the persona's OWN and
+        is never replaced by a link, so the shim can be re-run for ever without
         reverting the user's choice."""
         from kanibako.commands.start import ensure_persona_share_symlinks
         std = self._std(tmp_path)
@@ -3892,8 +3892,8 @@ class TestContainerEnvPrecedence:
 
 class TestRetiredEnvFilesAreNotRead:
     """⚑ THE RQ-1 PIN, FLIPPED. These used to prove the workset ``.env`` FILE was
-    injected for named AND primary worksets (F9). Jei re-ruled RQ-1 on
-    2026-08-02: the ratified manifest records the ``.env`` files as DROPPED, so
+    injected for named AND primary worksets (F9). RQ-1 was re-ruled
+    [Jei:2026-08-02]: the ratified manifest records the ``.env`` files as DROPPED, so
     the launch-side three-tier read is REMOVED and a value in such a file must
     reach the box no more. Exercises the real ``_run_container`` flow.
     """
@@ -5456,7 +5456,7 @@ class TestApplyInitSeeds:
         default seed (the merge suppression idiom, spec §2a PER-ENTRY CASCADE MERGE —
         present-None OMITs the inherited bind; the old terminal-``""`` idiom is retired).
 
-        Director ruling (F8, 2026-07-02): the capability is spec-implied — a box
+        F8: the capability is spec-implied — a box
         may not set ``agent.<name>.*`` directly (an upward write, dropped at
         RESOLVE per spec §0 clause 4). ⮕ P7: the sanctioned route is now the §2h
         REQUEST ``pref.agent.<a>.seeded[<dest>]: null`` (the ``box.agent.*``
@@ -7103,7 +7103,7 @@ class TestWritebackAllPaths:
 # materialized + registered by this resolve call — registry MEMBERSHIP is the
 # seed signal).  `start` on an existing box (is_new False) NEVER seeds.
 #
-# EXPLICIT-CREATE (Jei 2026-07-11g): a real launch no longer materializes a box,
+# EXPLICIT-CREATE [Jei:2026-07-11g]: a real launch no longer materializes a box,
 # so in production ``proj.is_new`` is always False here (the explicit-create gate
 # errors out for a non-existent box before this point).  The ``if proj.is_new:``
 # seed block is retained as the correct action IF a box were ever materialized on
@@ -7229,7 +7229,7 @@ class TestSeedNewBoxCreateEntry:
         assert kwargs["suppress_oauth"] is False
 
     def test_the_create_time_SYNC_runs_here_too_and_AFTER_the_seed(self, tmp_path):
-        """⚖️ RULED 2026-08-11 — the ``synced`` write happens ONCE, at create.
+        """⚖️ RULED [Jei:2026-08-11] — the ``synced`` write happens ONCE, at create.
 
         🛑 THE WIRING, not the mechanism: RED if the ``_sync_box_at_create`` call is
         dropped from ``seed_new_box``, which is the whole of what makes a brand-new
@@ -8199,7 +8199,7 @@ class TestDirectiveFlattenShim:
 
 
 # ===========================================================================
-# Persona LOAD-OR-ERROR — the safety fix (Jei dogfood 2026-07-03).
+# Persona LOAD-OR-ERROR — the safety fix [Jei:2026-07-03].
 # ===========================================================================
 
 
@@ -8378,7 +8378,7 @@ class TestPersonaWiring:
     def test_a_persona_with_no_persona_block_runs_unchecked(
         self, make, endpoint, monkeypatch,
     ):
-        """His 176th ruling, "just run it with no checks": with or without an
+        """[Jei:2026-10-12], "just run it with no checks": with or without an
         endpoint, the preflight refuses nothing and never probes.  (Mutation: drop
         the no-block early return → the "no endpoint is configured" refusal, or the
         probe → RED.)"""
@@ -8454,9 +8454,10 @@ class TestPersonaWiring:
 
 class TestPersonaModelState:
     """``_persona_model_state`` — the RAW active-over-default ``model`` pick,
-    THREE-STATE (2026-08-17 ruling), unlike ``effective_behavior`` which
-    deliberately collapses a present-None into omission for every OTHER
-    behavior key (see its own docstring / ``test_effective_behavior_omits_
+    THREE-STATE (as the token key, keyspec §2a secret_path.<VAR>;
+    [Jei:2026-08-17]), unlike ``effective_behavior`` which deliberately
+    collapses a present-None into omission for every OTHER behavior key
+    (see its own docstring / ``test_effective_behavior_omits_
     present_none`` in ``test_settings_launch.py``).  Same idiom as
     ``agent_select.resolve_selected_agent`` for ``pref.system.agent: null``:
     read the winning cascade slot directly.
@@ -8528,7 +8529,7 @@ def _claude_target():
 class TestPreflightClaudeByteIdentical:
     """CHARACTERIZATION: a LOADABLE claude persona resolves the same with the real
     claude Target as with none.  The refusals differ: with no target there is no
-    persona block, so nothing is checked (his 176th ruling).
+    persona block, so nothing is checked [Jei:2026-10-12].
     """
 
     def _cfg(self, tok_path):
@@ -8559,7 +8560,7 @@ class TestPreflightClaudeByteIdentical:
                                                              monkeypatch):
         """With no endpoint anywhere the claude persona is refused, naming its
         API-key route; with no target (no persona block) nothing is checked, so
-        nothing is refused (his 176th ruling).
+        nothing is refused [Jei:2026-10-12].
         """
         from kanibako.commands.start import _preflight_persona_load
         from kanibako.plugins.claude.target import ClaudeTarget
@@ -8636,8 +8637,9 @@ class TestPreflightCodexPersona:
             assert "system set" in err and ".model=" in err
 
     def test_present_null_model_conflicts_with_config_file_delivery(self, tmp_path):
-        # PRESENT-null (2026-08-17 ruling): ``agent.<node>.model: null`` declares
-        # "this endpoint needs no model" — but a config-file harness (codex)
+        # PRESENT-null (as the token key, keyspec §2a secret_path.<VAR>;
+        # [Jei:2026-08-17]): ``agent.<node>.model: null`` declares "this
+        # endpoint needs no model" — but a config-file harness (codex)
         # structurally cannot express "no model" at all (the provider block
         # types ``model`` as a non-optional str). The two facts CONFLICT, and
         # the gate must refuse BY NAME (the key, the harness, why) rather than
@@ -8814,7 +8816,7 @@ class TestPreflightCodexPersona:
         assert endpoint is not None  # → suppress_oauth fires (auth.json dropped).
 
     def test_present_null_token_resolves_the_provider_with_no_mount(self):
-        # PRESENT-null (2026-08-17 ruling): the single configured secret_path
+        # PRESENT-null (keyspec §2a secret_path.<VAR>): the single configured secret_path
         # key is deliberately KEYLESS. The DYNAMIC env_key still resolves from
         # its NAME (not its value), and the provider is built exactly as it
         # would be for a real token — only the mount is absent (that's the
@@ -8953,8 +8955,9 @@ class TestPreflightGoosePersona:
             assert "system set" in err and ".model=" in err
 
     def test_present_null_model_suppresses_the_veto_on_env_delivery(self, tmp_path):
-        # PRESENT-null (2026-08-17 ruling): ``agent.<node>.model: null`` declares
-        # "this endpoint needs no model" — and unlike codex's config-file
+        # PRESENT-null (as the token key, keyspec §2a secret_path.<VAR>;
+        # [Jei:2026-08-17]): ``agent.<node>.model: null`` declares "this
+        # endpoint needs no model" — and unlike codex's config-file
         # delivery, an ENV harness can simply omit the model. The key's
         # per-persona fact SUPPRESSES goose's ``model_required`` veto, and the
         # launch proceeds. (Mutation: drop the PRESENT-null suppression in
@@ -9223,7 +9226,7 @@ class TestPersonaLoadOrErrorIntegration:
         # config path's ``.exists()`` truthy, which would take the "config already
         # present" branch and never queue a write — making ``m_write`` vacuous.
         # Point the config path at a REAL, ABSENT file so ``agent_cfg_exists`` is
-        # False and the generate/write branch (Jei's exact dogfood first-use case)
+        # False and the generate/write branch (the exact dogfood first-use case)
         # is live: on a LOADABLE persona the config WOULD be written, so
         # ``m_write.assert_not_called()`` genuinely proves the gate short-circuits
         # BEFORE the write (mutation-proven: move the write pre-gate → this reddens).
@@ -9380,17 +9383,17 @@ class TestPersonaLoadOrErrorIntegration:
             m_gate.assert_not_called()
             m.runtime.run.assert_called_once()
 
-    # ---- (residual ruling) SYSTEM-DEFAULT persona ALSO defers the box --------
+    # ---- SYSTEM-DEFAULT persona ALSO defers the box --------------------------
 
     def test_system_default_persona_defers_box(
         self, start_mocks, tmp_path, monkeypatch, capsys,
     ):
         from kanibako.settings.agent_config import agent_settings_path
 
-        # No explicit --agent, but the SYSTEM DEFAULT is a persona (Director
-        # RESIDUAL ruling, 2026-07-03): the box-independent source must ALSO defer
-        # box materialization, so an unloadable system-default persona on a
-        # brand-new box leaves NO empty unregistered box dir.
+        # No explicit --agent, but the SYSTEM DEFAULT is a persona: the
+        # box-independent source must ALSO defer box materialization, so an
+        # unloadable system-default persona on a brand-new box leaves NO empty
+        # unregistered box dir.
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir laid
         absent_cfg = agent_settings_path(tmp_path / "agents", "navigator+claude")
         with start_mocks() as m:
@@ -9604,14 +9607,14 @@ class TestPersonaLoadOrErrorIntegration:
 
 
 class TestPersonaLoadOrErrorUnmasked:
-    """UNMASKED real-path regression for F5/F7 (Director F5+F7 ruling, 2026-07-03).
+    """UNMASKED real-path regression for F5/F7.
 
     These drive a persona START through the REAL resolver + the REAL
     ``_resolve_box_launch_decisions`` (NO ``_resolve_box_launch_decisions`` patch,
     real ``std``/``proj``).  Only the container-execution boundary (runtime / rig /
     image) is stubbed — just enough to REACH the persona gate on a real filesystem.
 
-    EXPLICIT-CREATE (Jei 2026-07-11g): a launch NEVER materializes a NEW box, so the
+    EXPLICIT-CREATE [Jei:2026-07-11g]: a launch NEVER materializes a NEW box, so the
     launch-time persona load-or-error gate now applies to an EXISTING box (the box
     is pre-created bare here, then launched with the persona).  The BRAND-NEW-box F7
     proof (a nameless probe fed to ``box_channel_addresses``) moved to the create
@@ -11028,7 +11031,7 @@ class TestPersonaLiveTierWiring:
         )
         assert path.read_bytes() == before
 
-    # --- persona-store values are DATA, never expressions (Jei, 142nd) ----------
+    # --- persona-store values are DATA, never expressions [Jei:2026-10-04] ------
 
     #: Text with no token: the same in a settings file as in the store. ``@`` and ``$``
     #: are ordinary characters (keyspec "References").
@@ -11085,7 +11088,7 @@ class TestPersonaLiveTierWiring:
     def test_a_store_secret_path_arrives_verbatim_while_an_agent_file_one_expands(
         self, std, config_file, tmp_home, raw,
     ):
-        """Jei, 142nd: a persona-store value is DATA — the AGENT-FILE half.
+        """[Jei:2026-10-04]: a persona-store value is DATA — the AGENT-FILE half.
 
         The store's values come from a harness config, so a ``$``/``@``/``~`` in
         one is a character: the leaf arrives exactly as the store wrote it.  The
@@ -11198,7 +11201,7 @@ class TestPersonaLiveTierWiring:
     def test_a_store_env_value_arrives_verbatim_while_a_keyspace_one_expands(
         self, std, config_file, tmp_home, raw,
     ):
-        """Jei, 142nd: a persona-store value is DATA — the ENV half, against a scope FILE.
+        """[Jei:2026-10-04]: a persona-store value is DATA — the ENV half, against a scope FILE.
 
         The store's env value arrives as written, token characters and all; the
         same text in a settings file is an expression, so every hazard but the
@@ -11518,7 +11521,7 @@ class TestPersonaPreflightBundle:
             keyspace_model=model, bundle=bundle, probe=probe,
         )
 
-    # --- the token STATE, 2026-08-17 ruling (ABSENT / PRESENT-null / a path) --
+    # --- the token STATE, keyspec §2a secret_path.<VAR> (ABSENT / PRESENT-null / a path) --
 
     def test_absent_token_still_refuses_unchanged(self):
         """ABSENT (never configured anywhere) ⇒ the pre-existing refusal, unchanged."""
@@ -11929,7 +11932,7 @@ class TestPersonaPreflightBundle:
         assert "could not verify" in capsys.readouterr().err
 
     def test_the_probe_is_OPT_IN_so_create_does_not_inherit_it(self, tmp_path):
-        """⚑ Locked ruling #2: the create path keeps its own WARN-ONLY probe.
+        """⚑ [Jei:2026-08-05]: the create path keeps its own WARN-ONLY probe.
 
         ``persona_create_verdict`` / ``seed_new_box`` call this with
         ``probe=False``; if the hard error leaked into them, a create with a
@@ -12205,7 +12208,7 @@ class TestReattachFastPath(_RunningBoxDriver):
             assert m_fresh.called
 
     def test_reattach_does_not_reach_the_flag_persist_seam(self, start_mocks):
-        """§1A ruling #12's seam must never observe a running box: every input
+        """The §1A seam [Jei:2026-08-02] must never observe a running box: every input
         it settles is refused by the override gate instead."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._persist_or_announce_flags",
@@ -12409,8 +12412,8 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
 
     Cause: ``resolve_box_shell`` sits inside the ``not reattach_running`` prep
     block, so on a reattach ``entrypoint`` stayed None, the fast path's exec arm
-    was skipped, and it fell through to the bootstrap attach.  Fix (Jei's ruling,
-    option 1): resolve the shell in the fast path FROM THE RUNNING CONTAINER'S
+    was skipped, and it fell through to the bootstrap attach.  Fix (option 1,
+    [Jei:2026-08-05g]): resolve the shell in the fast path FROM THE RUNNING CONTAINER'S
     OWN IMAGE.
 
     ⚑ SCOPED TO A BOX RUNNING AN AGENT, keyed on the live ``KANIBAKO_AGENT``
@@ -12555,7 +12558,7 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
         assert attach[0].args[1] == ["tmux", "attach", "-t", "kanibako"]
 
     def test_per_run_env_reaches_the_exec_at_a_live_agent_box(self, start_mocks):
-        """⚑ THE NARROWING (ruled 2026-08-05g).  The gate's principle for env is
+        """⚑ THE NARROWING [Jei:2026-08-05g].  The gate's principle for env is
         "refuse it only when nothing will apply it", and this door lands on
         ``runtime.exec(..., env=...)``, which applies it — the same exec an
         explicit ``--entrypoint`` gets, and that one was never refused.  The gate
@@ -12661,7 +12664,7 @@ class TestReauthAtALiveBox(_RunningBoxDriver):
 
 class TestRunningBoxOverrideGate(_RunningBoxDriver):
     """Overrides that cannot be integrated into a live box are REFUSED BY NAME
-    (Jei 2026-08-05: "could this setting work without restarting the box and
+    ([Jei:2026-08-05]: "could this setting work without restarting the box and
     without making a mangled / corrupted / unexpected state?")."""
 
     _CLASS_A = [
@@ -12754,7 +12757,7 @@ class TestRunningBoxOverrideGate(_RunningBoxDriver):
     def test_explicit_persistent_at_a_live_box_is_refused(
         self, start_mocks, capsys,
     ):
-        """Jei: "it shouldn't be necessary to kill tmux for this; we should find
+        """[Jei:2026-08-05]: "it shouldn't be necessary to kill tmux for this; we should find
         out if tmux is running BEFORE we try to reattach."  The refusal lands
         before any attach, so the running session is never touched."""
         with start_mocks() as m:
