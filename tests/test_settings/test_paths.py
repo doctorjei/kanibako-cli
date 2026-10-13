@@ -869,21 +869,15 @@ class TestDetectBoxMode:
         result = detect_project_mode(proj_dir, std, config)
         assert result.mode is BoxMode.named
 
-    def test_connected_external_marker_stays_named_no_dual_registration(
+    def test_connected_external_marker_is_dropped_no_dual_registration(
         self, config_file, tmp_home
     ):
-        """Anti-dual-registration regression (B2b coverage gap): a standalone box
-        FORCE-CONNECTED into a workset keeps its on-disk marker, but is claimed by
-        the live ``boxes:`` connection — it must resolve as its NAMED workset box,
-        and the top-of-function standalone-marker check must NOT re-import it into
-        the global ``standalone:`` registry (the single-registry invariant — a box
-        lives in EXACTLY ONE registry).  The connected-external check runs BEFORE
-        the marker check precisely so this holds.
-
-        With the OLD order (marker before connected) this FAILS: the marker check
-        fires first, re-registering the box in ``standalone:`` (dual registration)
-        and returning ``standalone`` instead of ``named``.
+        """A box is in one workset only (his 181-DF3): ``workset connect --force`` of a
+        standalone box MOVES its registration and drops its marker, so it resolves as its
+        NAMED workset box and is never re-imported into ``standalone:``.  Only the
+        ``workset.registry`` key goes; the file, its kuid, and ``box_data/`` stay.
         """
+        from kanibako.launch import box_resolve
         from kanibako.project import registry_store
         from kanibako.project.workset import add_project, create_workset
 
@@ -897,39 +891,101 @@ class TestDetectBoxMode:
         # standalone: registration (its pre-connect resolved state).
         external = (tmp_home / "standalone_box").resolve()
         (external / "box_data").mkdir(parents=True)
-        (external / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+        (external / WORKSET_META_FILE).write_text(
+            "workset:\n  kuid: abcde\n  registry: null\n")
         registry_store.register_standalone(
             std.registry, "kx_standalone_box", external
         )
-        assert "kx_standalone_box" in registry_store.load_standalone(std.registry)
 
-        # Force-connect: the standalone: entry is DROPPED and a per-workset boxes:
-        # connection entry is written (registration MOVED, not duplicated).
-        add_project(ws, "sb", external, std, force=True)
-        assert (
-            "kx_standalone_box"
-            not in registry_store.load_standalone(std.registry)
-        )
-
-        # WHILE connected (marker still on disk): resolves as its workset box …
-        result = detect_project_mode(external, std, config)
-        assert result.mode is BoxMode.named
-        # … and the marker check did NOT re-register it in standalone:.
-        assert (
-            registry_store.standalone_name_for_root(std.registry, external) is None
-        )
-        # The intrinsic on-disk marker was never removed.
+        # The connect: the standalone: entry is DROPPED, a per-workset boxes:
+        # connection entry is written, and the marker goes.
+        add_project(ws, "sb", external, std, force=True, drop_marker=True)
+        assert registry_store.load_standalone(std.registry) == {}
+        assert (external / WORKSET_META_FILE).read_text() == "workset:\n  kuid: abcde\n"
+        assert not box_resolve.stores_standalone_registry_null(external)
         assert (external / "box_data").is_dir()
 
+        result = detect_project_mode(external, std, config)
+        assert result.mode is BoxMode.named
+        assert registry_store.standalone_name_for_root(std.registry, external) is None
+
         # One box, one answer: the D3-mode carrier agrees, and the identity is the
-        # workset member, not the marker's standalone.
-        from kanibako.launch import box_resolve
+        # workset member.
         detected = box_resolve.detect_box_mode(external, std, config)
         assert detected == DetectionResult(BoxMode.named, external)
         identity = box_resolve.resolve_box_identity(external, std, config)
         assert identity is not None
         assert (identity["mode"], identity["name"], identity["registered"]) == (
             BoxMode.named, "sb", True)
+
+    def test_add_project_without_drop_marker_keeps_it(self, config_file, tmp_home):
+        """Only ``workset connect`` drops the marker; convert and move rebuild the root."""
+        from kanibako.launch import box_resolve
+        from kanibako.project.workset import add_project, create_workset
+
+        std = load_std_paths(load_config(config_file))
+        ws = create_workset("my_set", tmp_home / "worksets" / "my_set", std)
+        external = (tmp_home / "standalone_box").resolve()
+        external.mkdir()
+        (external / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+
+        add_project(ws, "sb", external, std, force=True)
+
+        assert box_resolve.stores_standalone_registry_null(external)
+
+
+class TestDropStandaloneMarker:
+    """``drop_standalone_marker`` removes the one key and leaves the rest of the file."""
+
+    @staticmethod
+    def _drop(root):
+        from kanibako.settings.paths import drop_standalone_marker
+
+        undo = []
+        drop_standalone_marker(root, undo.append)
+        return undo
+
+    @pytest.mark.parametrize("spelling", ["null", "~", ""])
+    def test_an_edited_file_keeps_every_other_key(self, tmp_path, spelling):
+        from kanibako.settings.config_io import load_doc
+
+        text = (f"# mine\nworkset:\n  kuid: abcde\n  registry: {spelling}  # note\n"
+                "  logs: here\nbox:\n  enable_vault: false\n")
+        (tmp_path / WORKSET_META_FILE).write_text(text)
+
+        undo = self._drop(tmp_path)
+
+        assert load_doc(tmp_path / WORKSET_META_FILE) == {
+            "workset": {"kuid": "abcde", "logs": "here"}, "box": {"enable_vault": False}}
+        assert len(undo) == 1
+        undo[0]()
+        assert (tmp_path / WORKSET_META_FILE).read_text() == text
+
+    def test_a_file_holding_only_the_marker_stays_empty(self, tmp_path):
+        (tmp_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
+
+        self._drop(tmp_path)
+
+        assert (tmp_path / WORKSET_META_FILE).read_text() == ""
+
+    @pytest.mark.parametrize("text", [
+        "workset:\n  kuid: abcde\n", "workset:\n  registry: elsewhere\n", "",
+    ])
+    def test_no_marker_writes_nothing(self, tmp_path, text):
+        path = tmp_path / WORKSET_META_FILE
+        path.write_text(text)
+        before = path.stat().st_mtime_ns
+
+        assert self._drop(tmp_path) == []
+        assert path.read_text() == text
+        assert path.stat().st_mtime_ns == before
+
+    def test_a_missing_file_warns_and_writes_nothing(self, tmp_path, caplog):
+        with caplog.at_level("WARNING"):
+            assert self._drop(tmp_path) == []
+        assert any("could not remove the standalone marker" in r.getMessage()
+                   for r in caplog.records)
+        assert not (tmp_path / WORKSET_META_FILE).exists()
 
 
 class TestFindLocalAncestor:

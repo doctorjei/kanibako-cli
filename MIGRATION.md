@@ -470,12 +470,14 @@ inside boxes. In order of likely impact:
 53. **`kanibako shell`, `box info`, `config reset`, and `agent info` read the values an agent settings file sets
     under `self:`; a value an agent launch refuses now stops `kanibako shell` and `box info`** — see *Every command
     reads an agent settings file's own values*.
-
-53. **`box move`, `box convert`, `box duplicate`, `workset create`, and `workset connect` into another box's
+54. **`box move`, `box convert`, `box duplicate`, `workset create`, and `workset connect` into another box's
     tree need `--force`; a move that carries another box away, `duplicate --force` onto another box's
     workspace or root, and `workset connect` onto a standalone box's own workspace exit 1 even with
     `--force`** — see *`move`, `convert`, `duplicate`, `workset create`,
     and `workset connect` on another box's path are refused*.
+55. **`workset connect --force` removes a standalone box's `workset.registry: null` line, so after
+    `workset disconnect` the directory is a plain one, not a standalone box** — see *`workset connect
+    --force` removes a standalone box's marker*.
 
 ---
 
@@ -3051,10 +3053,9 @@ its own tree. It no longer does: the box stays unregistered, reached by its path
 inside its tree, until you run `kanibako box register <path>` (or created it with
 `--register`). Moving it keeps it unregistered, and `box rm <path>` has nothing to remove —
 `box rm <path> --purge` deletes it. A standalone copy made by `box duplicate` is a new box:
-unregistered, even when the source is registered, unless you pass `--register`. A registered
-standalone box absorbed by `workset connect --force` comes back unregistered after
-`workset disconnect`; run `kanibako box register <path>` to register it again. Named
-worksets are still imported when found.
+unregistered, even when the source is registered, unless you pass `--register`. A standalone
+box absorbed by `workset connect --force` stops being standalone — see *`workset connect
+--force` removes a standalone box's marker*. Named worksets are still imported when found.
 
 ⚑ **`--register` is standalone-only.** A default-mode box's registration is its workset
 membership, which is not optional; the flag is accepted and does nothing there.
@@ -7726,6 +7727,24 @@ settings file is not touched.
 **What you must do.** Nothing, unless you relied on a creating launch's flags being one-off. To undo a
 saved value, `kanibako box reset <key>` in the box. For a refused `-e`, drop it, or set the `env` key the
 error names (for a `secret_path` key, change the file it points at, or remove it and set `box.env.VAR`).
+
+### 2.115 `workset connect --force` removes a standalone box's marker
+
+**Read this if you connect standalone boxes into a working set with `--force`.**
+
+**What changed.** A box is in one working set only. `workset connect --force` on a standalone box
+already moved its `standalone:` registration into the working set; it now also removes the
+`workset.registry: null` line from the box's root `workset.yaml`. Only that line goes: the file, its
+`workset.kuid`, your other settings, and every directory stay. The file is rewritten, so comments in
+it are lost. If kanibako cannot rewrite the file (it is a symlink, or read-only), it warns, keeps the
+line, and connects the box anyway; it is the working set's box all the same.
+
+`workset disconnect` writes nothing back. The box ends like any disconnected member: unregistered,
+its files where they are, and the printed `kanibako workset connect` cure re-adopts it without
+`--force`. Before, it stayed a standalone box, unregistered.
+
+**What you must do.** Nothing. To make the directory a standalone box after a disconnect, create one
+there: `kanibako box create --standalone <path>`.
 
 ---
 

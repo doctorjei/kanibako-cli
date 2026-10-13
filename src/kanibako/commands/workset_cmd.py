@@ -800,7 +800,7 @@ def run_connect(args: argparse.Namespace) -> int:
             workspace=literal_path(source),
         ) as rollback:
             proj = add_project(ws, project_name, source, std, force=args.force,
-                               noun="workset connect", rollback=rollback,
+                               noun="workset connect", rollback=rollback, drop_marker=True,
                                leftover_cure="running the same 'kanibako workset connect' again "
                                              "adopts it")
     except WorksetError as e:

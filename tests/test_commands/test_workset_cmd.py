@@ -3586,3 +3586,245 @@ class TestWorksetCreateConnectReadOnlyRegistry:
         assert run_connect(args) == 0
         assert journal_mod.pending_import(std.journal, boxes / "lockproj") is None
         assert "lockproj" in _workset_boxes(ws)
+
+
+class TestConnectDropsTheStandaloneMarker:
+    """His 181-DF3 and 182nd rulings: a box is in one workset only.  ``workset connect
+    --force`` of a standalone box removes its marker (the ``workset.registry`` null) and
+    nothing else; ``disconnect`` writes none back, so the box ends as a plain directory."""
+
+    @staticmethod
+    def _standalone(std, root: Path, *, register: bool = True) -> str:
+        from kanibako.settings.paths import establish_standalone
+
+        root.mkdir()
+        (root / "file.txt").write_text("mine")
+        name = establish_standalone(std, root, enable_vault=None, register=register)[0]
+        (root / "box_data").mkdir(exist_ok=True)
+        (root / "box_data" / "home.txt").write_text("state")
+        return name
+
+    @staticmethod
+    def _connect(workset: str, root: Path, *, force: bool = True) -> int:
+        from kanibako.commands.workset_cmd import run_connect
+
+        return run_connect(argparse.Namespace(
+            workset=workset, source=str(root), project_name="sb", force=force))
+
+    @staticmethod
+    def _disconnect(workset: str) -> int:
+        from kanibako.commands.workset_cmd import run_disconnect
+
+        return run_disconnect(argparse.Namespace(
+            workset=workset, project="sb", remove_files=False, force=True))
+
+    @pytest.mark.parametrize("register", [True, False])
+    def test_force_connect_removes_only_the_marker(self, config_file, tmp_home, register):
+        from kanibako.launch import box_resolve
+        from kanibako.project import registry_store
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import DetectionResult, detect_project_mode
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        name = self._standalone(std, root, register=register)
+        kuid = load_doc(root / "workset.yaml")["workset"]["kuid"]
+
+        assert self._connect("dm", root) == 0
+
+        assert load_doc(root / "workset.yaml") == {"workset": {"kuid": kuid}}
+        assert not box_resolve.stores_standalone_registry_null(root)
+        assert (root / "box_data" / "home.txt").read_text() == "state"
+        assert (root / "file.txt").read_text() == "mine"
+        assert name not in registry_store.load_standalone(std.registry)
+        assert _workset_boxes(ws) == {"sb": str(root)}
+        assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(
+            BoxMode.named, root)
+        assert detect_project_mode(root, std, config).mode is BoxMode.named
+
+    def test_box_register_after_connect_imports_nothing(self, config_file, tmp_home, capsys):
+        from kanibako.commands.box._parser import run_register
+        from kanibako.project import registry_store
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        self._standalone(std, root)
+        assert self._connect("dm", root) == 0
+        capsys.readouterr()
+
+        assert run_register(argparse.Namespace(target=str(root), box=None)) == 0
+        assert registry_store.load_standalone(std.registry) == {}
+        assert f"'dm/sb' is already registered (named box at {root})" in capsys.readouterr().out
+
+    def test_disconnect_leaves_a_plain_directory_that_reconnects_without_force(
+        self, config_file, tmp_home, capsys,
+    ):
+        from kanibako.launch import box_resolve
+        from kanibako.project import registry_store
+        from kanibako.settings.config_io import load_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        self._standalone(std, root)
+        assert self._connect("dm", root) == 0
+        after_connect = (root / "workset.yaml").read_text()
+        capsys.readouterr()
+
+        assert self._disconnect("dm") == 0
+
+        out = capsys.readouterr().out
+        assert f"Re-adopt them: kanibako workset connect dm {root} --name sb" in out
+        assert (root / "workset.yaml").read_text() == after_connect
+        assert "registry" not in load_doc(root / "workset.yaml")["workset"]
+        assert registry_store.load_standalone(std.registry) == {}
+        assert _workset_boxes(ws) == {}
+        assert box_resolve.detect_box_mode(root, std, config) is None
+        # The printed cure works as printed: no marker, so no --force.
+        assert self._connect("dm", root, force=False) == 0
+        assert _workset_boxes(ws) == {"sb": str(root)}
+
+    def test_disconnect_of_a_plain_member_writes_no_marker(self, config_file, tmp_home):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "plain").resolve()
+        root.mkdir()
+
+        assert self._connect("dm", root, force=False) == 0
+        assert self._disconnect("dm") == 0
+
+        assert sorted(p.name for p in root.iterdir()) == []
+
+    def test_convert_to_standalone_after_connect_writes_the_marker_again(
+        self, config_file, tmp_home,
+    ):
+        from kanibako.commands.box._lifecycle import run_convert
+        from kanibako.launch import box_resolve
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        self._standalone(std, root)
+        assert self._connect("dm", root) == 0
+        # Convert refuses to adopt a leftover ``box_data/`` (its own refusal, the same
+        # with or without the marker), so this root has none.
+        (root / "box_data" / "home.txt").unlink()
+        (root / "box_data").rmdir()
+
+        assert run_convert(argparse.Namespace(
+            old="dm/sb", force=True, to_default=False, to_standalone=True,
+            to_workset=None, move=None, name=None)) == 0
+
+        assert box_resolve.stores_standalone_registry_null(root)
+        assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.standalone
+
+    @pytest.mark.parametrize("where", ["in_the_write", "after_the_write"])
+    def test_an_interrupted_connect_restores_the_marker_and_the_row(
+        self, config_file, tmp_home, monkeypatch, where,
+    ):
+        """The unwind writes the marker back, byte for byte, so a failed connect leaves the
+        marker or the membership, never neither."""
+        from kanibako import boxfs
+        from kanibako.project import registry_store
+        from kanibako.project.workset import load_workset
+        from kanibako.settings import paths
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        name = self._standalone(std, root)
+        before = (root / "workset.yaml").read_text()
+
+        if where == "in_the_write":
+            real_write = boxfs.write_text
+            calls = []
+
+            def write_text(path, root_, data, *a, **kw):
+                if Path(path) == root / "workset.yaml":
+                    calls.append(path)
+                    if len(calls) == 1:
+                        raise KeyboardInterrupt
+                return real_write(path, root_, data, *a, **kw)
+
+            monkeypatch.setattr(boxfs, "write_text", write_text)
+        else:
+            real_drop = paths.drop_standalone_marker
+
+            def drop(root_, push_undo):
+                real_drop(root_, push_undo)
+                assert (root_ / "workset.yaml").read_text() != before
+                raise KeyboardInterrupt
+
+            monkeypatch.setattr(paths, "drop_standalone_marker", drop)
+
+        with pytest.raises(KeyboardInterrupt):
+            self._connect("dm", root)
+
+        if where == "in_the_write":
+            assert len(calls) == 2  # the undo was pushed before the write, and ran
+        assert (root / "workset.yaml").read_text() == before
+        assert registry_store.load_standalone(std.registry) == {name: str(root)}
+        assert _workset_boxes(load_workset(list_worksets(std)["dm"], "dm",
+                                           early_system=std.early_system)) == {}
+
+    def test_a_linked_marker_file_is_kept_and_the_connect_goes_ahead(
+        self, config_file, tmp_home, caplog,
+    ):
+        """The root is box-writable, so the edit goes through boxfs, which never follows the
+        link: the link and its target stay, with a warning, and the box is the member."""
+        from kanibako.launch import box_resolve
+        from kanibako.settings.paths import DetectionResult
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        self._standalone(std, root)
+        target = (tmp_home / "elsewhere.yaml").resolve()
+        (root / "workset.yaml").rename(target)
+        (root / "workset.yaml").symlink_to(target)
+        before = target.read_text()
+
+        with caplog.at_level("WARNING"):
+            assert self._connect("dm", root) == 0
+
+        assert (root / "workset.yaml").is_symlink()
+        assert target.read_text() == before
+        assert any("could not remove the standalone marker" in r.getMessage()
+                   for r in caplog.records)
+        assert _workset_boxes(ws) == {"sb": str(root)}
+        assert box_resolve.detect_box_mode(root, std, config) == DetectionResult(
+            BoxMode.named, root)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the read-only directory")
+    def test_a_marker_that_cannot_be_rewritten_is_kept_and_the_connect_goes_ahead(
+        self, config_file, tmp_home, caplog,
+    ):
+        from kanibako.launch import box_resolve
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("dm", (tmp_home / "ws_dm").resolve(), std)
+        root = (tmp_home / "sa").resolve()
+        self._standalone(std, root)
+        before = (root / "workset.yaml").read_text()
+        root.chmod(0o555)
+        try:
+            with caplog.at_level("WARNING"):
+                assert self._connect("dm", root) == 0
+        finally:
+            root.chmod(0o755)
+
+        assert (root / "workset.yaml").read_text() == before
+        assert any("could not remove the standalone marker" in r.getMessage()
+                   for r in caplog.records)
+        assert _workset_boxes(ws) == {"sb": str(root)}
+        assert box_resolve.detect_box_mode(root, std, config).mode is BoxMode.named

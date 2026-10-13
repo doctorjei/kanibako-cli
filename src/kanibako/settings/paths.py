@@ -2814,6 +2814,41 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool |
     return box_name, shell_path, vault_ro_path, vault_rw_path
 
 
+def drop_standalone_marker(root: Path, push_undo: Callable[[Callable[[], None]], None]) -> None:
+    """Remove the ``workset.registry`` null that :func:`establish_standalone` wrote to *root*.
+
+    Only that key goes: the file, its kuid, and the user's settings stay.  *root* is
+    box-writable, so the read and write go through :mod:`kanibako.boxfs`, which refuses a
+    link.  The undo that writes the old text back is pushed BEFORE the write, so an
+    interrupt between them still restores the marker.  A file that cannot be read,
+    parsed, or written keeps its marker, with a warning; the caller goes on.
+    """
+    import yaml
+
+    from kanibako import boxfs
+    from kanibako.settings.config_io import _dump_text, parse_doc_text
+
+    path = root / WORKSET_META_FILE
+    try:
+        old = boxfs.read_text(path, root)
+        data = parse_doc_text(old)
+        if not isinstance(data, dict):
+            return
+        table = data.get("workset")
+        if not isinstance(table, dict) or "registry" not in table or table["registry"] is not None:
+            return
+        del table["registry"]
+        if not table:
+            del data["workset"]
+        push_undo(lambda: boxfs.write_text(path, root, old))
+        boxfs.write_text(path, root, _dump_text(data) if data else "")
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        get_logger(__name__).warning(
+            "could not remove the standalone marker (workset.registry: null) from %s: %s. "
+            "The box is the workset's box all the same; remove that line by hand.",
+            path, exc)
+
+
 def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
                                project_dir: str | None = None, *, initialize: bool = False,
                                enable_vault: bool | None = None, name: str = "",

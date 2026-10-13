@@ -118,9 +118,10 @@ class TestDetectBoxMode:
         assert result.mode is BoxMode.named
         assert result.project_root == box
 
-    def test_other_space_registry_does_not_beat_marker(self, std, config, tmp_home):
-        """S1b (Q1 = only the path space's registry): an external connect outside the
-        workset root is in the PRIMARY space, so its marker wins → STANDALONE.
+    def test_other_space_connection_beats_a_leftover_marker(self, std, config, tmp_home):
+        """A box is in one workset only (his 180-DF2): a marked root CONNECTED into a named
+        workset from outside its tree is that workset's NAMED box.  Connect drops the
+        marker last, so this state is a connect killed between the two writes.
         """
         box = tmp_home / "declares_standalone"
         box.mkdir()
@@ -131,8 +132,8 @@ class TestDetectBoxMode:
 
         result = box_resolve.detect_box_mode(box, std, config)
         assert result is not None
-        assert result.mode is BoxMode.standalone
-        assert result.project_root == box.resolve()
+        assert result.mode is BoxMode.named
+        assert result.project_root == box
 
     def test_standalone_registry_hit_without_marker_is_that_box(self, std, config, tmp_home):
         """S1c: the standalone registry names the path but its ``workset.yaml`` is gone →

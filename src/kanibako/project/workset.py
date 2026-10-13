@@ -2162,6 +2162,7 @@ def add_project(
     outer_row: tuple[str, str] | None = None,
     rollback: _Unwind | None = None,
     leftover_cure: str = REMOVE_LEFTOVER,
+    drop_marker: bool = False,
 ) -> WorksetProject:
     """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead.
 
@@ -2178,6 +2179,9 @@ def add_project(
     leaves its restore to *outer*, so a failed re-register is named once.  *rollback*
     only counts this call's failed undo steps, so a caller can tell a clean failure from a
     partial one.  *leftover_cure* ends the Note naming a dir this call could not remove.
+    *drop_marker* (``workset connect`` only) removes a forced standalone
+    source's marker as the LAST step, after the membership write, so an interrupt leaves
+    the marker or the membership, never neither; the unwind writes it back.
     """
     # ⚑ Case-blind (§0): the registry write treats ``Proj`` as member ``proj`` and
     # replaces its row, orphaning ``proj``'s store.
@@ -2212,10 +2216,12 @@ def add_project(
     absorbed: tuple[str, str] | None = None
     from kanibako.launch import box_resolve as _box_resolve
 
-    if (std is not None and is_external and force
-            and _box_resolve.stores_standalone_registry_null(resolved_source)):
+    marked = (std is not None and is_external and force
+              and _box_resolve.stores_standalone_registry_null(resolved_source))
+    if marked:
         from kanibako.project import registry_store
 
+        assert std is not None  # implied by *marked*; mypy cannot track it
         absorbed_name = registry_store.standalone_name_for_same_dir(std.registry,
                                                                     literal_source)
         if absorbed_name is not None:
@@ -2281,8 +2287,8 @@ def add_project(
                 )
 
             # ⚑ --force absorb: MOVE the registration — a box lives in EXACTLY ONE
-            # registry.  The in-place marker STAYS (intrinsic identity), so after a
-            # disconnect the box is standalone again, but unregistered.
+            # registry.  ``workset connect`` also drops the marker, below; convert and
+            # move rebuild the root themselves.
             if absorbed is not None:
                 from kanibako.project import registry_store
 
@@ -2326,6 +2332,13 @@ def add_project(
         proj = WorksetProject(name=name, source_path=recorded_workspace)
         ws.projects.append(proj)
         unwind.push(lambda: _detach_project(ws, name))
+
+        # ⚑ A box is in one workset only, so the forced standalone's marker goes, LAST.
+        # The file stays: it holds the kuid and the user's settings.
+        if drop_marker and marked:
+            from kanibako.settings.paths import drop_standalone_marker
+
+            drop_standalone_marker(resolved_source, unwind.push)
     except BaseException as exc:
         unwind.run()
         for tally in (outer, rollback):

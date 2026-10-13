@@ -259,8 +259,9 @@ class TestStandaloneRegisterLater:
     def test_marked_root_connected_into_a_named_workset_is_not_imported(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        """A force-connected standalone keeps its marker but is the workset's named box:
-        registering its path is a no-op, never a second (standalone) registration."""
+        """A marked root connected into a named workset (a connect killed before it drops
+        the marker) is the workset's named box: registering its path is a no-op, never a
+        second (standalone) registration."""
         from kanibako.project.workset import add_project, create_workset
         from kanibako.settings.config import WORKSET_META_FILE
 
