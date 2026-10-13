@@ -1604,7 +1604,7 @@ class TestHelperDefaultCategories:
         # ``{workset.logs}/{meta.box.name}.jsonl``, so the floor below STANDS IN FOR
         # ``workset_anchor_floor`` / ``meta_identity_floor`` with LITERALS.
         # ⚑ Not the same thing: the real ``workset_anchor_floor`` materializes
-        # ``workset.logs`` as the FORMULA ``@meta.workset.path/logs``, so this test
+        # ``workset.logs`` as the FORMULA ``{meta.workset.path}/logs``, so this test
         # does NOT exercise the anchor chain — it pins the LAST link, that the bind's
         # own @-ref resolves back to the same path the ``.exists()`` gate probed.
         # The anchor chain itself is covered by ``test_categories_live`` and the

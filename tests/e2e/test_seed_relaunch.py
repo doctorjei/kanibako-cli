@@ -152,7 +152,7 @@ def _home_is_seeded(env: dict[str, str], project: Path) -> bool:
 def _write_seed_config(env: dict[str, str], host_seed_dir: Path) -> None:
     """Configure a ``system.seeded`` entry for ``~/canon/notebook`` in the system settings file.
 
-    The create path reads ``seeded`` category keys from ``@config.settings`` ==
+    The create path reads ``seeded`` category keys from ``{config.settings}`` ==
     ``{XDG_DATA_HOME}/kanibako/global/settings.yaml`` (see
     ``_resolve_launch_snapshot``).  We point a ``~/canon/notebook``-style seed at
     *host_seed_dir*, mirroring the user's real per-agent seed entry that was

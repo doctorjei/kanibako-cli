@@ -1222,7 +1222,7 @@ class TestValidation:
     def test_the_refusal_names_what_declaring_the_vault_actually_does(self, env):
         """D1 — the cure a guard prints is part of the guard.
 
-        Declaring the colliding directory (``vault_rw: @meta.workset.path/vault/rw``)
+        Declaring the colliding directory (``vault_rw: {meta.workset.path}/vault/rw``)
         switches this guard OFF, the convert adopts it, ``standalone_vault_teardown``
         marks it REMOVABLE inside the root, and ``box rm --purge`` deletes it.  The
         first cut recommended exactly that.
@@ -3025,7 +3025,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         assert (root / "file.txt").is_file()
 
     def test_in_root_repoint_keeps_the_directory_that_holds_the_arm(self, env, capsys):
-        """``vault_ro: @meta.workset.path/store/ro`` makes the root child ``store`` — a
+        """``vault_ro: {meta.workset.path}/store/ro`` makes the root child ``store`` — a
         name no list holds.  The ANCESTOR test is what keeps it; an equality test would
         sweep it.  ⚑ The repoint carries the ``@``-ref because [R147] refuses a bare
         relative; the directory it names is the same one ``store/ro`` used to reach."""
@@ -3110,7 +3110,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         assert not (root / "workspace").exists()
 
     def test_a_workspaces_key_at_the_root_consolidates_nothing(self, env):
-        """``workspaces: @meta.workset.path`` means the workspace already IS the root —
+        """``workspaces: {meta.workset.path}`` means the workspace already IS the root —
         there is nothing to consolidate, and moving each child onto itself would raise.
         ⚑ It used to be spelled ``.``, which [R147] refuses along with every other bare
         relative; the ``@``-ref names the same directory and names it unambiguously."""

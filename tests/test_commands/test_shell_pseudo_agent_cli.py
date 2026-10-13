@@ -1,6 +1,6 @@
 """The shell pseudo-agent is ADDRESSABLE on the CLI; its name stays unclaimable.
 
-Keyspec §2b: the plain-shell box is an effective ``@system.agent`` of ``shell``, and
+Keyspec §2b: the plain-shell box is an effective ``{system.agent}`` of ``shell``, and
 *"as any other agent, it can be invoked via CLI ``--agent shell``"*.  Its §2d fence
 declares its own settings file (``meta.agent.shell.settings``), which is the file a
 ``kanibako agent <verb> shell`` edits (§2a: a config verb writes the file of the

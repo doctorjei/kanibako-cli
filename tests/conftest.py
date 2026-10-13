@@ -355,7 +355,7 @@ def start_mocks():
         from kanibako.settings.paths import ProjectGroup, BoxMode
 
         # ⚑ REAL host roots for the box STORE. The §2a seed layers resolve their
-        # destinations to absolute HOST paths under ``@meta.box.path``, and the
+        # destinations to absolute HOST paths under ``{meta.box.path}``, and the
         # applier refuses a dest that does not land inside the box store — so a
         # MagicMock ``primary_workset`` would make every seed dest a MagicMock-repr
         # string and silently skip the seed. These two are the minimum realism the
@@ -590,7 +590,7 @@ def start_mocks():
             proj.metadata_path = MagicMock()
             proj.metadata_path.__truediv__ = MagicMock(return_value=MagicMock())
             # A REAL box home: ``<primary_workset>/boxes/<name>/home``, matching what
-            # ``@meta.box.path/home`` resolves to from the std roots below, so the
+            # ``{meta.box.path}/home`` resolves to from the std roots below, so the
             # HOST-space seed dests land inside the box store (see the note above).
             _pw = Path(_store_tmp.name) / "primary_workset"
             proj.shell_path = _pw / "boxes" / "testproject" / "home"
@@ -688,12 +688,12 @@ def start_mocks():
             runtime.is_running.side_effect = _is_running
 
             # The std roots the box-store resolution reads (see the note at the
-            # top of this factory): REAL paths, so @meta.box.path resolves to
+            # top of this factory): REAL paths, so {meta.box.path} resolves to
             # <primary_workset>/boxes/testproject and the seed dests are contained.
             m_load_std.return_value.primary_workset = _pw
             m_load_std.return_value.data = Path(_store_tmp.name) / "data"
             # ⚑ AND ``template``, for the SAME reason one step further on ([R147]).
-            # The system seed layer's source is ``@system.template/box/home``, and
+            # The system seed layer's source is ``{system.template}/box/home``, and
             # ``system_path_floor`` reads that key off ``std.template`` — so a MagicMock
             # here makes the source the string ``<MagicMock ...>/box/home``, which is
             # not an absolute path at all. It used to reach podman as a NAMED VOLUME
@@ -875,7 +875,7 @@ def start_mocks():
                 # stub reimplements the base-families branch and would otherwise omit
                 # every core family, so every launch driven through it would fail the
                 # collapse rather than exercise it.
-                # 🛑 The value is the LITERAL path, not the ``@meta.box.path/home``
+                # 🛑 The value is the LITERAL path, not the ``{meta.box.path}/home``
                 # formula: this stub passes no ``meta_runtime``/``workset_anchor``, so
                 # an @-ref would not resolve.  ``proj.shell_path`` is a REAL mkdir'd
                 # dir above, so the L7 guarantee-create has nothing to do.
@@ -1216,7 +1216,7 @@ def _sim_unshare_globally(request):
 #: Delivered host signals no test may INHERIT (``tasks/bugfixes.md``, the row
 #: *"OUR FULL-SUITE VERDICT DEPENDS ON THE DEVELOPER'S OWN ENVIRONMENT"*).
 #: ``box.env.COLORTERM`` is a PASSTHROUGH of the host's ``COLORTERM`` (absence is
-#: the whole feature) and ``agent.default.env.TERM`` passes ``$TERM`` through
+#: the whole feature) and ``agent.default.env.TERM`` passes ``{$TERM}`` through
 #: (falling back to ``xterm`` only when the host sets none) — and ``ResolveCtx``
 #: snapshots BOTH at construction — so a test that neither pins nor scrubs them
 #: measures the developer's shell: green on a host exporting

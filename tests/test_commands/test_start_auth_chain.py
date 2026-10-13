@@ -1,8 +1,8 @@
 """The auth SHARING chain answers in the MAIN launch resolve, in every mode (spec §2c).
 
-Keyspec §2c declares ``workset.auth.path`` (``@meta.workset.path/auth`` for primary and
+Keyspec §2c declares ``workset.auth.path`` (``{meta.workset.path}/auth`` for primary and
 named, ``<None>`` for standalone) and ``meta.box.auth.workset_path``
-(``@workset.auth.path/@system.agent``, ``<None>`` for standalone). Only the two auth
+(``{workset.auth.path}/{system.agent}``, ``<None>`` for standalone). Only the two auth
 resolves used to fold ``auth_chain_floor``; the main launch resolve folded none, so a
 user ``@``-ref to either key resolved against nothing there.
 
@@ -97,7 +97,7 @@ class TestTheMainResolveFoldsTheAuthChain:
 
   @pytest.mark.parametrize("mode", ("primary", "named"))
   def test_workset_modes_resolve_the_spec_formulas(self, mode, request, std):
-    """``@meta.workset.path/auth`` and ``@workset.auth.path/@system.agent`` (§2c)."""
+    """``{meta.workset.path}/auth`` and ``{workset.auth.path}/{system.agent}`` (§2c)."""
     proj = request.getfixturevalue(f"{mode}_proj")
     snapshot = _main_snapshot(std, proj)
     ws_auth = snapshot_leaf(snapshot, WS_AUTH_PATH)
@@ -138,7 +138,7 @@ class TestTheCreateTimeSyncCarriesTheSelection:
 class TestTheCreateTimeSeedCarriesTheChain:
 
   def test_a_user_seed_under_the_auth_dir_copies_from_it(self, primary_proj, std):
-    """A user ``seeded`` row sourced at ``@workset.auth.path/x`` names ``<ws>/auth/x``."""
+    """A user ``seeded`` row sourced at ``{workset.auth.path}/x`` names ``<ws>/auth/x``."""
     box_file, _workset_file = box_workset_settings_paths(primary_proj)
     box_file.parent.mkdir(parents=True, exist_ok=True)
     box_file.write_text('box:\n  seeded:\n    "~/probe": ["{workset.auth.path}/x"]\n')
@@ -188,7 +188,7 @@ class TestEveryResolveFoldsTheChain:
 
 
 class TestANoAgentLaunchRunsTheShell:
-  """``kanibako shell`` / ``--entrypoint`` select no agent; §2b makes ``@system.agent`` ``shell``."""
+  """``kanibako shell`` / ``--entrypoint`` select no agent; §2b makes ``{system.agent}`` ``shell``."""
 
   def test_the_selection_pins_the_shell(self):
     assert start_cmd._launch_selection_level(None) == {"system.agent": GENERAL_SLOT}

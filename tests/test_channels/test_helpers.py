@@ -140,7 +140,7 @@ class TestSpawnBudgetIO:
         """⚑ THE ANTI-REGRESSION CASE: a bespoke ``spawn:`` table is what was wrong.
 
         The stored shape must be the ``system: helpers:`` table the keyspace declares,
-        because the SAME reader is pointed at a box's own ``@config.settings``. A
+        because the SAME reader is pointed at a box's own ``{config.settings}``. A
         round-trip alone would stay green through any private shape.
         """
         from kanibako.settings.config_io import load_doc

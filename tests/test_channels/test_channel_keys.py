@@ -125,7 +125,7 @@ class TestWorksetLocalLeafRepoints:
         assert wch is not None
         assert wch.chat == ws_root / "talk"
         assert wch.chat_general == ws_root / "talk" / "general.md"
-        # ⚑ broadcast DEFAULTS off the chat key (``@workset.channels.chat/broadcast.md``),
+        # ⚑ broadcast DEFAULTS off the chat key (``{workset.channels.chat}/broadcast.md``),
         # so moving chat moves it — that is the manifest's own formula, not a join.
         assert wch.chat_broadcast == ws_root / "talk" / "broadcast.md"
 
@@ -188,7 +188,7 @@ class TestWorksetLocalLeafRepoints:
         """A null ``chat`` takes ``general.md`` AND ``broadcast`` with it.
 
         ``general.md`` names no key, so it follows ``chat`` into nothing.  ``broadcast``
-        is a key, but its manifest row is ``@workset.channels.chat/broadcast.md`` — an
+        is a key, but its manifest row is ``{workset.channels.chat}/broadcast.md`` — an
         EMBEDDED ref, and §0: an embedded reference to a present ``<None>`` makes the
         whole value ``<None>``.
         """
@@ -376,7 +376,7 @@ class TestTheChatSeederFollowsTheKey:
 
 
 class TestTheFloorCarriesTheWholeFamily:
-    """A key nothing installs is not resolvable, so ``@workset.channels.x`` would dangle."""
+    """A key nothing installs is not resolvable, so ``{workset.channels.x}`` would dangle."""
 
     def test_the_launch_floor_installs_channelroot_and_all_six_leaves(
         self, named_proj, std,

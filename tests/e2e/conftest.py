@@ -448,10 +448,10 @@ def write_e2e_settings_files(
     ran BY REFERENCE — on CI the retag below makes the two names the same image — and the
     gate passed on a fact about a launch it did not describe.
 
-    The image pin now goes where a pin belongs: the ``box:`` table of ``@config.settings``,
+    The image pin now goes where a pin belongs: the ``box:`` table of ``{config.settings}``,
     the SYSTEM tier of the settings cascade — the same table, in the same file, that
     ``kanibako system set box.image=<img>`` writes to.  ⚑ NEITHER THE LOCATION NOR THE
-    BYTES IS ASSERTED HERE.  The FILE is located by resolving ``@config.settings`` through
+    BYTES IS ASSERTED HERE.  The FILE is located by resolving ``{config.settings}`` through
     the product's own ``paths.load_system_config``, so a storage repoint carries this write
     with it instead of leaving it writing where nothing reads — which is the dead stanza's
     failure wearing a new hat.  The BYTES come from ``config_io.dump_doc``, the serializer
@@ -567,12 +567,12 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
     # was auto-picked; the count rule is gone, so it is now load-bearing at every
     # count — never remove it on the grounds that one agent is unambiguous.
     # The system settings tier
-    # (@config.settings = $XDG_DATA_HOME/kanibako/global/settings.yaml) holds the
+    # ({config.settings} = $XDG_DATA_HOME/kanibako/global/settings.yaml) holds the
     # ``system.agent`` SETTING in its ``system:`` table, which the SYSTEM tier of
     # the settings cascade reads, so this is faithful to real usage (a configured
     # default agent) and fixes the ambiguity in one place rather than threading
     # --agent through every call.
-    # ⚑ That path is the DEFAULT resolution of ``@config.settings``, not a fixed location;
+    # ⚑ That path is the DEFAULT resolution of ``{config.settings}``, not a fixed location;
     # write_e2e_settings_files resolves the key rather than assuming it.
     # ⮕ P7: this file used to carry ``agent.default.default_agent`` — the RETIRED
     # spelling, which the launch now REFUSES BY NAME (migration M-4). Writing the

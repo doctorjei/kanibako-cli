@@ -113,7 +113,7 @@ class TestBoxConfigShow:
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         """DISPLAY == LAUNCH file (F2/F3 sibling): a behavior value stored
-        ONLY in the system SETTINGS file (``@config.settings`` — the exact
+        ONLY in the system SETTINGS file (``{config.settings}`` — the exact
         ``system_path`` the launch snapshot reads, ``std.settings``) shows in
         ``box show --effective``.  Pins the display ctx's system tier to the
         launch derivation — NEVER the kanibako.cfg CONFIG file (which

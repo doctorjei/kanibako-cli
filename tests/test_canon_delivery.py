@@ -940,7 +940,7 @@ class TestLaunchWiring:
     def test_an_embedded_ref_to_the_floored_box_shell_drops_the_box_canon_bind(
         self, std, config, project_dir, caplog,
     ):
-        """``box.canon=@box.shell/sub`` on a box with no ``box.shell`` set: the floored
+        """``box.canon={box.shell}/sub`` on a box with no ``box.shell`` set: the floored
         present ``None`` makes the whole value ``None`` (embedded ref), so the box's
         handbook bind is skipped and the warning names the file that set ``box.canon``.
         Before the floor, ``box.shell`` was ABSENT and the source rendered ``/sub``."""

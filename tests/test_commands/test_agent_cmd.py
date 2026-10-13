@@ -1639,7 +1639,7 @@ class TestRunReauth:
             "system_settings_path", "agent_cfg_path",
             # ⚑ P7: REQUIRED, not optional. reauth resolves the SAME per-agent
             # credential dir the launch delivers from
-            # (``@workset.auth.path/@system.agent``); omitting the level collapses
+            # (``{workset.auth.path}/{system.agent}``); omitting the level collapses
             # it to the workset auth ROOT, so reauth would refresh a different
             # directory than the box reads. The resolver takes it as a REQUIRED
             # keyword precisely so this cannot be dropped silently again.
@@ -2418,10 +2418,10 @@ class TestAgentSetRoutesThroughTheOneSetter:
     def test_a_ref_that_resolves_still_writes(self, agent_env, capsys):
         """THE GREEN HALF, and it is what keeps the probe from refusing legal values.
 
-        ``@meta.agent.<node>.path`` is the agent STORE-ROOT anchor; the set-time snapshot
+        ``{meta.agent.<node>.path}`` is the agent STORE-ROOT anchor; the set-time snapshot
         carries it only for a node the caller NAMES.  MUTATION PROOF: drop
         ``cascade_agent_name`` from the verb's ``set_config_value`` call and this reddens —
-        the ref dangles — while the ``@bogus.ref`` case above stays green.
+        the ref dangles — while the ``{bogus.ref}`` case above stays green.
         """
         from kanibako.commands.agent_cmd import run_set
 

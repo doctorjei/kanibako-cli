@@ -8,15 +8,15 @@ family, which ``config_keys.py`` declares in the same breath (*"the SYSTEM twins
 ⚑ The defect this file was written against (measured 2026-08-26):
 
 * ``system.channels.broadcast`` was DECLARED, carried a manifest default, resolved into
-  ``StandardPaths.channels_broadcast`` — and reached NO floor.  ``@system.channels.
-  broadcast`` was ``__MISSING__`` in every launch snapshot, so a ``box.bindings.rw``
+  ``StandardPaths.channels_broadcast`` — and reached NO floor.  ``{system.channels.
+  broadcast}`` was ``__MISSING__`` in every launch snapshot, so a ``box.bindings.rw``
   entry whose source is that key collapsed to ``None`` and the bind was DROPPED, with
   no message and no non-zero exit.  Its four siblings mounted.
 * ``commands/workset_cmd._print_effective_shares`` — the SECOND carrier of the same
   tier, named as such by the comment above the launch's own copy of the map (then in
   ``commands/start``; the builder is now ``settings_launch.resolve_inputs``) — carried
   NONE of the five.  So a workset binding sourcing
-  ``@system.channels.chat`` mounted correctly at launch and VANISHED from
+  ``{system.channels.chat}`` mounted correctly at launch and VANISHED from
   ``workset share list --effective``: the display lying about what a launch does, which
   is the exact divergence the two comments warned each other about.
 
@@ -123,7 +123,7 @@ class TestTheTierBuilderIsDerivedNotListed:
         ``system.{backup,cache,runtime}`` were declared, carried manifest defaults and
         were CLI-settable, and no floor installed them — while the SET-time tier
         (``config_interface._path_tier_split``) resolved all eleven.  So ``config set``
-        ACCEPTED a binding sourced at ``@system.cache`` and the launch snapshot answered
+        ACCEPTED a binding sourced at ``{system.cache}`` and the launch snapshot answered
         ``__MISSING__``, dropping it with no message and rc 0: the
         ``system.channels.broadcast`` shape, one omission over.  ``[R143]`` settles that
         this is a defect rather than a stated omission — *"if it has a default value,
@@ -158,7 +158,7 @@ class TestTheTierBuilderIsDerivedNotListed:
 
 
 class TestTheLaunchFloorCarriesTheWholeFamily:
-    """A key no floor installs is not resolvable, so ``@system.channels.x`` dangles."""
+    """A key no floor installs is not resolvable, so ``{system.channels.x}`` dangles."""
 
     def test_the_launch_inputs_install_every_declared_leaf(self, primary_proj, std):
         from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
@@ -251,9 +251,9 @@ class TestTheEffectiveDisplayIsTheLaunchTier:
     def test_a_binding_through_a_system_channel_key_is_displayed(
         self, std, config, tmp_home, capsys,
     ):
-        """⚑ MEASURED: every ``@system.channels.*`` row was silently omitted here.
+        """⚑ MEASURED: every ``{system.channels.*}`` row was silently omitted here.
 
-        The launch mounts ``@system.channels.chat`` and always did; this display
+        The launch mounts ``{system.channels.chat}`` and always did; this display
         dropped the row, because its floor carried none of the five.  A user reading
         ``--effective`` to check their workset saw a binding they had configured simply
         not listed.

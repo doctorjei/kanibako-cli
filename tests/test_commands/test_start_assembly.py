@@ -562,7 +562,7 @@ class TestTheEnvConsumerReadsTheLeaf:
         """Of those, the ones THIS host withholds — the launch drops the key outright.
 
         ⚑ Asked of ``settings_resolve.resolve_var``, the production three-state
-        primitive, NOT of ``os.environ``: a variable with a FALLBACK (``$TERM``)
+        primitive, NOT of ``os.environ``: a variable with a FALLBACK (``{$TERM}``)
         answers even when the host exports nothing, and belongs in the delivered set.
         The question is whether the declared EXPRESSION answers.
         """
@@ -998,7 +998,7 @@ class TestTheFoundationIsBuiltAtTheSeam:
 
         The snapshot's ``meta.box.home`` is a path that matches NO ``proj`` attribute,
         so a seam that re-derived the foundation from ``proj.shell_path`` — or from an
-        inlined ``@meta.box.path/home`` — cannot produce it.
+        inlined ``{meta.box.path}/home`` — cannot produce it.
 
         MUTATION ANCHORS, both proved: change ``store_collapse.HOME_OPTIONS`` to ``"Z,U,rw"`` and the
         options assertion fails; build the bind from anything but

@@ -75,7 +75,7 @@ def _resolve_home_vault(floor, *, mode, config=None):
 
     *config* is the Layer-1 ``config.*`` foundation; PRIMARY mode needs
     ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
-    ``@config.primary_workset`` @-ref for that mode (spec §1A).
+    ``{config.primary_workset}`` @-ref for that mode (spec §1A).
     """
     from kanibako.settings.settings_launch import (
         build_launch_snapshot,
@@ -100,8 +100,8 @@ class TestB2bHomeVaultByteIdentity:
     byte-identical to the pre-B2b proj-attr literals, per mode."""
 
     def test_primary_named_home_vault_resolve_to_proj_literals(self):
-        # PRIMARY/NAMED: home is the ONE mode-independent @meta.box.home KEY (no
-        # bindings.rw row — 6-H); vault routes @workset.vault_*/@meta.box.name.  Both
+        # PRIMARY/NAMED: home is the ONE mode-independent {meta.box.home} KEY (no
+        # bindings.rw row — 6-H); vault routes {workset.vault_*}/{meta.box.name}.  Both
         # resolve to the SAME literal proj.shell_path / proj.vault_*_path the old
         # injection used.
         # ⚑ The ASSERTED PATHS are unchanged from before the anchor collapse — only
@@ -129,7 +129,7 @@ class TestB2bHomeVaultByteIdentity:
             },
         }
         # The anchors are @-ref FORMULAS rooted at meta.workset.path, so the workset
-        # root is what pins the resolved values (= @config.primary_workset at launch).
+        # root is what pins the resolved values (= {config.primary_workset} at launch).
         floor.update(meta_runtime_floor(
             mode="primary", ws_name="__PRIMARY__",
         ))
@@ -150,9 +150,9 @@ class TestB2bHomeVaultByteIdentity:
         assert by_dest["/home/agent/vault/rw"] == "/data/pw/vault/rw/mybox"
 
     def test_standalone_home_vault_resolve_to_proj_literals(self):
-        # STANDALONE: home is the SAME @meta.box.home key as primary/named (the
-        # per-mode variation lives in meta.box.path = the EMPTY LEAF @workset.boxes);
-        # vault routes the bare @workset.vault_* (a lone box has no per-box vault
+        # STANDALONE: home is the SAME {meta.box.home} key as primary/named (the
+        # per-mode variation lives in meta.box.path = the EMPTY LEAF {workset.boxes});
+        # vault routes the bare {workset.vault_*} (a lone box has no per-box vault
         # subdir).  meta.workset.path = the project ROOT, so these resolve to
         # <root>/box_data/home = proj.shell_path and <root>/vault/{ro,rw} =
         # proj.vault_{ro,rw}_path — byte-identical to before the anchor collapse.
@@ -170,7 +170,7 @@ class TestB2bHomeVaultByteIdentity:
                 "/home/agent/vault/ro": ("{workset.vault_ro}", "ro"),
             },
         }
-        # meta.workset.path = @meta.runtime.ws_root = <root> (the standalone launch
+        # meta.workset.path = {meta.runtime.ws_root} = <root> (the standalone launch
         # passes str(proj.metadata_path) = the project ROOT as ws_root_literal).
         floor.update(meta_runtime_floor(
             mode="standalone", ws_name="__STANDALONE__", ws_root_literal="/proj",
@@ -300,8 +300,8 @@ class TestB2bWorksetAnchors:
 
         ⚑ DELIBERATE INVERSION of the retired ``test_standalone_anchors_are_none``.
         The spec states the new values outright — ``workset.boxes =
-        @meta.workset.path/box_data`` (§2c STANDALONE), ``workset.logs =
-        @meta.box.path``, and ``workset.vault_{ro,rw}`` uniform in ALL PROJECTS — so
+        {meta.workset.path}/box_data`` (§2c STANDALONE), ``workset.logs =
+        {meta.box.path}``, and ``workset.vault_{ro,rw}`` uniform in ALL PROJECTS — so
         the old "these are None" assertion is what the spec changed, not something
         this test may keep asserting.
 
@@ -330,7 +330,7 @@ class TestB2bWorksetAnchors:
         # No invented resolved-literal anchors remain — not for home/vault, and
         # (since PHASE R made the spec's spelling expressible) not for the log
         # either: the bind is ``{workset.logs}/{meta.box.name}.jsonl``, and
-        # ``workset.logs = @workset.boxes`` above is what makes it standalone.
+        # ``workset.logs = {workset.boxes}`` above is what makes it standalone.
         assert "meta.box.home_src" not in floor
         assert "meta.box.helper_log" not in floor
         assert "meta.box.vault_ro_src" not in floor
@@ -540,7 +540,7 @@ class TestP1BoxRootAnchor:
         """The DUPLICATION is retired at the source, not merely at resolution.
 
         ``core-defaults.yaml`` used to carry a 3-arm per-mode map for the home
-        host_src, then ONE row naming ``@meta.box.home``. At cutover 6-H it carries NO
+        host_src, then ONE row naming ``{meta.box.home}``. At cutover 6-H it carries NO
         home row at all: home is pid 0 and does not route through ``bindings.rw``
         (spec ``:1015``). Mode-independence therefore has nowhere left to break in this
         arm, and what stops a per-mode home from creeping back is asserting that no
@@ -635,11 +635,11 @@ class TestP1BoxRootAnchor:
         """No mode leaves a dangling separator or a doubled slash in the box root.
 
         Standalone is the interesting one — its ``meta.box.path`` is a BARE
-        whole-value ref, so the resolver inherits ``@workset.boxes`` verbatim rather
+        whole-value ref, so the resolver inherits ``{workset.boxes}`` verbatim rather
         than joining an empty leaf onto it — but the property is asserted for ALL
         THREE modes, because primary/named can produce the same artifact by a
         different route: an empty ``meta.box.name`` makes
-        ``@workset.boxes/@meta.box.name`` resolve to ``<…>/boxes/``, which is the
+        ``{workset.boxes}/{meta.box.name}`` resolve to ``<…>/boxes/``, which is the
         SHARED box store rather than this box (guarded in
         ``settings_launch._assert_box_root_resolved``, pinned in
         ``tests/test_settings_launch.py``).
@@ -661,7 +661,7 @@ class TestB3ImagesStoreKey:
 
     Spec §2b (``box.images_store``) + §2c ALL PROJECTS row ``images`` (D-M8): the
     runtime-probed podman graphroot is the KEY'S DEFAULT, the bind's host_src is
-    the @-ref ``@box.images_store``, and a cascade-tier repoint of the key MOVES
+    the @-ref ``{box.images_store}``, and a cascade-tier repoint of the key MOVES
     the mount.  The B3 rider — that the bind row and the scalar key must not share
     a name — is now carried STRUCTURALLY: under dest-keying (R-5) a bind row has no
     name at all, so what is pinned below is that the arm is TERMINAL and the one
@@ -672,7 +672,7 @@ class TestB3ImagesStoreKey:
         """The emitted table = the @-ref bind + the probed-default scalar.
 
         Spelled, not just resolved (helper_log precedent): the host_src IS
-        ``@box.images_store``, so the mount follows the KEY rather than a probed
+        ``{box.images_store}``, so the mount follows the KEY rather than a probed
         literal that happens to match.  The probe enters the keyspace in the SAME
         table, as the key's floor-scalar default.
 
@@ -748,7 +748,7 @@ class TestB3ImagesStoreKey:
         return probed, {m.box_dest: m.host_src for m in winners}
 
     def test_default_resolves_to_the_probed_graphroot(self, tmp_path):
-        """Out of the box, ``@box.images_store`` resolves to the probe.
+        """Out of the box, ``{box.images_store}`` resolves to the probe.
 
         No file sets the key, so the floor default (the probed graphroot) wins
         and the store mount is byte-identical to the pre-B3 hardwired source.
@@ -807,7 +807,7 @@ class TestB3ImagesStoreKey:
         )
 
     def test_probe_fail_without_a_set_key_drops_the_store_mount(self, tmp_path):
-        """Probe fail + no set key: ``@box.images_store`` propagates ABSENT.
+        """Probe fail + no set key: ``{box.images_store}`` propagates ABSENT.
 
         The whole-value @-ref to an unset key drops the bind (spec §0), so the store
         mount simply is not there — the launch seam reads the same resolved key
@@ -879,7 +879,7 @@ class TestDeclarationRoots:
         }
 
     def test_absolute_and_ref_sources_are_not_rooted(self):
-        """T4 — an IDENTITY mount whose source is rooted at ``@system.cache``.
+        """T4 — an IDENTITY mount whose source is rooted at ``{system.cache}``.
 
         A rule that prefixed a self-resolving source would break §2a's own
         reversal of the "absolute source is a category mismatch" ruling.

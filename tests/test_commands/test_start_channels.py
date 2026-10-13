@@ -142,7 +142,7 @@ class TestPrimaryChannelMounts:
             by_dest["/home/agent/channels/mailboxes"][0]
             == str(std.channels_mailboxes)
         )
-        # Workset-local sources hang off @meta.workset.path/channels.
+        # Workset-local sources hang off {meta.workset.path}/channels.
         wch = _ch.workset_channel_paths(primary_proj, std)
         assert wch is not None
         assert by_dest["/home/agent/channels/workset/common"][0] == str(wch.common)
@@ -155,7 +155,7 @@ class TestPrimaryChannelMounts:
         """A2: inbox + mailboxes/<ws>/<self> are the SAME host dir, two dests."""
         by_dest, _ = _build(std, primary_proj)
         addr = _ch.box_channel_addresses(primary_proj, std)
-        # ~/channels/inbox source == @system.channels.mailboxes/__PRIMARY__/<box>
+        # ~/channels/inbox source == {system.channels.mailboxes}/__PRIMARY__/<box>
         assert by_dest["/home/agent/channels/inbox"][0] == str(addr.inbox)
         expected = std.channels_mailboxes / WS_TOKEN_PRIMARY / primary_proj.name
         assert by_dest["/home/agent/channels/inbox"][0] == str(expected)
@@ -269,7 +269,7 @@ class TestNullWorksetChatIsNotSeeded:
         sections, leaf = _KEY_ROUTES["workset.channels.chat"]
         write_nested_key(ws_root / WORKSET_META_FILE, sections, leaf, None)
         _seed_channel_files(std, named_proj)
-        # ``general.md`` names no key and ``broadcast`` is ``@workset.channels.chat``/
+        # ``general.md`` names no key and ``broadcast`` is ``{workset.channels.chat}``/
         # ``broadcast.md`` — an embedded ref, so §0 makes the whole value null with it.
         assert not (ws_root / "channels" / "chat").exists()
         # The SYSTEM-scope log is unconditional — only the workset arm is nulled.
@@ -308,7 +308,7 @@ class TestNullSystemChannelSeedsNothing:
 
     def test_a_null_system_chat_does_not_raise_and_seeds_nothing(self, named_proj, std):
         nulled = self._nulled(std, "system.channels.chat")
-        # ``broadcast`` is ``@system.channels.chat/broadcast.md`` — an embedded ref, so
+        # ``broadcast`` is ``{system.channels.chat}/broadcast.md`` — an embedded ref, so
         # §0 makes the whole value null with it.  Both logs of the system arm are null.
         assert nulled.channels_broadcast is None
         _seed_channel_files(nulled, named_proj)
@@ -328,7 +328,7 @@ class TestNullSystemChannelSeedsNothing:
         """The rotation is the half of the seeder that a null reaches AFTER the skip.
 
         The general log is skipped, then ``broadcast`` — null with it, since its row is
-        ``@system.channels.chat/broadcast.md`` — would be handed to the rotator, which
+        ``{system.channels.chat}/broadcast.md`` — would be handed to the rotator, which
         stats a path no bind mounts.  Spied rather than asserted through a side effect,
         because the rotator's own threshold is not this test's subject.
         """
@@ -362,7 +362,7 @@ class TestNullPartitionLeafOmitsItsBind:
     """A present ``<None>`` at ``workset.channels.{mailboxes,share_global}`` omits the
     bind that key is the source of (spec §2a / §2h).
 
-    The inbox row's source is ``@meta.box.inbox``, and that key is a LITERAL the
+    The inbox row's source is ``{meta.box.inbox}``, and that key is a LITERAL the
     identity floor builds from ``box_channel_addresses`` — so the null has to survive
     the floor as a null.  The failure this pins is the one that made the widening
     unsafe to ship blind: ``str(None)`` reaches the expander as the four-character

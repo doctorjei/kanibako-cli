@@ -248,7 +248,7 @@ class TestNullChannelroot:
     ⚑ The three ``~/channels/workset/*`` binds are STANDARD, so their floor entries
     must be emitted whatever the root resolves to: the entry is what the §2a warning
     and ``box show --effective`` read, and the bind itself is omitted by the collapse
-    off the ``@workset.channels.*`` ref.  Dropping the row would report a standard
+    off the ``{workset.channels.*}`` ref.  Dropping the row would report a standard
     bind as never having existed.
     """
 

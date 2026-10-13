@@ -553,7 +553,7 @@ class TestBootstrapNoneInRunContainer:
         """``--entrypoint`` / ``kanibako shell`` resolve as the ``shell`` node, but their
         bootstrap is the BOX's agent's, as ``run_start``'s heuristic read it.
 
-        Keyspec §2b: the plain-shell BOX is an effective ``@system.agent`` of
+        Keyspec §2b: the plain-shell BOX is an effective ``{system.agent}`` of
         ``shell``; a no-agent launch at an agent box is not one.  The
         ``_bootstrap_choice`` stub answers ``none`` here, so reading ``agent_id``
         reds on the refusal.
@@ -2520,14 +2520,14 @@ class TestTheMainPathEmitsFromTheCollapse:
 class TestPluginsAndCacheShares:
     """Part 3a: claude's ``plugins`` + ``cache`` are AGENT-scope ``common``
     category entries (the plugin's ``default_common()``), ROOTED AT DECLARATION at
-    ``@meta.agent.claude.path/common`` = ``<data>/agents/claude/common`` and bound
+    ``{meta.agent.claude.path}/common`` = ``<data>/agents/claude/common`` and bound
     rw to ``~/.claude/{plugins,cache}``.
 
     Driven through the LIVE single-route path (7c): the claude ``default_common()``
     table resolved via ``build_launch_snapshot`` (``_resolve_launch_snapshot``) and
     emitted via ``_emit_category_mounts`` with a REAL ``std``, so the STORED
-    ``@meta.agent.claude.path/common/<leaf>`` ref must actually resolve (the
-    ``meta.agent.<a>.path`` anchor + the ``@config.agents`` chain) and the host
+    ``{meta.agent.claude.path}/common/<leaf>`` ref must actually resolve (the
+    ``meta.agent.<a>.path`` anchor + the ``{config.agents}`` chain) and the host
     paths + L7 guarantee-create are exercised end-to-end.
 
     ⚑ There is NO root-join left to exercise (P3 deleted ``scope_roots``); these
@@ -2546,7 +2546,7 @@ class TestPluginsAndCacheShares:
             local_shared_base=std.data,
         )
         # Default/PRIMARY mode (B1: meta.runtime.* needs a real mode; primary uses
-        # the @config.primary_workset @-ref so project_path is unused here).
+        # the {config.primary_workset} @-ref so project_path is unused here).
         proj.mode = BoxMode.primary
         proj.project_path = std.data
         proj.vault_enabled.return_value = False
@@ -2568,7 +2568,7 @@ class TestPluginsAndCacheShares:
         # (declaration-rooted sources + L7 guarantee-create exercised here), not the
         # core/channel families. ``default_common()`` is the claude plugin's
         # agent-scope ``common`` table (plugins/cache under
-        # ``@meta.agent.claude.path/common``). All scope files are absent (None) —
+        # ``{meta.agent.claude.path}/common``). All scope files are absent (None) —
         # this isolates the agent-scope category resolution.
         _table = target.default_common()
         _snap, deliveries = _resolve_launch_snapshot(
@@ -2725,9 +2725,9 @@ class TestPersonaShareSymlinks:
 
         ⚑ THIS IS THE ONE THAT CAUGHT THE BREAKAGE.  The shim used to build its
         paths from the ``host_src`` VALUE, which was a bare leaf (``plugins``).
-        After P3 that value is ``@meta.agent.claude.path/common/plugins``, so the
+        After P3 that value is ``{meta.agent.claude.path}/common/plugins``, so the
         old code would have created the literal directory
-        ``agents/<node>/@meta.agent.claude.path/common/plugins`` — a garbage path —
+        ``agents/<node>/{meta.agent.claude.path}/common/plugins`` — a garbage path —
         while every OTHER test in this class stayed green on a stale fixture that
         still returned the bare leaf.
 
@@ -2737,7 +2737,7 @@ class TestPersonaShareSymlinks:
         ``agent_representation.harness_store_leaf`` is the ONE place that rule is
         written — it strips EXACTLY the harness's STORE declaration root and
         answers ``None`` for anything else.  The whole-leaf link and the resolver
-        meet at the same directory ``@meta.agent.<node>.path/common`` names, so
+        meet at the same directory ``{meta.agent.<node>.path}/common`` names, so
         shim and resolver cannot drift — and a leaf the plugin adds tomorrow is
         shared with no shim change at all.
 
@@ -2901,7 +2901,7 @@ class TestPersonaShareSymlinks:
         """``agents/<node>/template`` -> ``agents/<harness>/template``.
 
         The other half of the 2026-08-27 ruling: ``template_seed_defaults`` now
-        roots layer 2 at the NODE (``@config.agents/<node>/template``), so without
+        roots layer 2 at the NODE (``{config.agents}/<node>/template``), so without
         this link a persona box would seed from an absent directory.
 
         ⚑ The link path is spelled from ``AGENT_TEMPLATE_STORE_REL``, the constant
@@ -3155,7 +3155,7 @@ class TestPersonaShareSymlinks:
         """🛑 THE HAZARD THIS CLOSES, and it is the whole risk of the re-root.
 
         ``agent_categories_for_node`` re-roots EVERY store-rooted source onto
-        ``@meta.agent.<node>.path``.  A source re-rooted with no link behind it
+        ``{meta.agent.<node>.path}``.  A source re-rooted with no link behind it
         names a directory that does not exist — the persona gets NOTHING, which is
         the exact symptom the re-key was fixing, moved one hop.  So the shim's
         coverage has to equal the re-root's: all three declaration hooks.
@@ -4321,7 +4321,7 @@ class TestRuntimeRootReachesTheHelperHub:
     """The helper hub's socket lives under the launch's ``std.runtime``.
 
     ⚑ NOTHING ELSE HOLDS THIS WIRING. The kinemata ``helper-socket-bind`` view takes
-    ``@system.runtime`` as an oracle INPUT and echoes it, and the ``helper_socket_path``
+    ``{system.runtime}`` as an oracle INPUT and echoes it, and the ``helper_socket_path``
     pins (``tests/test_safety_invariants.py``) are handed their run dir by the test, so
     a launch that put the socket in any other directory would leave both green.
     """
@@ -5289,7 +5289,7 @@ class TestApplyInitSeeds:
             channels_mailboxes=tmp_path / "channels" / "mailboxes",
             channels_share=tmp_path / "channels" / "share",
             # B2b: the system channel type-roots folded into resolved_sys so the
-            # @system.channels.* ALL-PROJECTS channel binds resolve from the snapshot.
+            # {system.channels.*} ALL-PROJECTS channel binds resolve from the snapshot.
             # ⚑ ALL FIVE DECLARED LEAVES. ``channels_broadcast`` was missing here for
             # as long as the launch floor was missing ``system.channels.broadcast`` —
             # a stub that mirrored the bug rather than the ``StandardPaths`` it stands
@@ -5333,7 +5333,7 @@ class TestApplyInitSeeds:
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
         # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
-        # (the @config.primary_workset @-ref, so project_path is unused).
+        # (the {config.primary_workset} @-ref, so project_path is unused).
         # B2: meta.box.* identity anchors need the box name (proj.name).
         # B2b: the workset path anchors are derived off the vault paths + the box
         # home's box-parent, so the proj fake supplies them.

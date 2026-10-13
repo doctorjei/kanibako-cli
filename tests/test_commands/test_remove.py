@@ -109,7 +109,7 @@ class TestSystemConfig:
         # Scope-direction guard, CONTAINMENT form (spec §0/§2a repaired
         # 2026-07-02): system CONTAINS box, so a SYSTEM-scope ``set`` of the
         # box-scope ``box.image`` is a legal DOWNWARD write — ACCEPTED (rc 0)
-        # and stored in the system SETTINGS file (``@config.settings``) with
+        # and stored in the system SETTINGS file (``{config.settings}``) with
         # the ``box:`` scope token kept, an overridable default for every box.
         # The Layer-1 kanibako.cfg is NOT touched (spec §1: settings
         # keys never live in the bootstrap config file).
