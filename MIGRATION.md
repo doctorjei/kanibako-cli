@@ -7217,7 +7217,7 @@ move. Only the registry entry is removed; no file under that path is touched.
 
 ---
 
-### 2.108 Standalone boxes: a relocated store is read where it is, and never deleted for you
+### 2.109a Standalone boxes: a relocated store is read where it is, and never deleted for you
 
 **Read this if you have ever set `workset.boxes` in the root workset file of a standalone box.**
 
