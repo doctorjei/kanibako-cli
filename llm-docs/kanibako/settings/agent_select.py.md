@@ -188,7 +188,7 @@ the key, `AgentNotInstalledError` when the name resolved but its adapter is miss
 `ConfigError` for an *explicit_agent* that is malformed or blank, a
 `kanibako.settings.settings_resolve.SettingsError` when the selection key itself does not resolve,
 and the retired-key refusal when a settings file still carries `box.agent_name` /
-`system.default_agent` (migration M-4).
+`system.default_agent` (`MIGRATION.md` § *Settings keys renamed or retired*).
 
 Informational callers that must degrade rather than fail (`box info`, the `config --effective`
 display) keep their existing `try/except` — that is what makes the launch loud and the read verbs
@@ -196,13 +196,13 @@ quiet, deliberately.
 
 ### The retired-key sweep, tier by tier
 
-RETIRED spellings are refused by name BEFORE anything is resolved (P7 / M-4). `select_agent` runs
+RETIRED spellings are refused by name BEFORE anything is resolved (`MIGRATION.md` § *Settings keys renamed or retired*). `select_agent` runs
 the check as the `SELECT` purpose of `settings_assemble.read_settings_files`, not inside
 `assemble_levels` (the `NARROW` read), because a raise there would also break `config set` — the
 very command the message prescribes.
 
-⚑ EVERY tier the cascade reads is checked, BASE included (M-4's sweep names
-`/etc/kanibako/settings_base.yaml`): a site admin's stale `box.agent_name` would default DOWN into
+⚑ EVERY tier the cascade reads is checked, BASE included
+(`/etc/kanibako/settings_base.yaml`): a site admin's stale `box.agent_name` would default DOWN into
 every box on the machine, which is the worst version of the silent-wrong-agent failure, not an
 exempt one.
 

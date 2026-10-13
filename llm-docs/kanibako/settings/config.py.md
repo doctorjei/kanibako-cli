@@ -353,9 +353,9 @@ all — on every command forever. **Zero bytes, not `{}`**: this file is the han
 appended `config:` block a YAML error. It goes through the same atomic writer `dump_doc` delegates
 to, so the create is atomic either way.
 
-⚑ **NO `agent_name` row** (P7): `box.agent_name` is RETIRED (§2b), and writing a BOX key into the
+⚑ **NO `agent_name` row**: `box.agent_name` is RETIRED (§2b), and writing a BOX key into the
 CONFIG file was wrong even while it existed — nothing ever read it back from here. Stale copies in
-existing `kanibako.cfg` files are documentation-only (migration M-4).
+existing `kanibako.cfg` files are documentation-only (`MIGRATION.md` § *Settings keys renamed or retired*).
 
 
 ```persist_creation_flags(box_settings_path, *, materializing, image=None, share_images=None) -> None```
@@ -382,7 +382,7 @@ the live cascade (single source of truth; the stored default stays at its own ti
 write at all — no empty `box.yaml` is materialized (the :func:`write_box_enable_vault` rule).
 
 *box_settings_path* is the BOX-TIER settings file from `box_workset_settings_paths` — the same file
-`box set box.image=…` writes and the launch cascade reads as the box tier (M-8). *share_images* is
+`box set box.image=…` writes and the launch cascade reads as the box tier (`MIGRATION.md` § *Standalone boxes: reads got truthful*). *share_images* is
 a real bool or `None` (absent); it is written as a bool, matching the `KEY_TYPES` coercion
 `config set box.share_images` applies.
 
@@ -404,7 +404,7 @@ matching
 ⚑ WHICH value a caller hands in is the resolver's business, not this writer's: PRIMARY and NAMED
 pass the BOX-AUTHORED read, never the workset-resolved one (spec §2b's `box.enable_vault` row keeps
 the key sparse);
-STANDALONE passes the resolved one on purpose — that write IS the M-8 migration.
+STANDALONE passes the resolved one on purpose — that write IS the migration (`MIGRATION.md` § *Standalone boxes: reads got truthful*).
 
 Paired reader: :func:`read_box_enable_vault`.
 
@@ -484,7 +484,7 @@ path produces one.
 ```read_workset_kuid(path: Path) -> str```
 The stored `workset.kuid` value at *path*, defaulting to the SENTINEL.
 
-The reader for the settable `workset.kuid` key (settings-conformance P6d): it sources the kuid
+The reader for the settable `workset.kuid` key it sources the kuid
 DIRECTLY from the `workset:` table of a box's `workset.yaml` — for a STANDALONE box that single
 file plays the WORKSET tier. An absent file / `workset:` table / key yields the reserved
 :data:`kanibako.kuid.SENTINEL` (`"00000"`), the primary/named default and the "no real kuid yet"
@@ -499,7 +499,7 @@ pre-cascade readers" above.
 ```read_workset_skip_kuid_check(path: Path) -> bool```
 The stored `workset.skip_kuid_check` bool at *path*, defaulting to `True`.
 
-The reader for the settable key (P6d; spec default `true` — the advisory "invalid KUID" warning is
+The reader for the settable key (spec default `true` — the advisory "invalid KUID" warning is
 OPT-IN strictness, INVERTING the old D9). Sourced from the `workset:` table of a box's
 `workset.yaml`. An absent file / table / key yields `True` (checking OFF).
 
@@ -574,7 +574,7 @@ reads the system tier from. Callers pass that settings-file path as *system_path
 
 `None` means "no system default" — the caller REFUSES rather than picking one (keyspec §2b).
 
-⮕ A store still carrying the retired `system.default_agent` leaf (migration M-4) is REFUSED by name
+⮕ A store still carrying the retired `system.default_agent` leaf (`MIGRATION.md` § *Settings keys renamed or retired*) is REFUSED by name
 at the selection read (`settings_assemble`'s retired-key check).
 
 ⚑ This is the PRE-CASCADE reader, kept for the one caller that needs the stored value before a

@@ -520,14 +520,12 @@ layer would hand one agent's binds to every agent. Without the re-root a categor
 cascade at all: the launch SECRET export never sees an agent-scope `secret_path` and no token is
 mounted.
 
-🛑 **`env` JOINED THAT LIST AT MBR-1 P3, AND ITS ABSENCE WAS A DEFECT, NOT A DESIGN.** The file's env
-table was delivered instead as a private under-layer inside `commands.start._build_config_env`, which
-cost it two things the cascade gives every other key: it sat BELOW `system.env.*`, inverting the
-bracket in which the agent tier outranks system, and it was never a snapshot leaf so it never reached
-the expand pass — one written `~` or `$VAR` behaved two ways depending on which FILE spelled it. Both
-close by construction here: an `agent.<node>.env.<VAR>` is now an ordinary key that cascades to its
-true rung and realizes through the collapse's env slots like every other scope's. The under-layer is
-GONE; do not reintroduce a second env channel.
+🛑 **`env` IS ON THAT LIST, AND ITS ABSENCE WOULD BE A DEFECT, NOT A DESIGN.** A private env
+under-layer outside the cascade would sit BELOW `system.env.*`, inverting the bracket in which the
+agent tier outranks system, and would never reach the expand pass — one written `~` or `$VAR` would
+behave two ways depending on which FILE spelled it. An `agent.<node>.env.<VAR>` is an ordinary key
+that cascades to its true rung and realizes through the collapse's env slots like every other
+scope's; do not introduce a second env channel.
 
 ⚑⚑ **AGENT-FILE *STATE* RIDES THIS LEVEL, BESIDE THE CATEGORIES, AND NOWHERE ELSE (D-3, K4).**
 `model` / `access` / `endpoint` / … once had TWO live routes: a flat one (a separate rung the

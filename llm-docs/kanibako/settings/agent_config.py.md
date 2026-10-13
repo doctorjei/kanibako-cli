@@ -59,7 +59,7 @@ ordinary §2d key, and a file still holding a `name:` line REFUSES the launch by
 
 ⚑ **It is NOT a launch-invocation input and not a delivery route.** `_agent_partial` re-roots the
 table into the cascade, and the variable reaches the box through the collapse's arbitrated env slots
-like every other scope's (MBR-1 P3).
+like every other scope's.
 
 What the field is FOR is the READ side of the `agent` verbs: `agent info` and `agent show` render it
 (`commands/agent_cmd.py`'s `run_info` and `_show_agent_config`, both through `_stored_rows`), and

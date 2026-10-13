@@ -378,8 +378,8 @@ exactly as before.
 dropped its own kickoff delivery: `data/KICKOFF.md` + the `managed_pointer` descriptor binding gone
 from `kanibako-agent-claude`, `-codex` and `-goose`, with those releases PUBLISHED (not merely
 merged). After that the gate can only ever be false, and an ungated unconditional bind is the honest
-shape. Until then the gate is what keeps the base and the plugins independently upgradable. Recorded
-in migration M-12.
+shape. Until then the gate is what keeps the base and the plugins independently upgradable. Recorded in
+`MIGRATION.md` § *The kickoff — upgrade base and plugins TOGETHER*.
 
 *descriptor* is the descriptor whose bindings the SAME resolve represents in the launch snapshot
 (see :func:`kanibako.settings.agent_representation.agent_default_partial`). Passing `None` (a

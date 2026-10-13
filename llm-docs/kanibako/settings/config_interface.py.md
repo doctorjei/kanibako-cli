@@ -142,7 +142,7 @@ scalar leaf accepts, and it is §2h's ONLY suppression channel.
 agents. §2h validates the TARGET KEY, and its own agent rule is about the DISCRIMINATOR in
 `agent.*.**` — *"the agent test is 'is it a VALID agent', NOT 'is it the ACTIVE agent' — so
 pre-configuring an agent you may switch to is allowed"* (§2h). An unknown NAME here surfaces at
-agent RESOLUTION (P7), with the error that subsystem already owns, rather than being pre-judged
+agent RESOLUTION, with the error that subsystem already owns, rather than being pre-judged
 by the config writer.
 
 ### The `access` guard, reached through the pref spelling
@@ -179,7 +179,7 @@ open exactly the hole this guard exists to close, on the very keys that lost the
   belt-and-braces. Kept anyway — this is a value-shape rule about a target, and a rule that reads
   "which targets are bind-shaped" must not silently depend on which targets a different rule
   happens to admit today.
-* ⚑ **The terminal-tail term** (`is_terminal_category_key`), added with the P4′ terminalization
+* ⚑ **The terminal-tail term** (`is_terminal_category_key`), the terminal-key rule
   (R-5/R-10), carries the whole weight: the BARE `<scope>.bindings.{ro,rw}` arm and the bare
   `<scope>.{caches,seeded,common,synced}`. Those are the ONLY bind-shaped
   targets a pref can name — none of the per-name terms match them (they all require a trailing
@@ -373,7 +373,7 @@ no source-only RAW category repoint, and the write verbs refuse all six BY NAME 
 Read one config value STORED AT THIS NOUN, or `None` when it is not set there.
 
 *active_agent* is the box's resolved agent NODE, needed ONLY to redirect a BARE agent behavior
-key at box scope to its `pref.agent.<active>.<key>` request (P7 — see `box_agent_redirect_key`).
+key at box scope to its `pref.agent.<active>.<key>` request (see `box_agent_redirect_key`).
 Absent/unknown ⇒ no redirect.
 
 *system_settings_path*, when supplied (the SYSTEM scope), is the file used for SETTINGS reads
@@ -439,7 +439,7 @@ The order below is the order in the source, and several steps of it are load-bea
   overrides live under `agent.<name>` and are resolved by the launch-time effective-state
   cascade. For the SYSTEM scope these are SETTINGS in the system settings file, not the
   `kanibako.cfg` CONFIG file.
-* **`box.agent.<key>`** — RETIRED (P7, spec §2b): there is no settable box-scoped agent mirror
+* **`box.agent.<key>`** — RETIRED (spec §2b): there is no settable box-scoped agent mirror
   any more, so there is no stored value to read. Returning `None` (rather than reading a
   hand-written legacy leaf) is deliberate: reading it would report a value that has no
   effect on the launch, which is worse than "(not set)". The set/reset verbs refuse with the
@@ -700,7 +700,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
 * **Bare agent settings** — the agent-agnostic CLI writes the any-agent `agent.default` tier
   (per-agent overrides live under `agent.<name>`). SYSTEM scope routes to the system settings
   file (`settings_dest`).
-* **`box.agent.<key>` — RETIRED (P7, spec §2b).** There is NO settable box-scoped mirror of the
+* **`box.agent.<key>` — RETIRED (spec §2b).** There is NO settable box-scoped mirror of the
   agent's settings any more: §2b replaced it with the RO read-back `meta.box.agent.<key>`, and a
   box tweaks its agent through the §2h request `pref.agent.<active>.<key>`, which targets the
   agent tier properly instead of smuggling a box-scope key into it. So this branch REFUSES and
@@ -839,7 +839,7 @@ only resettable at the system scope, and a MALFORMED node ref named instead);
 `<scope>.secret_path.<VAR>`;
 `<scope>.env.<VAR>`; `agent.<node>.<key>` (`remove_nested_key` prunes now-empty `agent:`/`env:`
 tables, keeping the file sparse); the bare agent settings (`agent.default`, SYSTEM routing to the
-system settings file); `box.agent.<key>` — RETIRED (P7, spec §2b), refused with the cure rather
+system settings file); `box.agent.<key>` — RETIRED (spec §2b), refused with the cure rather
 than silently clearing a key that does nothing, and with the SAME named agent the set
 path uses so the two verbs prescribe the identical spelling; STRUCTURAL `system.*` path-tier keys
 — no branch of their own: they are routed settings keys, removed from the system
@@ -1046,7 +1046,7 @@ supplied, the PATH-DELIVERY categories are rendered too: each binding, and each 
 declaration paired with the `binding_derivations.*` binding it produces (spec §0 — "`--effective`
 shows BOTH the declaration and the derived binding and a user can see WHY a mount exists").
 *category_error* carries a collision message when the snapshot could not be resolved, so
-`config show --effective` REPORTS an M-7 collision rather than dying on it — it is the
+`config show --effective` REPORTS a mount collision (`MIGRATION.md` § *Mount collisions are now hard errors (a working config can start failing)*) rather than dying on it — it is the
 migration's own detection recipe.
 
 ⚑ **ONE SCOPE.** The workset / system / agent `config show --effective` verbs still render no

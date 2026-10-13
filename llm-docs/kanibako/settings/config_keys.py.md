@@ -235,7 +235,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   + ``auto_approve``" — 1.7.0-rc clean break, no alias; `auto_approve` has itself since been
   superseded by `access`, R-41).
 
-**Box keys.** ⚑ There is NO `box.agent_name` (P7): the agent SELECTION is the §2h request
+**Box keys.** ⚑ There is NO `box.agent_name` (spec §2b): the agent SELECTION is the §2h request
 `pref.system.agent` (spec §2b RETIRED the box key).
 
 * `box.images_store` — the host image-store root behind the shared-images bind (spec §2b; B3): a
@@ -245,12 +245,10 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 * `box.enable_vault` — ⚑ `mode` is NO LONGER a settable config-set key (block B1, spec §2b / §0):
   the project mode is the RO identity anchor `meta.box.mode` (surfacing the runtime-resolved
   `@meta.runtime.project_type`), set by the construct-time/bootstrap layer (`[project].mode` at box
-  creation), NOT overridable via `config set`. The mode is not persisted to disk (P8b sparse create
-  wrote no ``project:`` section; `read_project_meta`/`write_project_meta` were deleted in P8c) — it
-  derives from `box_resolve` at resolve time. On vault: `enable_vault` migrated to the box-scope key
-  `box.enable_vault` (P2 clean break — no `vault.enabled` alias). The old bare `vault.ro`/`vault.rw`
-  keys are REMOVED (dead residue): P8 deleted the ``project:`` settings section + its reader
-  (`read_project_meta`), so a set landed in a section NOTHING reads — a silent dead write. The vault
+  creation), NOT overridable via `config set`. The mode is not persisted to disk (create writes no ``project:``
+  section) — it derives from `box_resolve` at resolve time. On vault: `enable_vault` migrated to the box-scope key
+  `box.enable_vault` (clean break — no `vault.enabled` alias). There are no bare `vault.ro`/`vault.rw`
+  keys: nothing reads a ``project:`` settings section, so a set there would be a silent dead write. The vault
   override surface is now the repointable core bind ``box.bindings.{ro,rw}.vault`` (spec §2c).
 * `box.canon` — the per-BOX canon contribution root (spec §2b). ⚑ ``@box.canon`` is NOT ``~/canon``:
   it is ``<box_dir>/canon`` on the HOST, whose ``handbook/`` is ONE CHAPTER bound ro at
@@ -259,12 +257,11 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 
 **Workset keys.**
 
-* `workset.registry` — per-workset registry location (settings-conformance P3). A NORMAL settable
+* `workset.registry` — per-workset registry location. A NORMAL settable
   STRING-path key (default ``@meta.workset.path/registry.yaml``), NOT a config-locate key — routes to
   the ``workset:`` table nested slot ``registry`` (the same nested-settings pattern as `box.image`).
-  ADDITIVE: nothing consumes it yet (the launch/create cutover is P4/P5).
 * `workset.auth.path`, `workset.boxes`, `workset.vault_ro`, `workset.vault_rw`, `workset.logs` —
-  workset-scope LAYOUT anchors (settings-conformance P6a). These path anchors are floor-materialized
+  workset-scope LAYOUT anchors. These path anchors are floor-materialized
   (`settings_launch.workset_anchor_floor` / start.py) as OVERRIDABLE base-level defaults, but were
   NOT reachable through the settable surface — a Type-A "meta ⟺ not-settable" violation. Jei ruled
   them SETTABLE: they are per-workset REPOINTABLE dirs (the same nested-settings STRING-path keys as
@@ -290,7 +287,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
   it moves the workset's handbook chapter. ⚑ It is NOT a seed dest — no seed layer ever targeted it
   (no handbook seed layer exists). Routed to the ``workset:`` nested slot.
 * `workset.kuid` / `workset.skip_kuid_check` — workset kuid + advisory-check toggle
-  (settings-conformance P6d). `workset.kuid` is the workset's stable id (Crockford-base32; sentinel
+  `workset.kuid` is the workset's stable id (Crockford-base32; sentinel
   ``"00000"`` for primary/named unless set — a STANDALONE box GENERATES a real one at creation,
   stored here); `workset.skip_kuid_check` (bool, default TRUE) gates the advisory ``Warning: invalid
   KUID``. Both settable `workset.*` keys routed to the ``workset:`` nested slot (same pattern as
@@ -342,23 +339,21 @@ Per-entry notes displaced from the table:
 * The **auth-sharing 3-tier chain** (`system`/`workset`/`box.auth.*`) are ordinary SETTINGS keys:
   each routes to its nested ``<scope>.auth.<leaf>`` slot in the command-scope settings file (the same
   nested-settings pattern as `box.image` etc.), NOT the ``[project]`` meta table.
-* `system.agent` — the agent SELECTION default (spec §2g). An ORDINARY settings-tier route (P7): the
+* `system.agent` — the agent SELECTION default (spec §2g). An ORDINARY settings-tier route: the
   ``system:`` table of the system settings file, which is exactly where `assemble_levels` reads the
   system tier and where `config.read_system_agent` reads it back.
-* `box.enable_vault` — `enable_vault` is the box-scope key (P2 clean break): it routes to the
+* `box.enable_vault` — `enable_vault` is the box-scope key (clean break): it routes to the
   ``box:`` table nested slot ``enable_vault`` (the same nested-settings pattern as `box.image`), read
-  back by `read_box_enable_vault()` from ``box.enable_vault`` — NO ``project`` fallback. The old bare
-  `vault.ro`/`vault.rw` keys are REMOVED (dead residue): they routed to the ``project:`` section P8
-  DELETED (reader `read_project_meta` gone) — a silent dead write. The vault override surface is the
+  back by `read_box_enable_vault()` from ``box.enable_vault`` — NO ``project`` fallback. There are no bare
+  `vault.ro`/`vault.rw` keys: nothing reads a ``project:`` section, so a set there would be a silent
+  dead write. The vault override surface is the
   repointable core bind ``box.bindings.{ro,rw}.vault`` (spec §2c), not a bare key here. ``mode`` was
   removed from the settable routing table (block B1, spec §2b / §0 meta-RO): the project mode is the
-  RO identity anchor `meta.box.mode`, never via `config set`; it is not persisted to disk (P8b sparse
-  create) and derives from `box_resolve` at resolve time.
-* `workset.registry` (settings-conformance P3) — the per-workset registry file location, routed to
+  RO identity anchor `meta.box.mode`, never via `config set`; it is not persisted to disk and derives from `box_resolve` at resolve time.
+* `workset.registry` — the per-workset registry file location, routed to
   the ``workset:`` table nested slot ``registry`` (same nested-settings pattern as `box.image`). A
-  STRING path — `KEY_TYPES` type `path` (no coercion); written sparsely on set. ADDITIVE: no
-  consumer wiring yet (P4/P5).
-* The **workset-scope LAYOUT anchors** (P6a) — the per-workset REPOINTABLE dirs floor-materialized in
+  STRING path — `KEY_TYPES` type `path` (no coercion); written sparsely on set.
+* The **workset-scope LAYOUT anchors** — the per-workset REPOINTABLE dirs floor-materialized in
   `workset_anchor_floor`, now settable. Each routes to its nested ``workset.<...>`` slot in the
   command-scope settings file — the SAME nested-settings pattern as `workset.auth.share_allowed` /
   `workset.registry` — so a set-value lands where `assemble_levels` mirrors it and OUT-PRECEDES the
@@ -373,7 +368,7 @@ Per-entry notes displaced from the table:
 * `workset.canon` / `box.canon` — the per-scope CANON CONTRIBUTION roots (spec §2c/§2b), routed
   exactly like `workset.template` / `box.image` — the ``workset:`` and ``box:`` table slots. STRING
   paths (`KEY_TYPES` type `path`, never coerced).
-* `workset.kuid` / `workset.skip_kuid_check` (P6d) — the same nested-settings pattern as
+* `workset.kuid` / `workset.skip_kuid_check` — the same nested-settings pattern as
   `workset.registry`, routed to the ``workset:`` table slot. `workset.kuid` is a STRING (no
   `KEY_TYPES` entry); `workset.skip_kuid_check` is a bool (see `KEY_TYPES`). A standalone box's kuid
   is written here sparsely at create (`paths.establish_standalone`); primary/named default to the
@@ -412,7 +407,7 @@ NOTE: the agent-scope BEHAVIOR scalars (`allow_helpers` / `access`) are NOT here
 routes through `_is_agent_setting` (verbatim string write, like `model`) and the launch reader
 coerces at read. `access` is an ENUM, not a bool: its set-time guard is :func:`access_value_error`
 (which REFUSES an unknown value outright rather than coercing it), not a `KEY_TYPES` coercion.
-`workset.skip_kuid_check` (P6d) gates the advisory invalid-KUID warning (default true, set via
+`workset.skip_kuid_check` gates the advisory invalid-KUID warning (default true, set via
 config).
 
 ## `is_path_valued_key` / `path_key_anchor` — [R147] at set time
@@ -854,7 +849,7 @@ matched by :func:`_is_scope_env_key` — and the bare form wrote the docker ``.e
 undiscriminated variant that silently meant something different from the discriminated key (Code
 Convention 0's failure mode). This predicate now exists ONLY to RECOGNIZE the retired spelling so set
 / reset / get can refuse it with the cure (:func:`bare_env_retired_error`) rather than fail as an
-unknown key — the same recognize-to-refuse role as :func:`_is_box_agent_key` (P7).
+unknown key — the same recognize-to-refuse role as :func:`_is_box_agent_key`.
 
 ```_is_scope_env_key(key: str) -> bool```
 True iff *key* is a NON-agent ``<scope>.env.<VAR>`` key (system/workset/box) — settable to the command
@@ -972,7 +967,7 @@ there reports "(not set)" for something that is set.
 ```_is_box_agent_key(key: str) -> bool```
 The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b).
 
-⮕ **P7 RETIRED THE SETTABLE MIRROR.** ``box.agent.<key>`` was the box's box-scoped override of its
+⮕ **THERE IS NO SETTABLE MIRROR.** ``box.agent.<key>`` would be the box's box-scoped override of its
 active agent's settings subtree. Spec §2b replaces it with the RO read-back
 ``meta.box.agent.<key>`` (readable, never settable — ``meta.*`` is RO by contract), and a box tweaks
 its agent with the §2h request ``pref.agent.<agent>.<key>``, which targets the AGENT tier properly
@@ -983,7 +978,7 @@ with the cure (:func:`box_agent_retired_error`) rather than fail as an unknown k
 the old form in muscle memory must be TOLD what replaced it.
 
 ```box_agent_retired_error(canonical: str, *, verb: str, active_agent: str | None = None) -> str```
-The refusal + cure for a RETIRED ``box.agent.<key>`` op (P7, spec §2b).
+The refusal + cure for a RETIRED ``box.agent.<key>`` op (spec §2b).
 
 ⚑ The pointer names what ``--effective`` ACTUALLY RENDERS — the ``pref`` block, which prints each
 REQUEST beside the value it produced. It deliberately does NOT promise ``meta.box.agent.<key>``: that
@@ -1033,8 +1028,7 @@ box's resolved agent in the cure so the suggested command is COPY-PASTEABLE
 agent resolves.
 
 * **BOX** — a box has a single active agent, so the refusal TEACHES the §2h request
-  ``pref.agent.<agent>.<key>`` (the box-scoped tweak surface since P7 retired the ``box.agent.*``
-  mirror).
+  ``pref.agent.<agent>.<key>`` (the box-scoped tweak surface; spec §2b retired the ``box.agent.*`` mirror).
 * **WORKSET** — a workset spans multiple boxes/agents, so there is deliberately no single "the agent".
   The refusal points at system scope (all agents) or the per-box request, and names the exception:
   an agent whose plugin sets its own default for the key needs ``agent.<agent>.<key>``, because
