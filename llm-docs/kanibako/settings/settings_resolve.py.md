@@ -16,8 +16,8 @@ list, dest-keying, per-entry options). ⚑ **The spec is the LIVE authority; rea
 
 Four things:
 
-* **The expression grammar** — `{a.b.c}` / `{$NAME}`, `$VAR` / `${VAR}`, bare `@a.b.c` and braced
-  `@{a.b.c}`, a leading `~`, doubled braces, and the backslash escape rules. ONE tokenizer
+* **The expression grammar** — `{a.b.c}` / `{$NAME}`, a leading `~`, doubled braces, the
+  `\\`/`\~` escapes, and the one-release guard on the old `@`/`$` spellings. ONE tokenizer
   (`iter_expr_tokens`) reads a value for every reader, and one parser per token family is shared
   out to every other module that needs to recognize the same token.
 * **The precedence walk** — `resolve_value` and its three-valued result.
@@ -324,15 +324,17 @@ NOT the value grammar: a value's escapes are `iter_expr_tokens`'s, which refuses
 literal_expr(text: str) -> str
 ```
 The inverse direction: the expression that expands back to *text* verbatim. It puts a backslash
-before every `\`, `$`, `@` and `~` (`_EXPR_SIGNIFICANT`). A leading `~` is the only `~` the
-expander reads, but escaping all of them keeps the rule one line. Use it when a floor hands
-the expander a HOST PATH as a value (`settings_launch.meta_runtime_host_floor`). A `$` or `@`
-in a directory name is data. Unescaped, it would raise `Unknown variable` or be read as a
-reference and dropped.
+before every `\` and `~` (`_EXPR_SIGNIFICANT`) and doubles every brace. A leading `~` is the only
+`~` the expander reads, but escaping all of them keeps the rule one line. Use it when a floor
+hands the expander a HOST PATH as a value (`settings_launch.meta_runtime_host_floor`). `@` and `$`
+are text and need no escape. ⚑ During the one-release guard there is no literal spelling for an
+old reference spelling, so a host path holding `@<declared key>` or `$<known variable>` is refused
+like any value that holds one.
 Both passes are pinned in `tests/test_settings/test_settings_resolve.py`:
 * HOST space removes every escape and gives *text* back.
-* The DEFERRED scan (`defer_env=True`) records no `@`-ref and keeps `\$ \~ \\` escaped for
-  the later resolver.
+* The DEFERRED scan (`defer_env=True`) keeps every escape and doubled brace for the box pass, which
+  reads the residue to the same *text*. `settings_expand` enters a resolved referent's value
+  under deferral through this same function.
 
 ```python
 split_bind(value: str) -> tuple[str, str | None]
@@ -424,12 +426,13 @@ Two normalizations, both identity-preserving for an already-canonical dest. The 
 * a TRAILING `/` is dropped (never from a bare `/`). **This half is not cosmetic:** `~` and `~/`
   are two spellings that, under dest-keying, would become two dict entries at ONE destination.
 
-⚑ Everything else is carried VERBATIM, including an `@`-ref or `$var` destination. Those cannot
-be absolutized here — they resolve later, in `settings_expand` — so a dest-keyed arm is unique in
+⚑ Everything else is carried VERBATIM, including a `{key}`-ref or `{$VAR}` destination (any dest
+holding a `{`); only those skip `normpath`. They cannot be absolutized here — they resolve later, in `settings_expand` — so a dest-keyed arm is unique in
 the UNRESOLVED namespace only, and the RESOLVED-`box_dest` collision check in
 `settings_categories` is still required. Nothing is REFUSED here either:
 a non-absolute literal dest is a spec violation, but refusing it is not R-11's job and a refusal
-keyed on "does not start with `/`" would fire on every legitimate `@`-ref dest.
+keyed on "does not start with `/`" would fire on every legitimate `{key}`-ref dest. `@` and `$`
+are text, so a dest holding them is normalized like any other.
 
 ```python
 match_var(expr: str, i: int) -> tuple[str, int]
@@ -443,51 +446,15 @@ plus the index one past the whole token. Raises `SettingsError` on a malformed r
 function does NOT re-verify it and will happily parse a name starting at `i + 1` regardless of
 what `expr[i]` actually is.
 
-**The SINGLE parser for the `$` token family**, exactly as `match_ref` is for `@`: the tokenizer
-(`iter_expr_tokens`) calls it for every `$`, so expansion, the `defer_env` span and
-`settings_configset.scan_tokens` read one token boundary. One grammar, one copy, so a change to
-the token shape cannot land in some readers and not others.
-
-```python
-match_ref(expr: str, i: int) -> tuple[str, int]
-```
-Parse the `@`-reference starting at index *i* (the `@`), in either spelling.
-
-Returns `(ref_name, end_index)` — the dotted name WITHOUT its `@` (and without the braces, when
-braced), plus the index one past the whole token. Raises `SettingsError` on a malformed reference.
-
-⚑ **PRECONDITION: `expr[i] == "@"`.** Every caller dispatches on that character before calling,
-and this function does NOT re-verify it — `match_ref("xa.b", 0)` returns `("a.b", 4)` rather than
-raising. It is stated because this is a **cross-module seam**, not a file-private helper: a new
-caller that scans for `@` differently must still hand over the index OF the `@`.
-
-TWO SPELLINGS, one meaning:
-
-* **BARE** `@a.b.c` — the dotted name runs greedily and ends at the first character outside the
-  name set (`@a.b/x` refs `a.b`). This is the NORMAL spelling.
-* **BRACED** `@{a.b.c}` — the same name, delimited explicitly, so a LITERAL SUFFIX may follow it:
-  `@{a.b.c}x` resolves `a.b.c` then appends `x`. Braces are needed ONLY where the next character
-  would otherwise be eaten by the greedy name match — the spec's
-  `@workset.logs/@{meta.box.name}.jsonl` is exactly that case, since bare `@meta.box.name.jsonl`
-  parses as the single (absent) name `meta.box.name.jsonl` and silently loses both the box name
-  and the extension. Where both forms are expressible they resolve identically.
-
-**The SINGLE parser for both spellings**, shared by the tokenizer (`iter_expr_tokens`), the whole-value
-shape test (`settings_expand._is_whole_value_ref`), set-time validation
-(`settings_configset.scan_tokens`) and the kinemata keyspace adapter's `@`-ref candidates
-(`kinemata_keyspace._ref_names`) — one grammar for every reader (seam S25).
-
-The braced form deliberately MIRRORS `${...}` (`match_var`): optional brace,
-the same name regex, a required closing brace, and a distinct "unterminated" error. Same idea,
-same spelling, so the two token families cannot drift apart. **NESTING IS NOT SUPPORTED and fails
-loudly** (`@{a@{b}}` is unterminated): a substituted value is a LEAF and is never re-scanned, so a
-nested form would imply a second, contradictory model of when expansion happens.
+⚑ **The OLD spelling, and the value tokenizer no longer calls it**: `$` is text in a value.
+Its remaining callers, `agent_config.is_self_resolving` and `config_interface._set_time_anchor`,
+retire in braced-refs plan B1c.
 
 ```python
 class ExprSyntaxError(SettingsError)
 ```
 A value the reference grammar refuses: an unpaired brace, an empty or malformed reference, an
-illegal escape, a malformed `$`/`@` token (keyspec § 0 "References"). A `SettingsError`, so every
+illegal escape, an old reference spelling under the guard (keyspec § 0 "References"). A `SettingsError`, so every
 existing `except SettingsError` still catches it. `entry` is `None` until a reader that knows
 which setting holds the value names it with `naming(entry, reached_from=…)`, which prefixes
 `'<entry>': ` (and appends a `(reached from <leaf>)` trail) once and returns an already-named
@@ -514,12 +481,31 @@ Refused with `ExprSyntaxError`, each naming the doubled spelling where a brace i
 * an unpaired `{` (no `}` after it) or `}`;
 * an empty `{}` or a malformed `{…}` (`{bad name}`, `{a.b.}`, `{$}`) — `{` opens a reference
   running to the first `}`, so its content must be one name;
-* a backslash before anything outside `\\ ~ @ $` (`\/`, `\{`, `\:`, `\x`); `\@`/`\$` leave
-  this set when the sigils retire (braced-refs plan, B1b);
-* a malformed `$`/`@` token (`match_var` / `match_ref`).
+* a backslash before anything outside `\\ ~` (`\@`, `\$`, `\/`, `\{`, `\:`, `\x`);
+* an old reference spelling, by `refuse_bare_reference` (below).
 
-A leading `~` is a `home` token; a TRAILING lone backslash is literal text. `{` defers to
-`match_braced`, which stays the one braced parser; its `None` becomes the refusal here.
+A leading `~` is a `home` token; a TRAILING lone backslash is literal text; `@` and `$` are text.
+`{` defers to `match_braced`, which stays the one braced parser; its `None` becomes the refusal
+here.
+
+```python
+refuse_bare_reference(expr: str, i: int) -> None
+KNOWN_VARS: frozenset[str]; KNOWN_VAR_PREFIX = "XDG_"; is_known_var(name: str) -> bool
+```
+**The one-release migration guard** (keyspec § 0 "References"). The tokenizer calls it at every
+`@` and `$`; it raises `ExprSyntaxError` naming the old spelling and the braced cure, or returns
+and the character is text. Refused:
+* a bare `@a.b.c` naming a declared key, or whose LEADING dotted part is one (the longest such
+  part wins): `@meta.box.name.jsonl` → `{meta.box.name}.jsonl`;
+* `@{a.b.c}` naming a declared key → `{a.b.c}`;
+* a bare `$NAME` or `${NAME}` naming a known variable → `{$NAME}`.
+
+"Declared" is `settings_keyspace_probe.keyspace_verdict(name).cls is KeyClass.KEY`, imported at
+call time (the import-time closure stays `agent_ref` + `errors`). "Known" is `is_known_var`:
+`KNOWN_VARS` (the names `resolve_var` answers) or any `XDG_*` name. Everything else is text:
+`user@example.com`, `cost $5`, an undeclared `@foo.bar`, `$HOME`, a namespace like `@box`.
+⚑ Every site carries the marker `BARE-REF-GUARD`. Removing the guard is: delete this function and
+its call, drop `@$` from `_TOKEN_START`, and grep the marker for the rest.
 
 ```python
 expand_expr(
@@ -536,21 +522,19 @@ expansion loops.
 
 Grammar (refusals are the tokenizer's, below):
 
-* **Escapes:** `\\`→`\`, `\~`→`~`, and, while `@`/`$` are still sigils, `\@`→`@`, `\$`→`$`. A
-  trailing lone backslash is literal.
+* **Escapes:** `\\`→`\` and `\~`→`~`. A trailing lone backslash is literal.
 * **Braces:** `{a.b.c}` is a key reference and `{$NAME}` a variable; `{{` is a literal `{` and
   `}}` a literal `}`.
 * **`~`:** ONLY when it is the FIRST character of *expr*. Expands to `ctx.host_home`
   (`space=="host"`) or `GUEST_HOME` (`space=="guest"`). A `~` elsewhere is literal.
-* **`$VAR` / `${VAR}`:** name = `[A-Za-z_][A-Za-z0-9_]*`. `AGENT` → `ctx.agent_name`, `WORKSET` →
+* **`{$VAR}`:** name = `[A-Za-z_][A-Za-z0-9_]*`. `AGENT` → `ctx.agent_name`, `WORKSET` →
   `ctx.workset_name`, `TERM` → `ctx.term`, `COLORTERM` → `ctx.colorterm`, `XDG_*` →
   `ctx.xdg[name]`. Unknown names, or known names whose context value is `None`/missing, raise
   `SettingsError` — `TERM` is the one name that ALWAYS answers, because `ctx.term` always holds a
   value (`xterm` when the host has none), and `COLORTERM` is the one name that may answer NOTHING.
   See `resolve_var` below for the three distinct refusals, for why a set `TERM` is not validated,
   and for the three-state split.
-* **`@`-ref / `{key}`-ref:** three spellings (`@a.b`, `@{a.b}`, `{a.b}`), resolved IDENTICALLY
-  through `_lookup_ref`. Cycle-guarded against *chain*, capped at `MAX_REF_DEPTH` (64), and
+* **`{key}`-ref:** resolved through `_lookup_ref`. Cycle-guarded against *chain*, capped at `MAX_REF_DEPTH` (64), and
   substitutes `lookup(ref_name, chain + (ref_name,))`; the result is a leaf. A ref already present
   in *chain* raises with the full cycle rendered (`a -> b -> a`), and a chain at `MAX_REF_DEPTH`
   raises naming the ref that hit the cap.
@@ -560,9 +544,9 @@ caller must state what an `@`-ref means in its tier, even when the answer is "re
 
 ### `defer_env` — the box-side deferral
 
-When `True`, the ENVIRONMENT tokens `~` and `$VAR` / `${VAR}` are NOT expanded; they are emitted
-VERBATIM — the exact source span, `${...}` braces included — to be resolved later in a DIFFERENT
-environment. `@`-refs (CONFIG) still expand normally, and escapes are still honored.
+When `True`, the ENVIRONMENT tokens `~` and `{$VAR}` are NOT expanded; they are emitted
+VERBATIM — the exact source span, braces included — to be resolved later in a DIFFERENT
+environment. `{key}`-refs (CONFIG) still expand normally.
 
 This is the box-side deferral of the KeyStore expansion pass (system-design § "Host-side and box-side
 resolution"): `$XDG` / `~` name the **box** environment, host ≠ box, so a `box_dest` env token stays
@@ -570,12 +554,10 @@ deferred (block 3 / S17). Its one consumer is `settings_expand`, which passes
 `defer_env=(space == "defer")`.
 
 ⚑⚑ **The escape rule INVERTS under deferral, and this is the subtle half.** Host-side, `\x` → `x`
-(the backslash is consumed). Deferred, an escape of an ENVIRONMENT-significant char (`$`, `~`,
-`\`) is carried **VERBATIM**, because the BOX resolver — not this host pass — re-scans for `$VAR`
-and `~`, and must see the same escape to honor the user's "literal, NOT a var" intent. Consuming
-it would turn `\$` into `$` and let the box re-expand exactly what the user escaped. `\@` is
-STILL unescaped to `@`: this pass OWNS `@`-refs on BOTH sides, the box never processes `@`, so a
-literal `@` is the correct box-side residue. **This box-side escape contract is spec-silent** — it
+(the backslash is consumed). Deferred, every escape (`\~`, `\\`) and doubled brace is carried
+**VERBATIM**, because the BOX resolver (`settings_launch.resolve_box_dest`) re-scans the residue
+and must see the same escape to honor the user's "literal" intent. Consuming `\~` would let the
+box expand a `~` the user escaped. **This box-side escape contract is spec-silent** — it
 is a real semantic decision living only in code.
 
 ```python

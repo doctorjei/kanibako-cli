@@ -2209,26 +2209,26 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         pairing exists to close.
         """
         categories = {
-            "box.bindings.ro": {"$XDG_DATA_HOME/z": ("/src",)},
-            "box.masks": ["$XDG_DATA_HOME/z"],
+            "box.bindings.ro": {"{$XDG_DATA_HOME}/z": ("/src",)},
+            "box.masks": ["{$XDG_DATA_HOME}/z"],
         }
         # PREMISE, off the arbitrated map: the box receives the MASK here.
         assert _collapsed(categories)["/data/z"].src is None
 
         text = _block(categories)
-        assert "/src -> $XDG_DATA_HOME/z" not in text, (
+        assert "/src -> {$XDG_DATA_HOME}/z" not in text, (
             "the binding is printed with the delivery arrow, so the block claims a "
             "mount at a destination the box sees nothing at"
         )
         assert (
-            "box.bindings.ro[$XDG_DATA_HOME/z] = /data/z  (declared: /src)"
+            "box.bindings.ro[{$XDG_DATA_HOME}/z] = /data/z  (declared: /src)"
             in text
         ), text
         # ⚑ THE KEY KEEPS THE SPELLING THE USER WROTE while the destination is the
         # RESOLVED one, on the row and in the reason — the key is the half they can go
         # and edit.
         assert (
-            f"{self._MASK_PHRASE}'box.masks[$XDG_DATA_HOME/z]' at /data/z covers this "
+            f"{self._MASK_PHRASE}'box.masks[{{$XDG_DATA_HOME}}/z]' at /data/z covers this "
             "destination" in text
         ), text
 
@@ -2253,31 +2253,27 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             in text
         ), text
 
-    def test_an_ESCAPED_dollar_is_a_literal_and_pairs_as_one(self):
-        """⚑ ``\\$`` IS A LITERAL DOLLAR THE USER MEANT, and it survives the round trip.
+    def test_a_literal_dollar_is_text_and_pairs_as_one(self):
+        """⚑ ``$`` IS AN ORDINARY CHARACTER, and a dest holding one survives the round trip.
 
-        MEASURED, 2026-08-27: the eager build carries ``\\$XDG_DATA_HOME/z`` through
-        VERBATIM (a deferred escape of an environment-significant char keeps its
-        backslash), and ``resolve_box_dest`` unescapes it to ``$XDG_DATA_HOME/z`` — a
-        path whose first component is a literal ``$XDG_DATA_HOME``.  The collapsed map
-        is keyed by that same unescape, so the display pairs it like any other row.
-        The old ``"$" not in dest`` predicate caught this spelling too and withheld its
-        diagnosis.
+        ``$KB_LITERAL`` names no known variable, so it is text (keyspec "References"):
+        the eager build carries ``$KB_LITERAL/z`` through and ``resolve_box_dest`` keeps it,
+        a path whose first component is a literal ``$KB_LITERAL``. The collapsed map is
+        keyed by that same text, so the display pairs it like any other row. The old
+        ``"$" not in dest`` predicate caught this spelling too and withheld its diagnosis.
         """
         categories = {
-            "box.bindings.ro": {"\\$XDG_DATA_HOME/z": ("/src",)},
-            "box.masks": ["\\$XDG_DATA_HOME/z"],
+            "box.bindings.ro": {"$KB_LITERAL/z": ("/src",)},
+            "box.masks": ["$KB_LITERAL/z"],
         }
         collapsed = _collapsed(categories)
-        # PREMISE: the escape is CONSUMED, so the map is keyed by the literal dollar —
-        # never by the expansion, which would mean the escape was ignored.
-        assert "$XDG_DATA_HOME/z" in collapsed and "/data/z" not in collapsed
-        assert collapsed["$XDG_DATA_HOME/z"].src is None
+        assert "$KB_LITERAL/z" in collapsed
+        assert collapsed["$KB_LITERAL/z"].src is None
 
         text = _block(categories)
-        assert "/src -> \\$XDG_DATA_HOME/z" not in text, text
+        assert "/src -> $KB_LITERAL/z" not in text, text
         assert (
-            f"{self._MASK_PHRASE}'box.masks[\\$XDG_DATA_HOME/z]' at $XDG_DATA_HOME/z "
+            f"{self._MASK_PHRASE}'box.masks[$KB_LITERAL/z]' at $KB_LITERAL/z "
             "covers this destination" in text
         ), text
 
@@ -2299,32 +2295,32 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
 class TestAConcreteRowPrintsTheResolvedGuestPath:
     """A concrete row's destination prints as the guest path the mount lands on.
 
-    The arm key is the box-side residue: a user's ``\\$``/``\\~`` stay escaped in it,
-    and an ``@``-ref's referent arrives with its ``$`` escaped. Neither spelling is
-    where the box sees the mount; ``resolve_box_dest`` is.
+    The arm key is the box-side residue: a user's ``\\~`` stays escaped in it, and a
+    ``{key}``-ref's referent arrives as a literal. Neither spelling is where the box sees
+    the mount; ``resolve_box_dest`` is.
     """
 
     def test_an_escaped_literal_prints_unescaped(self):
-        text = _block({"box.bindings.ro": {"/opt/lit\\$b\\~c": ("/src",)}})
+        text = _block({"box.bindings.ro": {"/opt/lit$b\\~c": ("/src",)}})
         assert "/src -> /opt/lit$b~c\n" in text, text
 
-    def test_a_referent_dollar_prints_unescaped(self):
+    def test_a_referent_dollar_prints_as_text(self):
         text = _block({
-            "box.env.ODD": "/e\\@v\\$q",
+            "box.env.ODD": "/e@v$q",
             "box.bindings.ro": {"{box.env.ODD}/t": ("/src",)},
         })
         assert "/src -> /e@v$q/t\n" in text, text
 
     def test_a_lost_row_prints_the_resolved_path_in_declaration_form(self):
         text = _block({
-            "box.bindings.ro": {"/opt/lit\\$b": ("/src",)},
-            "box.masks": ["/opt/lit\\$b"],
+            "box.bindings.ro": {"/opt/lit$b": ("/src",)},
+            "box.masks": ["/opt/lit$b"],
         })
         assert "= /opt/lit$b  (declared: /src)" in text, text
 
 
 class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
-    """A ``pref`` request keeps its ``@``-refs; the arm it lands in is keyed by their
+    """A ``pref`` request keeps its ``{key}``-refs; the arm it lands in is keyed by their
     expansion. The block looks each request up under the key ``expand`` recorded for it
     and prints the result's resolved guest path, as a concrete row does.
     """
@@ -2344,7 +2340,7 @@ class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
         box = tmp_path / "box.yaml"
         box.write_text(yaml.safe_dump({
             "pref": {"agent": {agent: {"bindings": {"ro": ro}}}},
-            "box": {"env": {"ODD": "/e\\@v\\$q"}},
+            "box": {"env": {"ODD": "/e@v$q"}},
         }))
         ctx = make_ctx(agent_name=agent)
         dest_keys: dict = {}
@@ -2370,7 +2366,7 @@ class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
 
     @pytest.mark.parametrize(("dest", "shown"), [
         ("{$XDG_DATA_HOME}/x", "/data/x"),
-        ("/opt/lit\\$b\\~c", "/opt/lit$b~c"),
+        ("/opt/lit$b\\~c", "/opt/lit$b~c"),
     ])
     def test_a_deferred_destination_prints_resolved(self, tmp_path, dest, shown):
         text = self._pref_block(tmp_path, {dest: ["/src"]})

@@ -1,8 +1,8 @@
 """Keyspec §0 "Per-owner resources" at the set door: a per-owner value set from a scope
 that contains its owner must reach that owner's identity, or nothing is written.
 
-DESIGN § 6 Cases 1, 3 and 4, each refused value beside its cure, in both reference
-spellings (``@x`` and ``{x}``): both grammars are live until braced step 5.
+DESIGN § 6 Cases 1, 3 and 4, each refused value beside its cure. The old ``@x`` spelling
+is refused by the one-release guard (``test_bare_reference_guard``).
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from kanibako.settings.config_interface import set_config_value
 from kanibako.settings.config_keys import KEY_OWNERS, ConfigLevel
 
 
-def _forms(template: str) -> tuple[str, str]:
-    """*template* in the old spelling and the new: ``<x>`` becomes ``@x`` and ``{x}``."""
-    return (re.sub(r"<([a-z_.]+)>", r"@\1", template), re.sub(r"<([a-z_.]+)>", r"{\1}", template))
+def _forms(template: str) -> tuple[str]:
+    """*template* spelled as a value: ``<x>`` becomes ``{x}``."""
+    return (re.sub(r"<([a-z_.]+)>", r"{\1}", template),)
 
 
 def _digest(path: Path) -> str:
@@ -184,7 +184,7 @@ class TestTheCureChainsAtTheSystemDoor:
     forgives the referent's ``meta.workset.*`` refs as it forgives a direct one (keyspec §0
     defaults-down), and still refuses a referent that dangles."""
 
-    @pytest.mark.parametrize("ref", ["@workset.boxes", "{workset.boxes}"])
+    @pytest.mark.parametrize("ref", ["{workset.boxes}"])
     @pytest.mark.parametrize("boxes", _forms("/srv/kb/<meta.workset.path>"))
     def test_a_value_on_the_stored_cure_is_written(self, boxes, ref, seeded):
         assert _system_set("workset.boxes", boxes, seeded) == f"Set workset.boxes={boxes}"

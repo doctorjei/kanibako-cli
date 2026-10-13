@@ -561,8 +561,7 @@ class TestLayoutSingleSource:
         [
             (r"\~foo", "~foo"),      # escaped tilde -> a literal relative dir
             (r"\\foo", "\\foo"),    # escaped backslash -> a literal relative dir
-            (r"\$V/x", "$V/x"),
-            (r"\@k/x", "@k/x"),
+            # ``\$`` and ``\@`` are no escapes now: refused (test_strict_braces_escapes).
             ("/abs", "/abs"),
             ("~/x", "/home/u/x"),
             ("leaf", "leaf"),

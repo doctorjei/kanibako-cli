@@ -206,22 +206,21 @@ def test_whole_value_present_none_propagates_none() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# BRACED @{name} whole-value refs (PHASE R) — the 3-state MUST be inherited    #
+# BRACED {name} whole-value refs — the 3-state MUST be inherited               #
 # --------------------------------------------------------------------------- #
 #
-# ⚑ WHY THIS BLOCK EXISTS. ``@{a.b}`` with nothing following is a WHOLE-VALUE ref
-# and must inherit the referent's 3-state VERBATIM, exactly as ``@a.b`` does. If
+# ⚑ WHY THIS BLOCK EXISTS. ``{a.b}`` with nothing following is a WHOLE-VALUE ref
+# and must inherit the referent's 3-state VERBATIM. If
 # ``_is_whole_value_ref`` failed to recognize the braced form, the value would
 # fall through to the EMBEDDED path, where an ABSENT referent becomes ``""``
 # instead of dropping the key (spec §0 "References") — silently turning an
 # absent value into a real empty-string value. That substitution is invisible
-# at every other layer, so it is pinned here. Each test below mirrors its
-# bare-form sibling above one-for-one.
+# at every other layer, so it is pinned here.
 
 
 def test_braced_whole_value_absent_drops_key_full_chain() -> None:
     # Mirror of test_whole_value_absent_drops_key_full_chain with braces.
-    snap = KeyStore({"a": "@{b}", "b": "@{box.env.C}"})
+    snap = KeyStore({"a": "{b}", "b": "{box.env.C}"})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is __MISSING__
     assert _probe(out, "b") is __MISSING__
@@ -230,7 +229,7 @@ def test_braced_whole_value_absent_drops_key_full_chain() -> None:
 def test_braced_whole_value_present_none_propagates_none() -> None:
     # ⚑ THE silent-behavior-change guard. c is present-None; a and b must carry
     # None — NOT "" (the embedded coercion) and NOT "None" (a stringification).
-    snap = KeyStore({"a": "@{b}", "b": "@{c}", "c": None})
+    snap = KeyStore({"a": "{b}", "b": "{c}", "c": None})
     out = expand(snap, _ctx())
     for key in ("a", "b", "c"):
         got = _probe(out, key)
@@ -242,8 +241,8 @@ def test_braced_whole_value_present_none_propagates_none() -> None:
 
 
 def test_braced_whole_value_multi_hop_chain() -> None:
-    # Mixed spellings across hops collapse to the same terminal.
-    snap = KeyStore({"a": "@{b}", "b": "@c", "c": "/leaf"})
+    # A chain of whole-value refs collapses to the same terminal.
+    snap = KeyStore({"a": "{b}", "b": "{c}", "c": "/leaf"})
     out = expand(snap, _ctx())
     assert out["a"] == "/leaf" and out["b"] == "/leaf"
 
@@ -252,7 +251,7 @@ def test_braced_whole_value_resolves_non_str_terminal_verbatim() -> None:
     # VERBATIM means type-preserving, not just None-preserving: a bool referent
     # comes back a bool, never the string "True".
     snap = KeyStore({
-        "avail": "@{workset.skip_kuid_check}",
+        "avail": "{workset.skip_kuid_check}",
         "workset": {"skip_kuid_check": True},
     })
     out = expand(snap, _ctx())
@@ -262,14 +261,14 @@ def test_braced_whole_value_resolves_non_str_terminal_verbatim() -> None:
 def test_braced_embedded_absent_coerces_empty_and_keeps_key() -> None:
     # THE CONTRAST that proves the two shapes stay distinguished: the SAME ref,
     # with a suffix, is EMBEDDED — absent coerces to "" and the key survives.
-    snap = KeyStore({"a": "@{box.env.XY}.jsonl", "c": "/ok"})
+    snap = KeyStore({"a": "{box.env.XY}.jsonl", "c": "/ok"})
     out = expand(snap, _ctx())
     assert out["a"] == ".jsonl"
     assert out["c"] == "/ok"
 
 
 def test_braced_bind_whole_value_host_absent_drops_bind() -> None:
-    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@{box.env.MISSING}", "~/x")}}}})
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("{box.env.MISSING}", "~/x")}}}})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "x") is __MISSING__
 
@@ -277,7 +276,7 @@ def test_braced_bind_whole_value_host_absent_drops_bind() -> None:
 def test_braced_bind_whole_value_host_present_none_carries_none() -> None:
     snap = KeyStore({
         "src": None,
-        "box": {"bindings": {"rw": {"x": Bind("@{src}", "~/x")}}},
+        "box": {"bindings": {"rw": {"x": Bind("{src}", "~/x")}}},
     })
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "x") is None
@@ -289,7 +288,7 @@ def test_braced_bind_host_suffix_resolves_like_the_spec_row() -> None:
         "workset": {"logs": "/ws/logs"},
         "meta": {"box": {"name": "mybox"}},
         "box": {"bindings": {"ro": {"helper_log": Bind(
-            "@workset.logs/@{meta.box.name}.jsonl",
+            "{workset.logs}/{meta.box.name}.jsonl",
             "{$XDG_STATE_HOME}/kanibako/helpers.jsonl",
             "ro",
         )}}},
@@ -304,23 +303,23 @@ def test_braced_bind_host_suffix_resolves_like_the_spec_row() -> None:
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ("@a.b", "a.b"),  # bare — unchanged.
-        ("@{a.b}", "a.b"),  # braced, nothing following → WHOLE-VALUE.
-        ("@{a.b}x", None),  # a suffix makes it embedded.
-        ("@{a.b}/c", None),
-        ("x@{a.b}", None),
-        ("@{a.b", None),  # malformed → None, and must NOT raise (see below).
-        ("@{", None),
-        ("@{}", None),
-        ("@{a@{b}}", None),
+        ("{a.b}", "a.b"),  # braced, nothing following → WHOLE-VALUE.
+        ("@a.b", None),  # ``@`` is text: embedded, where the guard reads it.
+        ("@{a.b}", None),  # a text ``@`` before the ref makes it embedded.
+        ("{a.b}x", None),  # a suffix makes it embedded.
+        ("{a.b}/c", None),
+        ("x{a.b}", None),
+        ("{a.b", None),  # malformed → None, and must NOT raise (see below).
+        ("{", None),
+        ("{}", None),
+        ("{a{b}}", None),
         ("", None),
         ("~/x", None),
     ],
 )
 def test_is_whole_value_ref_braced_shapes(value: str, expected: str | None) -> None:
     # The predicate is TOTAL: malformed input answers None rather than raising, so
-    # it falls through to the embedded path and ``expand_expr`` raises there —
-    # keeping the error message and its raising site identical to before PHASE R.
+    # it falls through to the embedded path and ``expand_expr`` raises there.
     assert _is_whole_value_ref(value) == expected
 
 
@@ -593,33 +592,32 @@ def test_absent_ref_is_NOT_a_cycle_error() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_escaped_at_is_literal() -> None:
-    snap = KeyStore({"x": r"lit-\@notaref"})
+def test_at_is_literal() -> None:
+    snap = KeyStore({"x": "lit-@notaref"})
     out = expand(snap, _ctx())
     assert out["x"] == "lit-@notaref"
 
 
-def test_escaped_dollar_is_literal() -> None:
-    snap = KeyStore({"x": r"\$NOTVAR"})
+def test_dollar_is_literal() -> None:
+    snap = KeyStore({"x": "$NOTVAR"})
     out = expand(snap, _ctx())
     assert out["x"] == "$NOTVAR"
 
 
 def test_box_side_env_escape_carried_verbatim() -> None:
-    # In the deferred (box) space, an escape of an ENV-significant char (\$ / \~ /
-    # \\) is carried VERBATIM so the BOX resolver sees the same escape and does NOT
-    # re-expand it (the user's "literal, NOT a var" intent must survive to the box).
-    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("/h", r"~/a\$b")}}}})
+    # In the deferred (box) space, an escape (\~ / \\) is carried VERBATIM so the
+    # BOX resolver sees the same escape and does NOT re-expand it (the user's
+    # "literal" intent must survive to the box).
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("/h", r"~/a\~b")}}}})
     out = expand(snap, _ctx())
-    assert out["box"]["bindings"]["rw"]["x"].box == r"~/a\$b"
+    assert out["box"]["bindings"]["rw"]["x"].box == r"~/a\~b"
 
 
-def test_box_side_escaped_at_unescaped() -> None:
-    # \@ is still unescaped to @ in defer space: this pass OWNS @-refs on both
-    # sides; the box never processes @, so a literal @ is the correct residue.
-    snap = KeyStore({"box": {"caches": {"c": Bind("/h", r"~/x\@y")}}})
+def test_box_side_at_and_dollar_are_text() -> None:
+    # ``@`` and ``$`` are text on both sides, so they reach the residue as written.
+    snap = KeyStore({"box": {"caches": {"c": Bind("/h", "~/x@y$z")}}})
     out = expand(snap, _ctx())
-    assert out["box"]["caches"]["c"].box == "~/x@y"
+    assert out["box"]["caches"]["c"].box == "~/x@y$z"
 
 
 def test_box_side_braced_var_deferred_verbatim() -> None:
@@ -634,17 +632,17 @@ _ODD_REFERENT = "/d/a@b$c\\e~f"
 
 
 @pytest.mark.parametrize("dest,expected", [
-    (r"/opt/at\@x", "/opt/at@x"),
-    (r"/opt/a\\\@b", "/opt/a\\@b"),
+    ("/opt/at@x", "/opt/at@x"),
+    (r"/opt/a\\@b", "/opt/a\\@b"),
     ("{meta.box.path}/s", _ODD_REFERENT + "/s"),
     ("{meta.box.path}", _ODD_REFERENT),
-    (r"~/a\$b\~c\\d", GUEST_HOME + "/a$b~c\\d"),
-], ids=["escaped-at", "escaped-backslash-then-at", "embedded-ref", "whole-value-ref",
+    (r"~/a$b\~c\\d", GUEST_HOME + "/a$b~c\\d"),
+], ids=["at-is-text", "escaped-backslash-then-at", "embedded-ref", "whole-value-ref",
         "env-escapes"])
 def test_a_box_dest_reaches_the_box_path_verbatim(dest, expected) -> None:
-    r"""Keyspec "References", through the launch seam: ``\@`` unescapes to ``@``,
-    which the box side reads as a literal like a referent's own ``@``; ``\$ \~ \\``
-    survive the deferral and unescape box-side; a ``{ref}`` resolves host-side."""
+    r"""Keyspec "References", through the launch seam: ``@`` and ``$`` are text on both
+    sides; ``\~ \\`` survive the deferral and unescape box-side; a ``{ref}`` resolves
+    host-side."""
     snap = KeyStore({
         "meta": {"box": {"path": literal_expr(_ODD_REFERENT)}},
         "box": {"bindings": {"rw": {dest: BindEntry("/h/src")}}},
@@ -660,23 +658,24 @@ def test_a_box_dest_reaches_the_box_path_verbatim(dest, expected) -> None:
 
 
 @pytest.mark.parametrize("value,expected", [
-    ("@a.b.c", "a.b.c"),
-    ("@x", "x"),
-    ("@a-@b", None),     # two tokens — embedded.
-    ("x@a", None),       # leading literal — embedded.
-    ("@a/c", None),      # trailing literal — embedded.
-    ("@a ", None),       # trailing space — embedded.
+    ("{a.b.c}", "a.b.c"),
+    ("{x}", "x"),
+    ("@a.b.c", None),    # ``@`` is text.
+    ("{a}-{b}", None),   # two tokens — embedded.
+    ("x{a}", None),      # leading literal — embedded.
+    ("{a}/c", None),     # trailing literal — embedded.
+    ("{a} ", None),      # trailing space — embedded.
     ("~/x", None),       # environment token, not a ref.
-    ("$VAR", None),
+    ("{$VAR}", None),
     ("", None),
     ("plain", None),
     # PERSONA node-separator ℘ (U+2118) is a valid ref-name char (Block E fix 1a):
     # a whole ref containing a ℘ node-name matches WHOLE, not truncated at ℘.
-    ("@meta.agent.navigator℘claude.auth.share_support",
+    ("{meta.agent.navigator℘claude.auth.share_support}",
      "meta.agent.navigator℘claude.auth.share_support"),
-    ("@agent.navigator℘claude.model", "agent.navigator℘claude.model"),
+    ("{agent.navigator℘claude.model}", "agent.navigator℘claude.model"),
     # An embedded ℘-ref followed by a literal is still embedded (path ref).
-    ("@config.data/navigator℘claude", None),
+    ("{config.data}/navigator℘claude", None),
 ])
 def test_is_whole_value_ref(value: str, expected: str | None) -> None:
     assert _is_whole_value_ref(value) == expected
@@ -806,7 +805,7 @@ def test_lenient_collects_malformed_braced_ref() -> None:
     # takes the whole lenient pass down (the ``config set`` path depends on this).
     snap = KeyStore({"a": "@{nope", "c": "/ok"})
     expanded, errors = expand(snap, _ctx(), collect_errors=True)
-    assert "a" in errors and "Unterminated" in errors["a"]
+    assert "a" in errors and "Unpaired '{'" in errors["a"]
     assert _probe(expanded, "a") is __MISSING__
     assert expanded["c"] == "/ok"
 
@@ -1520,8 +1519,8 @@ GUEST_ONLY_VALUES = ("baz", "qat")
 
 SIMULATED_HOST_HOME = "/path/h/home-of-the-host"
 
-HOST_SRC_EXPRESSION = f"/path/h/${HOST_HALF_VAR}"
-BOX_DEST_EXPRESSION = f"/path/b/${BOX_HALF_VAR}"
+HOST_SRC_EXPRESSION = f"/path/h/{{${HOST_HALF_VAR}}}"
+BOX_DEST_EXPRESSION = f"/path/b/{{${BOX_HALF_VAR}}}"
 HOST_SRC_ON_THE_HOST = "/path/h/foo"
 BOX_DEST_ON_THE_HOST = "/path/b/bar"
 

@@ -72,10 +72,10 @@ def _system(std) -> LaunchInputs:
 
 
 def _names(prefixes: tuple[str, ...], key: str, value: object) -> bool:
-    """*key* is in one of *prefixes*' namespaces, or its value refs in either grammar."""
+    """*key* is in one of *prefixes*' namespaces, or its value refs one."""
     return key.startswith(prefixes) or (
         isinstance(value, str)
-        and any(f"@{p}" in value or ("{" + p) in value for p in prefixes)
+        and any(("{" + p) in value for p in prefixes)
     )
 
 

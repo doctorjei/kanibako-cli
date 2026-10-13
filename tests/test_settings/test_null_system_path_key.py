@@ -304,10 +304,10 @@ class TestADerivedNullIsRefusedWhereAStoredOneIs:
         elif leaf in ("chat", "common", "mailboxes", "share", "broadcast"):
             # These hang under ``system.channels``, so the doc is NESTED and the referent
             # must be a key of the same file that is not itself derived from the target.
-            doc = f'system:\n  canon: null\n  channels:\n    {leaf}: "@system.canon/x"\n'
+            doc = f'system:\n  canon: null\n  channels:\n    {leaf}: "{{system.canon}}/x"\n'
             target = key
         else:
-            doc = f'system:\n  canon: null\n  {leaf}: "@system.canon/x"\n'
+            doc = f'system:\n  canon: null\n  {leaf}: "{{system.canon}}/x"\n'
             target = key
         _load, resolve, values = self._resolve(tmp_path, doc)
         if target in SUBSCRIPTED_SYSTEM_PATH_KEYS:

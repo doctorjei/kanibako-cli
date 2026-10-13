@@ -303,9 +303,7 @@ _MAILBOXES = "workset.channels.mailboxes"
 
 @pytest.mark.parametrize("value", [
   "{system.channels.mailboxes}/{meta.workset.name}",
-  "@system.channels.mailboxes/@meta.workset.name",
   "/srv/mb/{meta.workset.name}",
-  "/srv/mb/@meta.workset.name",
 ])
 def test_the_system_door_takes_the_spec_mailboxes_default_and_the_case_3_cure(value, std):
   message = _std_system_set(_MAILBOXES, value, std)
@@ -313,9 +311,20 @@ def test_the_system_door_takes_the_spec_mailboxes_default_and_the_case_3_cure(va
   assert value in std.settings.read_text()
 
 
+@pytest.mark.parametrize(("value", "cure"), [
+  ("@system.channels.mailboxes/@meta.workset.name", "{system.channels.mailboxes}"),
+  ("/srv/mb/@meta.workset.name", "{meta.workset.name}"),
+])
+def test_the_system_door_refuses_the_old_spelling_naming_the_braced_one(value, cure, std):
+  """The one-release guard (keyspec "References"): nothing is written."""
+  message = _std_system_set(_MAILBOXES, value, std)
+  assert message.startswith("Error:"), message
+  assert f"write '{cure}'" in message, message
+  assert not std.settings.exists() or value not in std.settings.read_text()
+
+
 @pytest.mark.parametrize("value", [
   "{system.channels.mailboxes}/{meta.workset.name}",
-  "@system.channels.mailboxes/@meta.workset.name",
 ])
 def test_a_failed_std_refuses_a_system_ref_naming_the_failure(value, std):
   message = _std_system_set(_MAILBOXES, value, std, target_error="std boom")

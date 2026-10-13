@@ -94,14 +94,15 @@ token coerces it to `""`. It is never stored and is never a member of
 
 ## Whole-value vs embedded — decided by PARSE (S18)
 
-`_is_whole_value_ref` returns the dotted ref name iff the value IS exactly one `@`-reference and
-NOTHING else — no leading or trailing characters, no embedded literal. It uses `match_ref`, the
-SHARED grammar, so BOTH the bare `@a.b` and the braced `@{a.b}` spellings qualify.
+`_is_whole_value_ref` returns the dotted ref name iff the value IS exactly one `{key}`-reference and
+NOTHING else — no leading or trailing characters, no embedded literal. It reads
+`settings_resolve.match_braced`, the SHARED braced parser.
 
-`"@a.b"` / `"@{a.b}"` → `"a.b"`. `"@a-@b"` / `"x@a"` / `"@a/c"` / `"@a "` / `"@{a.b}x"` → `None`
-(embedded — handled by `expand_expr` substitution). A leading `~` or `$` is never whole-value HERE:
-those are environment tokens, not config refs. `$` has its own predicate — see *Whole-value `$VAR`*
-below — and `~` has none, because it carries no 3-state to inherit.
+`"{a.b}"` → `"a.b"`. `"{a.b}x"` / `"x{a.b}"` / `"{$X}"` → `None`. `@` is text, so `"@a.b"` and
+`"@{a.b}"` → `None` as well: they take the embedded path, where `expand_expr`'s tokenizer runs the
+one-release guard on the old spelling (`settings_resolve.refuse_bare_reference`) or reads them as
+text. A whole-value bare form answered here would skip that guard. `{$VAR}` has its own predicate —
+see *Whole-value `{$VAR}`* below — and `~` has none, because it carries no 3-state to inherit.
 
 ⚑ **THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH.** This predicate is the ONLY thing
 that decides the shape, and the two paths differ in a way that is invisible until it bites: a
@@ -109,21 +110,19 @@ whole-value ref inherits the referent's full 3-state VERBATIM (absent → the ke
 present-`None` → `None`), while an embedded token is string substitution and `_lookup_str`
 coerces an absent referent to `""`. So a braced whole-value ref misrouted to the embedded path
 would silently turn an ABSENT referent (spec §0's "drop this key" signal) into an empty-string
-terminal — a real value where the spec means absence. `@{a.b}` and `@a.b` therefore resolve through
-the SAME call.
+terminal — a real value where the spec means absence.
 
-**It NEVER RAISES — a total predicate.** A malformed reference (`"@{a.b"`, `"@{"`) answers `None` so
+**It NEVER RAISES — a total predicate.** A malformed reference (`"{a.b"`, `"{"`) answers `None` so
 it falls through to `_Expander._expand_embedded`, where `expand_expr` raises it with the same message
 from one place. That keeps error provenance identical for malformed input in STRICT and LENIENT
 mode alike; a WELL-FORMED braced ref answers its name.
 
-## Whole-value `$VAR` — the `$` twin, and why only one variable needs it
+## Whole-value `{$VAR}` — the variable twin, and why only one variable needs it
 
-`_is_whole_value_var` returns the variable NAME iff the value IS exactly one `$VAR` and nothing
-else, using `match_var`, the SHARED grammar, so `$X` and `${X}` both qualify. `"\\$X"` / `"a$X"` /
-`"$X/y"` / `"$X "` → `None` (embedded). **It NEVER RAISES — a total predicate**, like its `@` twin: a
-malformed reference (`"$"`, `"${X"`) answers `None` and falls through to `expand_expr`, which raises
-it with the same message from the same place it always has.
+`_is_whole_value_var` returns the variable NAME iff the value IS exactly one `{$VAR}` and nothing
+else, through the same braced parser. `"$X"` / `"${X}"` / `"a{$X}"` / `"{$X}/y"` → `None`
+(embedded, where the guard reads the old spellings). **It NEVER RAISES — a total predicate**, like
+its `{key}` twin.
 
 `_resolve_whole_value_var` then calls `settings_resolve.resolve_var`, the THREE-state primitive, and
 maps its `UNSET` to `_ABSENT` — the same sentinel a missing `@`-referent produces, so `_expand_node`

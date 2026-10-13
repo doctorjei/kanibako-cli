@@ -408,7 +408,7 @@ _ONCE_STRAYS = [
 
 
 class TestCandidatesAreKeyLiteralsAndRefs:
-  """One string literal's content is a key mention whole, or through an ``@``-ref.
+  """One string literal's content is a key mention whole, or through a ``{key}``-ref.
 
   kinemata's ``strings`` mode hands the adapter one evaluated literal per call
   and never a comment, a docstring or an f-string; the pinned input contract is
@@ -432,8 +432,9 @@ class TestCandidatesAreKeyLiteralsAndRefs:
     assert registry.candidates(f"Read {key} and return it.\n\n  Longer docstring text.") == []
 
   @pytest.mark.parametrize("key", _CONCRETE)
-  def test_an_at_ref_in_prose_is(self, registry: KeyspaceRegistry, key: str) -> None:
-    assert registry.candidates(f"defaults to @{key}/common") == [key]
+  def test_an_at_is_text_and_opens_no_ref(self, registry: KeyspaceRegistry, key: str) -> None:
+    assert registry.candidates(f"defaults to @{key}/common") == []
+    # The brace after a text ``@`` still opens a reference.
     assert registry.candidates(f"defaults to @{{{key}}}.bak") == [key]
 
   @pytest.mark.parametrize("key", _CONCRETE)
@@ -457,9 +458,9 @@ class TestCandidatesAreKeyLiteralsAndRefs:
     assert registry.candidates("{name}") == []
     assert registry.candidates("{nosuchroot.thing}") == []
 
-  def test_the_ref_name_is_the_ref_parsers_whole_extent(self, registry: KeyspaceRegistry) -> None:
+  def test_a_bare_at_run_is_no_ref(self, registry: KeyspaceRegistry) -> None:
     key = _CONCRETE[0]
-    assert registry.candidates(f"@{key}.jsonl") == [f"{key}.jsonl"]
+    assert registry.candidates(f"@{key}.jsonl") == []
 
   def test_an_at_abutting_an_identifier_opens_no_ref(self, registry: KeyspaceRegistry) -> None:
     assert registry.candidates(f"user@{_CONCRETE[0]}") == []

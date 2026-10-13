@@ -1,8 +1,8 @@
 """Strict braces and escapes (keyspec § 0 "References"; braced-refs step 5, B1a).
 
 "{{" is a literal "{" and "}}" a literal "}" everywhere; an unpaired brace, an empty or
-malformed reference, and a backslash before anything but ``\\``, ``~`` (and, until the
-sigils retire, ``@``/``$``) are refused by name. A trailing lone backslash stays literal.
+malformed reference, and a backslash before anything but ``\\`` and ``~`` are refused by
+name. A trailing lone backslash stays literal.
 The expander and the set-time scan read ONE tokenizer, so both refuse the same values.
 """
 
@@ -55,6 +55,8 @@ _REFUSED = [
     ("\\{a.b}", ["Illegal escape '\\{'"]),
     ("\\}", ["Illegal escape '\\}'"]),
     ("a\\ b", ["Illegal escape '\\ '"]),
+    ("\\@a.b", ["Illegal escape '\\@'"]),
+    ("\\$X", ["Illegal escape '\\$'"]),
 ]
 
 
@@ -88,9 +90,9 @@ def test_the_set_time_scan_refuses_the_same_values(expr, words) -> None:
     ("a/\\~", "a/~"),
     ("tail\\", "tail\\"),                       # a trailing lone backslash stays literal
     ("\\", "\\"),
-    ("\\@a.b", "@a.b"),                         # \@ and \$ escape until B1b
-    ("\\$TERM", "$TERM"),
-    ("\\@{a.b}", "@x_x"),                       # \@ escapes the @ only; {a.b} is a reference
+    ("@x.y", "@x.y"),                           # @ and $ are text
+    ("$X", "$X"),
+    ("@{a.b}", "@x_x"),                         # {a.b} after a text @ is a reference
 ])
 def test_the_expander_reads(expr, expected) -> None:
     assert _host(expr) == expected
@@ -100,15 +102,15 @@ def test_the_expander_reads(expr, expected) -> None:
     ("{{x}}", "{{x}}"),
     ("\\\\x", "\\\\x"),
     ("\\~x", "\\~x"),
-    ("\\$X", "\\$X"),
-    ("\\@x", "@x"),
+    ("$X", "$X"),
+    ("@x", "@x"),
     ("x\\", "x\\"),
 ])
 def test_deferral_carries_what_the_box_pass_reads(expr, residue) -> None:
     out = _host(expr, defer=True)
     assert out == residue
     # ...and the box pass reads that residue to the same text the host pass would.
-    box = expand_expr(out.replace("@", "\\@"), space="guest", ctx=_ctx(), lookup=_lookup)
+    box = expand_expr(out, space="guest", ctx=_ctx(), lookup=_lookup)
     assert box == _host(expr)
 
 
@@ -119,8 +121,8 @@ def test_a_leading_escaped_tilde_is_no_home() -> None:
 
 @pytest.mark.parametrize(("value", "refs", "variables"), [
     ("{{ {a.b} }}/{$TERM}", ["a.b"], ["TERM"]),
-    ("\\@{a.b}", ["a.b"], []),
-    ("\\@c.d/\\$X/tail\\", [], []),
+    ("@{a.b}", ["a.b"], []),
+    ("@c.d/$X/tail\\", [], []),
 ])
 def test_the_scan_reads_the_expanders_tokens(value, refs, variables) -> None:
     assert scan_tokens(value) == (refs, variables)

@@ -55,13 +55,11 @@ from kanibako.settings.settings_resolve import (
     ExprSyntaxError,
     ResolveCtx,
     SettingsError,
-    deferred_literal_expr,
     expand_expr,
     guard_ref,
     is_verbatim_text,
+    literal_expr,
     match_braced,
-    match_ref,
-    match_var,
     resolve_var,
 )
 
@@ -149,12 +147,13 @@ class _ExpandedShapeError(SettingsError):
 
 
 def _is_whole_value_ref(value: str) -> str | None:
-    """Return the dotted ref name iff *value* IS exactly one whole-value ``@``-ref.
+    """Return the dotted ref name iff *value* IS exactly one whole-value ``{key}``-ref.
 
     S18 — the shape is decided by PARSE, never guessed, via the shared
-    :func:`~kanibako.settings.settings_resolve.match_ref` grammar. ``"@a.b"`` /
-    ``"@{a.b}"`` / ``"{a.b}"`` → ``"a.b"``; anything with a leading, trailing or embedded literal
-    → ``None`` (the embedded path, handled by ``expand_expr`` substitution).
+    :func:`~kanibako.settings.settings_resolve.match_braced` grammar. ``"{a.b}"`` →
+    ``"a.b"``; anything with a leading, trailing or embedded literal → ``None`` (the
+    embedded path, handled by ``expand_expr`` substitution). ``@`` is text, so ``"@a.b"``
+    is no reference here: it takes the embedded path, where the old-spelling guard reads it.
 
     ⚑ THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH. This predicate is
     the ONLY thing that decides the shape, and a braced whole-value ref misrouted
@@ -165,11 +164,11 @@ def _is_whole_value_ref(value: str) -> str | None:
     NEVER RAISES — a total predicate; a malformed reference answers ``None`` and
     ``expand_expr`` raises it downstream with unchanged provenance.
     """
-    return _is_whole_value(value, "@", match_ref, "ref")
+    return _whole_braced(value, "ref")
 
 
 def _is_whole_value_var(value: str) -> str | None:
-    """Return the variable NAME iff *value* IS exactly one whole-value ``$VAR``.
+    """Return the variable NAME iff *value* IS exactly one whole-value ``{$VAR}``.
 
     The ``$`` twin of :func:`_is_whole_value_ref`, and it exists for the SAME reason:
     the two paths differ in what they can SAY. An embedded token is string
@@ -179,37 +178,11 @@ def _is_whole_value_var(value: str) -> str | None:
     so "the host set none" must reach the walk as absence and DROP the key, never as
     an empty string a reader would take for a capability claim.
 
-    Uses ``match_var``, the SHARED grammar, so ``$X``, ``${X}`` and ``{$X}`` all qualify.
-    ``"\\$X"`` / ``"a$X"`` / ``"$X/y"`` / ``"$X "`` → ``None`` (embedded).
+    Only ``{$X}`` qualifies; ``"$X"`` / ``"a{$X}"`` / ``"{$X}/y"`` → ``None`` (embedded).
 
-    **It NEVER RAISES — a total predicate**, like its ``@`` twin: a malformed reference
-    (``"$"``, ``"${X"``) answers ``None`` and falls through to ``expand_expr``, which
-    raises it with the same message from the same place it always has.
+    **It NEVER RAISES — a total predicate**, like its ``{key}`` twin.
     """
-    return _is_whole_value(value, "$", match_var, "var")
-
-
-def _is_whole_value(
-    value: str,
-    sigil: str,
-    matcher: Callable[[str, int], tuple[str, int]],
-    kind: str,
-) -> str | None:
-    """The NAME iff *value* is exactly one whole-value reference of one family; never raises.
-
-    The body :func:`_is_whole_value_ref` and :func:`_is_whole_value_var` share: *sigil* opens
-    the bare / ``{``-after-sigil spelling *matcher* parses, and *kind* is the family's braced
-    ``{...}`` form in :func:`~kanibako.settings.settings_resolve.match_braced`.
-    """
-    if value[:1] == "{":
-        return _whole_braced(value, kind)
-    if value[:1] != sigil:
-        return None
-    try:
-        name, end = matcher(value, 0)
-    except SettingsError:
-        return None
-    return name if end == len(value) else None
+    return _whole_braced(value, "var")
 
 
 def _whole_braced(value: str, kind: str) -> str | None:
@@ -632,7 +605,7 @@ class _Expander:
 
         *space*: ``"host"`` expands ``~``/``{$VAR}`` host-side; ``"defer"`` leaves
         them RAW for the box side (S17). ``{key}``-refs expand in BOTH spaces, and under
-        ``"defer"`` a referent's value enters as :func:`deferred_literal_expr`: it is a
+        ``"defer"`` a referent's value enters as :func:`literal_expr`: it is a
         resolved terminal, so the box resolver must not read its characters as tokens.
 
         *null_refs*, when given, receives the refs that made the result ``None``.
@@ -643,7 +616,7 @@ class _Expander:
             if resolved is None and null_refs is not None:
                 null_refs.append(ref_name)
             if space == "defer" and isinstance(resolved, str):
-                return deferred_literal_expr(resolved)
+                return literal_expr(resolved)
             return resolved
         if space == "host":
             var_name = _is_whole_value_var(value)
@@ -890,7 +863,7 @@ class _Expander:
         """Substitute embedded tokens in *value* via ``expand_expr`` (spec §0).
 
         A ``{key}``-ref token resolves through :meth:`_lookup_str` (absent/None →
-        ``""``, a None also RECORDED in *none_refs*, and a :func:`deferred_literal_expr` under
+        ``""``, a None also RECORDED in *none_refs*, and a :func:`literal_expr` under
         ``space="defer"``); ``~``/``{$VAR}`` expand host-side for ``space="host"`` and are
         left RAW (``defer_env=True``) for ``space="defer"`` (S17). A cycle reached
         through an embedded token still raises (B7). ONE scanner serves both spaces —
@@ -900,7 +873,7 @@ class _Expander:
 
         def lookup(ref: str, ch: tuple[str, ...]) -> str:
             text = self._lookup_str(ref, ch, none_refs)
-            return deferred_literal_expr(text) if defer else text
+            return literal_expr(text) if defer else text
 
         return expand_expr(
             value, space="host", ctx=self._ctx, lookup=lookup, chain=chain,

@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import re
+
 import pytest
 
 from kanibako.settings.paths import BoxMode, resolve_system_paths
@@ -18,11 +20,8 @@ from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import EarlyScope, resolve_workset_dir_key
 from tests.support.early import early_record
 
-#: The spec's ``workset.channels.mailboxes`` default, in both spellings.
-_MAILBOXES_DEFAULT = [
-  "{system.channels.mailboxes}/{meta.workset.name}",
-  "@system.channels.mailboxes/@meta.workset.name",
-]
+#: The spec's ``workset.channels.mailboxes`` default.
+_MAILBOXES_DEFAULT = ["{system.channels.mailboxes}/{meta.workset.name}"]
 _PARTITIONS = [
   (BoxMode.primary, None, "__PRIMARY__"),
   (BoxMode.named, "kento", "kento"),
@@ -42,12 +41,12 @@ def test_the_spec_mailboxes_default_resolves_per_partition(value, mode, name, to
   assert _read(value, early) == Path(mailboxes) / token
 
 
-@pytest.mark.parametrize("value", ["/srv/mb/{meta.workset.name}", "/srv/mb/@meta.workset.name"])
+@pytest.mark.parametrize("value", ["/srv/mb/{meta.workset.name}"])
 def test_the_name_alone_spells_the_partition(value, tmp_path):
   assert _read(value, early_record(tmp_path, mode=BoxMode.named, name="kento")) == Path("/srv/mb/kento")
 
 
-@pytest.mark.parametrize("value", ["{system.cache}/x", "@system.cache/x"])
+@pytest.mark.parametrize("value", ["{system.cache}/x"])
 def test_a_system_path_is_read_verbatim_from_the_record(value, tmp_path):
   early = early_record(tmp_path / "a $b {c}", mode=BoxMode.primary)
   cache = resolve_system_paths({}, data_home=tmp_path / "a $b {c}", home=tmp_path / "a $b {c}")
@@ -64,7 +63,7 @@ def test_a_dropped_system_table_refuses_the_ref_naming_why(value, tmp_path):
     _read(value, failed)
 
 
-@pytest.mark.parametrize("value", ["{system.channels.mailboxes}/x", "@system.channels.mailboxes/x"])
+@pytest.mark.parametrize("value", ["{system.channels.mailboxes}/x"])
 def test_a_null_system_path_is_refused(value, tmp_path):
   early = early_record(tmp_path, mode=BoxMode.primary)
   paths = {**early.system.system_paths, "system.channels.mailboxes": None}
@@ -73,7 +72,19 @@ def test_a_null_system_path_is_refused(value, tmp_path):
     _read(value, null)
 
 
-@pytest.mark.parametrize("value", ["/z/{system.agent}", "/z/@system.agent", "/z/{config.data}"])
+@pytest.mark.parametrize("value", ["/z/{system.agent}", "/z/{config.data}"])
 def test_no_other_anchor_is_admitted(value, tmp_path):
   with pytest.raises(SettingsError, match="cannot be resolved here"):
     _read(value, early_record(tmp_path, mode=BoxMode.primary))
+
+
+@pytest.mark.parametrize(("value", "cure"), [
+  ("@system.channels.mailboxes/@meta.workset.name", "{system.channels.mailboxes}"),
+  ("/srv/mb/@meta.workset.name", "{meta.workset.name}"),
+  ("@system.cache/x", "{system.cache}"),
+  ("/z/@system.agent", "{system.agent}"),
+])
+def test_the_old_spelling_is_refused_naming_the_braced_one(value, cure, tmp_path):
+  """The one-release guard (keyspec "References") at the early read."""
+  with pytest.raises(SettingsError, match=f"write '{re.escape(cure)}'"):
+    _read(value, early_record(tmp_path, mode=BoxMode.named, name="kento"))

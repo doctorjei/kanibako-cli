@@ -26,10 +26,10 @@ _PREF = {"agent": {_AGENT: {"model": "opus"}}}
 def _candidates(target) -> dict[str, str]:
   """One reference per floor fragment, each derived from the fragment itself."""
   return {
-    "system scalar floor": f"@{next(iter(SYSTEM_SCALAR_FLOOR))}/x",
-    "system path tier": f"@{next(iter(target.system_floor))}/x",
-    "workset anchor": "@meta.workset.path/x",
-    "workset pref": f"@agent.{_AGENT}.model/x",
+    "system scalar floor": f"{{{next(iter(SYSTEM_SCALAR_FLOOR))}}}/x",
+    "system path tier": f"{{{next(iter(target.system_floor))}}}/x",
+    "workset anchor": "{meta.workset.path}/x",
+    "workset pref": f"{{agent.{_AGENT}.model}}/x",
   }
 
 
@@ -89,7 +89,7 @@ def test_set_time_resolves_each_floor_fragment_as_the_launch_does(fragment, std,
   at_set = _set_time_value(target, value)
   at_launch = _launch_value(target, value)
   assert at_set == at_launch
-  assert "@" not in str(at_set), at_set
+  assert "{" not in str(at_set), at_set
 
 
 def test_set_time_keeps_the_box_scalar_floor_at_a_workset_target(std, workset):

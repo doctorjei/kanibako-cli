@@ -168,15 +168,16 @@ def test_known_var_is_ok() -> None:
     assert v is OK
 
 
-def test_braced_known_var_is_ok() -> None:
+def test_the_old_braced_var_spelling_is_refused_naming_the_cure() -> None:
     v = _validate("box.bindings.rw.home", "${XDG_DATA_HOME}/x")
-    assert v is OK
+    assert isinstance(v, Error)
+    assert "write '{$XDG_DATA_HOME}'" in v.message, v.message
 
 
-def test_braced_unknown_var_is_hard_error() -> None:
+def test_a_dollar_before_a_braced_name_is_text_then_a_ref() -> None:
     v = _validate("box.bindings.rw.home", "${NOPE}/x")
     assert isinstance(v, Error)
-    assert "{$NOPE}" in v.message
+    assert "{NOPE}" in v.message
 
 
 # --------------------------------------------------------------------------- #
@@ -190,29 +191,22 @@ def test_unterminated_braced_var_is_hard_error() -> None:
     assert "malformed" in v.message.lower()
 
 
-def test_bare_dollar_then_nonname_is_hard_error() -> None:
-    # ``$/`` — a ``$`` not followed by a valid variable name is malformed (matches
-    # expand_expr, which raises on the same shape).
-    v = _validate("box.bindings.rw.home", "$/notavar")
-    assert isinstance(v, Error)
+def test_a_dollar_is_text() -> None:
+    # ``$`` is an ordinary character (keyspec "References"): ``$/`` and ``$NOTAVAR``
+    # are text, never a variable token. Anchored ABSOLUTE so no path rule decides it.
+    assert _validate("box.bindings.rw.home", "/abs/$/notavar") is OK
+    assert _validate("box.bindings.rw.home", "/abs/$NOTAVAR/x") is OK
 
 
-def test_escaped_dollar_is_literal_not_a_var() -> None:
-    # ``\$`` is an escaped literal ``$`` — NOT a variable token, so no unknown-var
-    # error (matches expand_expr's escape rule).
-    #
-    # ⚑ THE ABSOLUTE ANCHOR IS VESTIGIAL NOW, AND IS KEPT ONLY BECAUSE CHANGING A
-    # FIXTURE PROVES NOTHING. It was added because the bare-relative CATEGORY
-    # refusal would have failed ``\$NOTAVAR/x`` for that OTHER reason, leaving this
-    # green for the wrong cause. QA′ deleted that refusal, so the leading ``/`` no
-    # longer separates anything — the escape rule is what is under test either way.
-    v = _validate("box.bindings.rw.home", r"/abs/\$NOTAVAR/x")
-    assert v is OK
+def test_an_at_is_text() -> None:
+    assert _validate("box.bindings.rw.home", "/abs/@nope/x") is OK
 
 
-def test_escaped_at_is_literal_not_a_ref() -> None:
-    v = _validate("box.bindings.rw.home", r"/abs/\@nope/x")
-    assert v is OK
+def test_backslash_dollar_and_at_are_illegal_escapes() -> None:
+    for value in (r"/abs/\$NOTAVAR/x", r"/abs/\@nope/x"):
+        v = _validate("box.bindings.rw.home", value)
+        assert isinstance(v, Error), value
+        assert "Illegal escape" in v.message, v.message
 
 
 # --------------------------------------------------------------------------- #
@@ -221,30 +215,32 @@ def test_escaped_at_is_literal_not_a_ref() -> None:
 
 
 def test_braced_ref_scans_as_one_token_not_a_swallowed_suffix() -> None:
-    # ``scan_tokens`` calls the resolver's OWN parser, so the ref name stops at
-    # the closing brace and the ``.jsonl`` suffix is a literal — the whole point
-    # of the form. (Bare ``@meta.box.name.jsonl`` would yield one dotted name.)
+    # ``scan_tokens`` reads the resolver's OWN tokenizer, so the ref name stops at
+    # the closing brace and the ``.jsonl`` suffix is a literal. The old greedy
+    # ``@meta.box.name.jsonl`` is refused by the guard, naming that spelling.
     from kanibako.settings.settings_configset import scan_tokens
 
-    assert scan_tokens("@{meta.box.name}.jsonl") == (["meta.box.name"], [])
+    assert scan_tokens("{meta.box.name}.jsonl") == (["meta.box.name"], [])
     assert scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
-    assert scan_tokens("@meta.box.name.jsonl") == (["meta.box.name.jsonl"], [])
+    with pytest.raises(ValueError, match=r"write '\{meta\.box\.name\}\.jsonl'"):
+        scan_tokens("@meta.box.name.jsonl")
 
 
 def test_braced_ref_that_resolves_is_ok() -> None:
     # ``meta.box.name`` exists in _KEYSPACE → the E3 probe resolves cleanly.
     v = _validate(
-        "box.bindings.ro.helper_log", "@workset.boxes/@{meta.box.name}.jsonl",
+        "box.bindings.ro.helper_log", "{workset.boxes}/{meta.box.name}.jsonl",
     )
     assert v is OK
 
 
-def test_dangling_braced_ref_is_hard_error_like_a_bare_one() -> None:
-    # PHASE R: a dangling BRACED ref is judged exactly as a dangling bare one.
-    braced = _validate("box.bindings.rw.home", "@{nope.missing}/x")
-    bare = _validate("box.bindings.rw.home", "@nope.missing/x")
-    assert isinstance(braced, Error) and isinstance(bare, Error)
-    assert "nope.missing" in braced.message
+def test_dangling_braced_ref_is_hard_error() -> None:
+    v = _validate("box.bindings.rw.home", "{nope.missing}/x")
+    assert isinstance(v, Error)
+    assert "nope.missing" in v.message
+    # ...and an ``@`` before it is text, not part of the reference.
+    at = _validate("box.bindings.rw.home", "@{nope.missing}/x")
+    assert isinstance(at, Error) and "nope.missing" in at.message
 
 
 def test_malformed_braced_ref_is_hard_error() -> None:
@@ -254,32 +250,27 @@ def test_malformed_braced_ref_is_hard_error() -> None:
         assert "malformed" in v.message.lower(), value
 
 
-def test_both_token_families_report_in_the_resolvers_message_style() -> None:
-    """One grammar means one ERROR STYLE too, for ``$`` and ``@`` alike.
-
-    PHASE R first routed only the ``@`` arm through the resolver's parser, which
-    left ``scan_tokens`` speaking two message styles in one function — the exact
-    "two forms for one thing" this codebase treats as a defect, and the kind that
-    gets copied. Both arms now re-raise the resolver's own text.
-    """
+def test_every_refusal_reports_in_the_resolvers_message_style() -> None:
+    """One grammar means one ERROR STYLE too: ``scan_tokens`` re-raises the
+    resolver's own text, for every refusal the tokenizer makes."""
     from kanibako.settings.settings_configset import scan_tokens
 
     for value, expected in (
-        ("@", "Malformed key reference at:"),
-        ("$", "Malformed variable reference at:"),
-        ("@{x", "Unterminated {...} reference:"),
-        ("${X", "Unterminated {...} reference:"),
+        ("{", "Unpaired '{' at:"),
+        ("{a b}", "Malformed reference '{a b}' at:"),
+        ("\\q", "Illegal escape '\\q' at:"),
+        ("@box.image", "Old reference spelling '@box.image' at:"),
+        ("$TERM", "Old reference spelling '$TERM' at:"),
     ):
         with pytest.raises(ValueError) as ei:
             scan_tokens(value)
         assert str(ei.value).startswith(expected), (value, str(ei.value))
 
 
-def test_escaped_at_brace_is_literal_not_a_ref() -> None:
-    # A literal ``@{`` is ``\@`` and a doubled brace — not a token, so no
+def test_an_at_before_doubled_braces_is_literal_not_a_ref() -> None:
+    # A literal ``@{`` is an ``@`` and a doubled brace — not a token, so no
     # dangling-ref error (matches expand_expr's rule).
-    # Anchored ABSOLUTE — see ``test_escaped_dollar_is_literal_not_a_var``.
-    v = _validate("box.bindings.rw.home", r"/abs/\@{{nope}}/x")
+    v = _validate("box.bindings.rw.home", "/abs/@{{nope}}/x")
     assert v is OK
 
 

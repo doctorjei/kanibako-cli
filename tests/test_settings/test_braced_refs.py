@@ -1,8 +1,8 @@
-"""The braced reference spelling ``{a.b.c}`` / ``{$NAME}``, read alongside the old one.
+"""The braced reference spelling ``{a.b.c}`` / ``{$NAME}``.
 
-Braced-refs plan step 0: the parser accepts both grammars while the tree converts;
 ``{{`` / ``}}`` are literal braces; a brace that opens no reference is refused
-(step 5, B1a — ``test_strict_braces_escapes``).
+(``test_strict_braces_escapes``); ``@`` and ``$`` are text, and their old reference
+spellings are refused for one release (``test_bare_reference_guard``).
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from kanibako.settings.settings_resolve import (
     GUEST_HOME,
     ResolveCtx,
     SettingsError,
-    deferred_literal_expr,
     expand_expr,
     expand_guest_home,
     literal_expr,
@@ -63,12 +62,12 @@ def test_match_braced_answers_none_where_no_reference_starts(expr) -> None:
     ("{$XDG_DATA_HOME}/k", "/h/.local/share/k"),
     ("{{a.b}}", "{a.b}"),
     ("{{ {a.b} }}", "{ AB }"),
-    ("@a.b/{c}", "AB/C"),
-    ("$TERM-{$TERM}", "xterm-xterm"),
-    ("\\@{a.b}", "@AB"),
-    ("\\@{{a.b}}", "@{a.b}"),
+    ("@a/{c}", "@a/C"),
+    ("$X-{$TERM}", "$X-xterm"),
+    ("@{c}", "@C"),
+    ("@{{a.b}}", "@{a.b}"),
 ])
-def test_host_expansion_reads_both_grammars(expr, expected) -> None:
+def test_host_expansion_reads_the_braced_grammar(expr, expected) -> None:
     assert _host(expr) == expected
 
 
@@ -90,26 +89,26 @@ def test_deferral_carries_braces_for_the_box_pass(expr, residue) -> None:
     assert out == residue
 
 
-@pytest.mark.parametrize("text", ["/p/{a.b}/x", "/p/{{", "}", "/p/$X@y~\\z", "{$TERM}"])
+@pytest.mark.parametrize("text", ["/p/{a.b}/x", "/p/{{", "}", "/p/$X@y~\\z", "{$FOO}"])
 def test_literal_expr_round_trips_through_the_expander(text) -> None:
     assert _host(literal_expr(text)) == text
 
 
-@pytest.mark.parametrize("text", ["/p/{a.b}/x", "/p/}{", "/p/$X~\\z"])
-def test_deferred_literal_expr_round_trips_through_the_box_pass(text) -> None:
-    residue = deferred_literal_expr(text)
+@pytest.mark.parametrize("text", ["/p/{a.b}/x", "/p/}{", "/p/$X~\\z", "/p/a@y"])
+def test_literal_expr_round_trips_through_the_box_pass(text) -> None:
+    residue = literal_expr(text)
     assert expand_expr(residue, space="guest", ctx=_ctx(), lookup=_lookup) == text
 
 
 def test_a_literal_at_brace_survives_both_passes() -> None:
-    residue = expand_expr("\\@{{a.b}}", space="host", ctx=_ctx(), lookup=_lookup, defer_env=True)
-    # The box pass escapes every ``@`` first (``settings_launch.resolve_box_dest``).
-    box = expand_expr(residue.replace("@", "\\@"), space="guest", ctx=_ctx(), lookup=_lookup)
+    residue = expand_expr("@{{a.b}}", space="host", ctx=_ctx(), lookup=_lookup, defer_env=True)
+    assert residue == "@{{a.b}}"
+    box = expand_expr(residue, space="guest", ctx=_ctx(), lookup=_lookup)
     assert box == "@{a.b}"
 
 
 def test_scan_tokens_reads_braced_names_and_skips_literal_braces() -> None:
-    assert scan_tokens("{a.b}/{$TERM}/{{c}}/@d.e/{{/\\@{{f.g}}") == (["a.b", "d.e"], ["TERM"])
+    assert scan_tokens("{a.b}/{$TERM}/{{c}}/@d.e/{{/@{{f.g}}") == (["a.b"], ["TERM"])
 
 
 @pytest.mark.parametrize(("value", "ref", "var"), [
@@ -144,3 +143,9 @@ def test_expand_guest_home_takes_the_braced_token() -> None:
 
 def test_normalize_bind_dest_carries_a_braced_reference_verbatim() -> None:
     assert normalize_bind_dest("/x/{a.b}/../y/") == "/x/{a.b}/../y"
+
+
+def test_normalize_bind_dest_normalizes_a_dest_holding_at_or_dollar() -> None:
+    # ``@`` and ``$`` are text, so only a ``{`` keeps a dest out of ``normpath``.
+    assert normalize_bind_dest("/x/@a/../y/") == "/x/y"
+    assert normalize_bind_dest("/x/$A/./y") == "/x/$A/y"

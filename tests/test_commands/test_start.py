@@ -11030,12 +11030,15 @@ class TestPersonaLiveTierWiring:
 
     # --- persona-store values are DATA, never expressions (Jei, 142nd) ----------
 
+    #: Text with no token: the same in a settings file as in the store. ``@`` and ``$``
+    #: are ordinary characters (keyspec "References").
+    _TEXT_VALUES = ("plain-value", "$HOME/tok", "100%$", "a@b.example")
     _EXPAND_HAZARDS = [
-        "$HOME/tok",          # a host $VAR the ctx DOES know
+        "{$HOME}/tok",        # a variable kanibako's namespace does not carry
         "~/tok",              # tilde
-        "plain-value",        # the control: nothing to expand
-        "100%$",              # a bare $ with no name after it
-        "a@b.example",        # an @ that is NOT a leading whole-value ref
+        "100%{",              # an unpaired brace
+        "a{b.example}",       # a reference that names no key
+        *_TEXT_VALUES,
     ]
 
     def _leaf_outcome(self, std, tmp_home, *, target, category, var,
@@ -11043,8 +11046,8 @@ class TestPersonaLiveTierWiring:
                       agent_cfg_path=None):
         """The resolved leaf, or the EXCEPTION — an expansion defect is an outcome.
 
-        Several hazard values legitimately RAISE out of ``expand`` (``$HOME`` is
-        not in the launch ctx namespace; a bare ``$`` is malformed).  That is a
+        Several hazard values legitimately RAISE out of ``expand`` (``{$HOME}`` is
+        not in the launch ctx namespace; a lone ``{`` is unpaired).  That is a
         perfectly good answer to "do the two routes behave identically" — it just
         has to be captured rather than allowed to abort the comparison.
         """
@@ -11077,7 +11080,7 @@ class TestPersonaLiveTierWiring:
     # keyspace sees it, so a ``$VAR`` in a POINTER never reaches the leaf as
     # written.  Every other hazard shape reaches it verbatim.
     @pytest.mark.parametrize("raw", [
-        r for r in _EXPAND_HAZARDS if not r.startswith("$")
+        r for r in _EXPAND_HAZARDS if not r.startswith(("$", "{$"))
     ])
     def test_a_store_secret_path_arrives_verbatim_while_an_agent_file_one_expands(
         self, std, config_file, tmp_home, raw,
@@ -11126,10 +11129,10 @@ class TestPersonaLiveTierWiring:
             agent_cfg_path=path,
         )
         assert via_store == ("ok", literal)
-        # CONTROL: the agent file still expands — ``@b.example`` is a dangling
-        # embedded ref (→ ``""``) and a bare ``$`` is malformed.  ``~`` is not at
-        # position 0 and ``plain-value`` holds no token, so those two agree.
-        if raw in ("100%$", "a@b.example"):
+        # CONTROL: the agent file still reads an expression — ``{b.example}`` names no
+        # key and a lone ``{`` is unpaired, both refused.  ``~`` is not at position 0
+        # and the text values hold no token, so those agree.
+        if raw in ("100%{", "a{b.example}"):
             assert via_file != via_store
         else:
             assert via_file == via_store
@@ -11214,7 +11217,7 @@ class TestPersonaLiveTierWiring:
             system_doc={"agent": {self._NODE: {"env": {"NAV_X": raw}}}},
         )
         assert via_store == ("ok", raw)
-        if raw == "plain-value":
+        if raw in self._TEXT_VALUES:
             assert via_keyspace == via_store
         else:
             assert via_keyspace != via_store

@@ -3188,7 +3188,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
             root = tmp_home / f"probe_{leaf}"
             root.mkdir()
             dump_doc(root / "workset.yaml", {
-                "workset": {leaf: f"@meta.workset.path/moved_{leaf}"},
+                "workset": {leaf: f"{{meta.workset.path}}/moved_{leaf}"},
             })
             answered = {
                 k: (p, repointed)

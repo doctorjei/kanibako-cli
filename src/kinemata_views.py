@@ -1098,8 +1098,7 @@ def classify_spec_cell(key: str, cell: str) -> str:
         return STATED
     if any(char.isspace() for char in cell):
         return NOT_EXPRESSIBLE
-    # The old ``@`` cell: B1b drops "@" here when ``@`` stops being a sigil.
-    if cell.startswith(("@", "(")):
+    if cell.startswith("("):
         return NOT_EXPRESSIBLE
     if cell.startswith("{"):
         # A braced REFERENCE is delivered elsewhere, so no literal floor -- why the

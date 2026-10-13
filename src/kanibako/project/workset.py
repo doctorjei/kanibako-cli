@@ -305,7 +305,7 @@ def resolve_workset_logs(
     if repoint is None:
         return None
     if not isinstance(repoint, str):
-        repoint = f"@{_BOXES_REF}" if standalone else None
+        repoint = f"{{{_BOXES_REF}}}" if standalone else None
     return resolve_workset_dir_key(
         workset_root, repoint, _LOGS_LEAF, key=_LOGS_LEAF, where=where, standalone=standalone,
         workset_settings=workset_settings, early=early,

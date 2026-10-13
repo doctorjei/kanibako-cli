@@ -444,28 +444,28 @@ class TestWhatStaysRefused:
         written = [p.read_text() for p in files["agents"].rglob("*") if p.is_file()]
         assert any("{meta.workset.path}/x" in text for text in written), written
 
-    def test_a_malformed_dollar_is_not_forgiven(self, tmp_path, std):
-        """⚑ THE ``$`` FAMILY, which the blindness rule has to read before it forgives.
+    def test_a_malformed_variable_is_not_forgiven(self, tmp_path, std):
+        """⚑ THE VARIABLE FAMILY, which the blindness rule has to read before it forgives.
 
         The forgiving path is the one place a set decides a token is a token, so it runs
-        the resolver's own scan; a ``$`` it never parsed is a defect it could not see.
+        the resolver's own scan; a ``{$}`` it never parsed is a defect it could not see.
         """
         files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, "{workset.channelroot}/$", files,
+        message = _set(_CONTAINED_KEY, "{workset.channelroot}/{$}", files,
                        ConfigLevel.system, std=std)
-        assert message.startswith("Error:"), f"a malformed $ was ACCEPTED: {message}"
+        assert message.startswith("Error:"), f"a malformed {{$}} was ACCEPTED: {message}"
         assert "malformed" in message, message
         assert not files["system"].exists(), message
 
-    def test_an_escaped_ref_is_not_a_ref(self, tmp_path, std):
-        r"""``\@workset.nonexistent`` is a literal, so the floor's blindness must not open.
+    def test_an_at_before_a_name_is_not_a_ref(self, tmp_path, std):
+        r"""``@workset.nonexistent`` is text, so the floor's blindness must not open.
 
         ⚑ This is a GUARD, not a new behavior: the value never reaches the probe, because
         the ``[R147]`` bare-relative refusal takes it first. What is pinned is that the
         blindness rule did not open behind that guard.
         """
         files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, r"\@workset.nonexistent", files,
+        message = _set(_CONTAINED_KEY, "@workset.nonexistent", files,
                        ConfigLevel.system, std=std)
         assert "dangling reference" not in message, message
         assert not files["system"].exists(), message
@@ -541,14 +541,14 @@ class TestTheRefusalTextLivesInOnePlace:
 
 class TestOneGrammarForOneValue:
     """Fix 3: the set-time blindness rule reads the resolver's scan, so there is no
-    second opinion on what a value contains — including its ``$``-family tokens."""
+    second opinion on what a value contains — including its ``{$VAR}`` tokens."""
 
     def test_the_shared_scan_is_what_the_set_door_uses(self):
         assert scan_tokens("{workset.canon}") == (["workset.canon"], [])
         assert scan_tokens("{$XDG_DATA_HOME}/x") == ([], ["XDG_DATA_HOME"])
         assert scan_tokens("@{a.b}.jsonl") == (["a.b"], [])
 
-    @pytest.mark.parametrize("value", ["$", "${X", "{workset.channelroot}/$"])
+    @pytest.mark.parametrize("value", ["{", "{$X", "{workset.channelroot}/{$}"])
     def test_a_malformed_token_raises_rather_than_scanning_past_it(self, value):
         with pytest.raises(ValueError):
             scan_tokens(value)

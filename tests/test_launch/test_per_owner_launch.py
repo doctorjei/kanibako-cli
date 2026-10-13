@@ -107,14 +107,23 @@ class TestCaseFourAtStart:
         assert str(system) in message
         assert f"{src}/{{meta.workset.path}}/{{meta.box.name}}" in message
 
-    @pytest.mark.parametrize("spelling", [
-        "{meta.workset.path}/{meta.box.name}", "@meta.workset.path/@meta.box.name",
-    ], ids=["new-form", "old-form"])
-    def test_the_anchored_cure_is_accepted(self, std, box, tmp_path, spelling):
-        src = f"{tmp_path}/srv/ws/{spelling}"
+    def test_the_anchored_cure_is_accepted(self, std, box, tmp_path):
+        src = f"{tmp_path}/srv/ws/{{meta.workset.path}}/{{meta.box.name}}"
         _merge_into(std.settings, {"box": {"bindings": {"rw": {"/data": [src]}}}})
         snapshot = _launch(std, box)
         assert snapshot_leaf(snapshot, "box.bindings.rw") is not None
+
+    def test_the_old_spelling_of_the_cure_is_refused_naming_the_braced_one(
+        self, std, box, tmp_path,
+    ):
+        """The one-release guard (keyspec "References"): the old ``@`` spelling stops
+        the launch, naming the entry and the braced spelling that cures it."""
+        src = f"{tmp_path}/srv/ws/@meta.workset.path/@meta.box.name"
+        _merge_into(std.settings, {"box": {"bindings": {"rw": {"/data": [src]}}}})
+        with pytest.raises(SettingsError) as ei:
+            _launch(std, box)
+        message = str(ei.value)
+        assert "box.bindings.rw" in message and "write '{meta.workset.path}'" in message, message
 
     def test_system_bindings_sharing_is_accepted(self, std, box, tmp_path):
         """Row 2's twin for ``rw``: a shared category key names one resource on purpose."""

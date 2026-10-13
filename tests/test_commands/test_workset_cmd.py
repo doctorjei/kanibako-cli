@@ -2517,10 +2517,10 @@ class TestWorksetCmdSystemFloor:
 
         name, ws_root = self._workset(std, tmp_home)
         for key, value in sorted(resolved_sys.items()):
-            self._bind_at(ws_root, f"@{key}")
+            self._bind_at(ws_root, f"{{{key}}}")
             out = self._effective(name, capsys)
             assert f"{value} -> {self._DEST}" in out, (
-                f"@{key} is in the LAUNCH floor and did not render in the "
+                f"{{{key}}} is in the LAUNCH floor and did not render in the "
                 f"--effective display: the display omits a binding a launch mounts"
             )
 
@@ -2553,7 +2553,7 @@ class TestWorksetCmdSystemFloor:
         assert dropped not in resolved_sys
 
         name, ws_root = self._workset(std, tmp_home)
-        self._bind_at(ws_root, f"@{dropped}")
+        self._bind_at(ws_root, f"{{{dropped}}}")
         out = self._effective(name, capsys)
         assert self._DEST not in out, (
             "the display still resolved a key the shared builder no longer emits, so "

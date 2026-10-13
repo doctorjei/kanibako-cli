@@ -34,7 +34,6 @@ def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, n
 def _absent_reason(dotted: str) -> str | None
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
-def _is_whole_value(value: str, sigil: str, matcher: Callable[[str, int], tuple[str, int]], kind: str) -> str | None
 def _whole_braced(value: str, kind: str) -> str | None
 def _leaf_label(path: tuple[str, ...]) -> str
 ```

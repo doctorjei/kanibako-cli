@@ -105,28 +105,25 @@ policy:
   ref_direction: up_only          # references view UP (read-only); never point DOWN
   ref_direction_spec: "§0"
 
-  # REFERENCE FORMS (R-23) — how an @-ref is SPELLED. The bare form is the
-  # normal spelling; braces exist because the bare reference-name pattern is
-  # GREEDY over dot-separated segments (a bare `@meta.box.name.jsonl` parses the
-  # ref name as `meta.box.name.jsonl`, swallowing the extension, resolving
-  # ABSENT, and coercing to "" — silently yielding a path with no filename).
+  # REFERENCE FORMS (keyspec § 0 "References") — how a reference is SPELLED. The braces
+  # end the name, so text can follow it: `{meta.box.name}.jsonl`.
   reference_forms:
-    bare: "@a.b.c"              # UNCHANGED, the normal spelling
-    braced: "@{a.b.c}x"         # delimits the ref name explicitly so a LITERAL
-                                # SUFFIX may follow: resolves ref a.b.c, appends x.
-                                # Needed only where the character after the ref
-                                # would otherwise be eaten by the name (`.`, and
-                                # any other segment-legal character).
-    equivalence: "both forms resolve identically where both are expressible"
-    positions: "WHOLE-VALUE and EMBEDDED alike; set-time validation treats a
-                dangling braced ref exactly as a dangling bare one"
+    key: "{a.b.c}"              # the value of the key a.b.c
+    variable: "{$NAME}"         # the value of the variable NAME
+    literal_braces: "{{ and }}" # a literal { and }; a lone { or } is refused by name
+    escapes: ['\\', '\~']       # the only escapes; any other \x is refused by name
+    ordinary: "@ and $ are normal characters"
+    positions: "WHOLE-VALUE and EMBEDDED alike"
+    guard: "for one release, a bare @a.b.c naming a declared key (or whose leading
+            dotted part is one), @{a.b.c}, and a bare $NAME or ${NAME} naming a known
+            variable are refused by name; the cure names the braced spelling"
     motivating_row: "the helper-log bind — box.bindings.ro entry at
-                     $XDG_STATE_HOME/kanibako/helpers.jsonl, source
-                     (@workset.logs/@{meta.box.name}.jsonl); the retired workaround
+                     {$XDG_STATE_HOME}/kanibako/helpers.jsonl, source
+                     ({workset.logs}/{meta.box.name}.jsonl); the retired workaround
                      SPELLING meta.box.helper_log was never a key
                      (not_keys.never_a_key; R-23/R-36). ⚑ The former entry NAME
                      `helper_log` is gone with all binding names (2026-08-06c R-10)."
-  reference_forms_spec: "§2c (BRACE FORM `@{name}`; R-23, ruled 2026-07-30b)"
+  reference_forms_spec: "§0 (References)"
 
   enforce_at: resolve             # containing-scope key in a lower file is DROPPED + warned
   enforce_at_spec: "§0 (clause 4 bless, Jei 2026-07-02)"
@@ -405,8 +402,7 @@ policy:
       XDG_RUNTIME_DIR: null           # NO spec default — fall back + WARN, never silent
     box_side_deferred: true           # host pass MUST NOT expand a box-side {$XDG_*}/~
     escapes:                          # deferred residue: what the host pass keeps for the box pass
-      carried_verbatim: ['\$', '\~', '\\', '{{', '}}']
-      unescaped_by_host: ['\@']        # old grammar only; braced-refs plan step 5 drops it
+      carried_verbatim: ['\~', '\\', '{{', '}}']
   xdg_spec: "§1 (clause 3′ bless, Jei 2026-07-02)"
 
   # CLI LEVEL (§1A; R-11): the command line is its OWN level — the highest, above

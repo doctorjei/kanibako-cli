@@ -2731,7 +2731,7 @@ class TestCreateUnderASystemBoxesValue:
     def test_an_existing_outside_dir_is_left_alone(self, tmp_home, config_file):
         outside = tmp_home / "shared-boxes"
         (outside / "a").mkdir(parents=True)
-        std = self._system_boxes(f"{outside}/@meta.workset.path", config_file)
+        std = self._system_boxes(f"{outside}/{{meta.workset.path}}", config_file)
         create_workset("one", tmp_home / "worksets" / "one", std)
         assert [p.name for p in outside.iterdir()] == ["a"]
 

@@ -55,7 +55,7 @@ def _relocate_store(root: Path, value: str) -> Path:
     (store / "home" / "notes.md").write_text("HOME\n")
     (store / "box.yaml").write_text("box: {}\n")
     write_nested_key(root / "workset.yaml", ("workset",), "boxes",
-                     f"@meta.workset.path/{value}")
+                     f"{{meta.workset.path}}/{value}")
     (root / "box_data").mkdir(exist_ok=True)
     return store
 

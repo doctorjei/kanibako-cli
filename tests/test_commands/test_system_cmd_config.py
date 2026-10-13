@@ -1536,7 +1536,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
     def test_a_bogus_ref_is_still_refused_by_name(self, config_file, tmp_home, capsys):
         """The floor anchors ONE node, so it cannot become a blanket accept."""
         capsys.readouterr()
-        assert _set(f"{self.KEY}=@bogus.ref") == 1
+        assert _set(f"{self.KEY}={{bogus.ref}}") == 1
         assert "dangling reference '{bogus.ref}'" in capsys.readouterr().err
 
     def test_the_secret_family_is_anchored_too(self, config_file, tmp_home, capsys):
@@ -1564,7 +1564,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
         spelled against a DIFFERENT node's store root is not anchored by this write and
         is refused, so the shape ``{meta.agent.*.path}`` is never accepted on sight."""
         capsys.readouterr()
-        assert _set(f"{self.KEY}=@meta.agent.goose.path/canon") == 1
+        assert _set(f"{self.KEY}={{meta.agent.goose.path}}/canon") == 1
         assert "meta.agent.goose.path" in capsys.readouterr().err
 
 

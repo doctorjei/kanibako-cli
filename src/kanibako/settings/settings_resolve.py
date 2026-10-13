@@ -33,6 +33,8 @@ from typing import Any, Literal
 # ``agent_config`` imports ``SettingsError`` from here at ITS module level. The other two modules
 # measure clean at import time and stay call-time anyway: a module-level edge is a standing claim
 # about two modules' relative import order, which only the imported module can honor.
+# BARE-REF-GUARD: the one-release guard adds a second call-time edge,
+# ``settings_keyspace_probe.{KeyClass, keyspace_verdict}``, to ask whether a name is declared.
 from kanibako.agent_ref import CANONICAL_SEP, ENV_VAR_NAME, SEGMENT_CHAR_CLASS
 from kanibako.errors import KanibakoError
 
@@ -247,10 +249,8 @@ def _unescape(s: str) -> str:
 
 
 #: The characters :func:`expand_expr` reads as syntax (``~`` only at position 0, escaped
-#: everywhere for simplicity).
-# ⚑ ``$`` and ``@`` are here only while the old grammar is still read (braced-refs plan,
-# step 5 drops them); braces are doubled rather than escaped.
-_EXPR_SIGNIFICANT: frozenset[str] = frozenset("\\$@~")
+#: everywhere for simplicity); braces are doubled rather than escaped.
+_EXPR_SIGNIFICANT: frozenset[str] = frozenset("\\~")
 
 
 def _brace_literal(c: str) -> str:
@@ -259,29 +259,14 @@ def _brace_literal(c: str) -> str:
 
 
 def literal_expr(text: str) -> str:
-    """The expression that expands to *text* VERBATIM: ``\\ $ @ ~`` backslashed, braces doubled.
+    """The expression that expands to *text* VERBATIM: ``\\`` and ``~`` backslashed, braces
+    doubled.
 
-    For a host path a floor hands the expander as a value (a ``$``/``@``/``{`` in a
-    directory name is data, not a token). Host-space expansion removes every escape; a
-    deferred scan keeps ``\\$ \\~ \\\\ {{ }}`` for the box resolver and reads ``\\@`` as
-    no reference.
+    For a host path a floor hands the expander as a value (a ``{`` in a directory name is
+    data, not a token). Host-space expansion removes every escape; a deferred scan keeps
+    them, so the box pass reads the same text.
     """
     return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else _brace_literal(c) for c in text)
-
-
-#: The characters the BOX-side resolver reads as syntax: the box never processes ``@``.
-_DEFERRED_SIGNIFICANT: frozenset[str] = frozenset("\\$~")
-
-
-def deferred_literal_expr(text: str) -> str:
-    """The deferred box-side residue that resolves to *text* VERBATIM: ``\\ $ ~`` escaped,
-    braces doubled.
-
-    ``@`` stays plain, because the box resolver reads every ``@`` as a literal.
-    """
-    return "".join(
-        f"\\{c}" if c in _DEFERRED_SIGNIFICANT else _brace_literal(c) for c in text
-    )
 
 
 def literal_map(values: Mapping[str, str]) -> dict[str, str]:
@@ -376,8 +361,8 @@ def normalize_bind_dest(dest: str) -> str:
     """Canonicalize a binding DESTINATION (fully resolved, idempotent).
 
     ``~`` is EXPANDED, ``.`` / ``..`` / repeated ``/`` are RESOLVED, and a trailing ``/``
-    is DROPPED. An ``@``-ref or ``$var`` dest is carried VERBATIM after ``~`` expansion
-    and trailing-``/`` stripping; only the ``normpath`` step is skipped for them.
+    is DROPPED. A dest holding a ``{`` (a reference) is carried VERBATIM after ``~``
+    expansion and trailing-``/`` stripping; only the ``normpath`` step is skipped for it.
 
     ⚑⚑ DESTINATIONS ONLY. NEVER CALL THIS ON A ``host_src`` — a dest is a GUEST path (fixed
     machinery); a source's ``~`` is the INVOKING USER's home and must stay UNRESOLVED.
@@ -391,7 +376,7 @@ def normalize_bind_dest(dest: str) -> str:
         out = GUEST_HOME + out[1:]
     if len(out) > 1 and out.endswith("/"):
         out = out.rstrip("/") or "/"
-    if "@" in out or "$" in out or "{" in out:
+    if "{" in out:
         return out
     if posixpath.isabs(out):
         out = posixpath.normpath(out)
@@ -672,26 +657,16 @@ def match_var(expr: str, i: int) -> tuple[str, int]:
     """Parse ``$VAR`` / ``${VAR}`` at index *i*, returning ``(name, end_index)``.
 
     ⚑ PRECONDITION: ``expr[i] == "$"`` — NOT re-verified here; the caller has already dispatched.
-    ⚑ THE SINGLE parser for the ``$`` family (three callers, two modules) — do not fork it.
+    ⚑ The old bare/``${...}`` spelling: only ``agent_config`` and ``config_interface`` still
+    read it (braced-refs plan B1c retires them); the value tokenizer does not.
     """
     return _match_sigil(expr, i, _VAR_NAME_RE, "variable reference")
-
-
-def match_ref(expr: str, i: int) -> tuple[str, int]:
-    """Parse bare ``@a.b.c`` or braced ``@{a.b.c}`` at index *i*, returning ``(name, end_index)``.
-
-    ⚑ PRECONDITION: ``expr[i] == "@"`` — NOT re-verified; stated because this is a CROSS-MODULE
-    seam, so a new caller scanning for ``@`` differently must still hand over the ``@``'s index.
-    ⚑ THE SINGLE parser for both spellings, shared across modules (seam S25).
-    ⚑ NESTING IS NOT SUPPORTED and fails loudly: a substituted value is a LEAF, never re-scanned.
-    """
-    return _match_sigil(expr, i, _REF_NAME_RE, "key reference")
 
 
 def _match_sigil(
     expr: str, i: int, name_re: re.Pattern[str], noun: str,
 ) -> tuple[str, int]:
-    """The bare / braced scan :func:`match_var` and :func:`match_ref` share.
+    """The bare / ``{``-after-sigil scan :func:`match_var` reads.
 
     The sigil is ``expr[i]``; *name_re* matches the name after it and *noun* names the
     family in the malformed-reference refusal.
@@ -730,12 +705,78 @@ def match_braced(expr: str, i: int) -> tuple[Literal["ref", "var"], str, int] | 
     return kind, m.group(0), m.end() + 1
 
 
-#: The characters a backslash may escape (keyspec "References"): ``\\`` and ``\~``, plus
-#: ``\@`` and ``\$`` while ``@`` and ``$`` are still sigils (braced-refs plan, B1b).
-_ESCAPABLE: frozenset[str] = frozenset("\\~@$")
+#: The characters a backslash may escape (keyspec "References"): ``\\`` and ``\~``.
+_ESCAPABLE: frozenset[str] = frozenset("\\~")
 
 #: The characters that can start a token; everything else is plain text.
-_TOKEN_START: frozenset[str] = frozenset("\\{}$@")
+# BARE-REF-GUARD: ``@`` and ``$`` are here only for :func:`refuse_bare_reference`.
+_TOKEN_START: frozenset[str] = frozenset("\\{}@$")
+
+#: The variables a value can name (keyspec "References"): :func:`resolve_var` answers
+#: these, and every ``XDG_*`` name (:data:`KNOWN_VAR_PREFIX`).
+KNOWN_VARS: frozenset[str] = frozenset({"AGENT", "WORKSET", "TERM", "COLORTERM"})
+KNOWN_VAR_PREFIX = "XDG_"
+
+
+def is_known_var(name: str) -> bool:
+    """Whether *name* is a variable :func:`resolve_var` reads (:data:`KNOWN_VARS`, ``XDG_*``)."""
+    return name in KNOWN_VARS or (
+        name.startswith(KNOWN_VAR_PREFIX) and len(name) > len(KNOWN_VAR_PREFIX)
+    )
+
+
+def _is_declared_key(name: str) -> bool:
+    """Whether *name* is a declared key: the closed keyspace's own verdict."""
+    from kanibako.settings.settings_keyspace_probe import KeyClass, keyspace_verdict
+
+    return keyspace_verdict(name).cls is KeyClass.KEY
+
+
+# BARE-REF-GUARD: the one-release migration guard (keyspec "References"). Removing it:
+# delete this function, its call in :func:`iter_expr_tokens`, and ``@$`` from
+# :data:`_TOKEN_START`; grep BARE-REF-GUARD for every other site.
+def refuse_bare_reference(expr: str, i: int) -> None:
+    """RAISE when the ``@`` or ``$`` at *i* starts an old reference spelling; else return.
+
+    Refused, each naming the braced spelling that cures it: a bare ``@a.b.c`` naming a
+    declared key, or whose leading dotted part is one (``@meta.box.name.jsonl``);
+    ``@{a.b.c}`` naming a declared key; a bare ``$NAME`` or ``${NAME}`` naming a known
+    variable. Any other ``@`` or ``$`` is plain text.
+    ⚑ PRECONDITION: ``expr[i]`` is ``@`` or ``$``.
+    """
+    old = cure = None
+    rest = expr[i + 1:]
+    if expr[i] == "@":
+        if rest.startswith("{"):
+            braced = match_braced(expr, i + 1)
+            if braced is not None and braced[0] == "ref" and _is_declared_key(braced[1]):
+                old, cure = expr[i:braced[2]], f"{{{braced[1]}}}"
+        else:
+            m = _REF_NAME_RE.match(expr, i + 1)
+            if m is not None:
+                parts = m.group(0).split(".")
+                for k in range(len(parts), 0, -1):
+                    head = ".".join(parts[:k])
+                    if _is_declared_key(head):
+                        old = expr[i:m.end()]
+                        cure = f"{{{head}}}" + "".join(f".{p}" for p in parts[k:])
+                        break
+    else:
+        in_braces = rest.startswith("{")
+        m = _VAR_NAME_RE.match(expr, i + 2 if in_braces else i + 1)
+        if m is not None and is_known_var(m.group(0)):
+            end = m.end()
+            if not in_braces:
+                old = expr[i:end]
+            elif expr[end:end + 1] == "}":
+                old = expr[i:end + 1]
+            if old is not None:
+                cure = f"{{${m.group(0)}}}"
+    if old is not None:
+        raise ExprSyntaxError(
+            f"Old reference spelling '{old}' at: {expr[i:]!r} — references are braced "
+            f"now: write '{cure}'."
+        )
 
 ExprTokenKind = Literal["text", "home", "escape", "brace", "ref", "var"]
 
@@ -778,8 +819,9 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
     the tokens before it.
     Refused with :class:`ExprSyntaxError` (keyspec "References"): an unpaired ``{`` or
     ``}``; an empty or malformed ``{...}``; a backslash before any character outside
-    :data:`_ESCAPABLE`; a malformed ``$``/``@`` token. ``{{``/``}}`` are literal braces,
-    a leading ``~`` is a ``home`` token, and a TRAILING lone backslash is literal text.
+    :data:`_ESCAPABLE`; an old reference spelling (:func:`refuse_bare_reference`).
+    ``{{``/``}}`` are literal braces, a leading ``~`` is a ``home`` token, a TRAILING lone
+    backslash is literal text, and ``@`` and ``$`` are text.
     """
     n = len(expr)
     i = 0
@@ -790,6 +832,11 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
     while i < n:
         c = expr[i]
         if c not in _TOKEN_START:
+            i += 1
+            continue
+        if c in "@$":
+            # BARE-REF-GUARD: ``@`` and ``$`` are text once the guard passes them.
+            refuse_bare_reference(expr, i)
             i += 1
             continue
         if start < i:
@@ -804,7 +851,7 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
             else:
                 raise ExprSyntaxError(
                     f"Illegal escape '{expr[i:i + 2]}' at: {expr[i:]!r} — only "
-                    f"\\\\, \\~, \\@ and \\$ escape; write a literal '\\' as '\\\\'."
+                    f"\\\\ and \\~ escape; write a literal '\\' as '\\\\'."
                 )
         elif c in "{}":
             if expr[i + 1:i + 2] == c:
@@ -821,10 +868,6 @@ def iter_expr_tokens(expr: str) -> Iterator[ExprToken]:
                 kind, name, end = braced
                 yield ExprToken(kind, name, i, end)
                 i = end
-        else:
-            name, end = match_var(expr, i) if c == "$" else match_ref(expr, i)
-            yield ExprToken("var" if c == "$" else "ref", name, i, end)
-            i = end
         start = i
     if start < n:
         yield ExprToken("text", expr[start:], start, n)
@@ -843,8 +886,8 @@ def expand_expr(
 
     ⚑ A substituted value is a LEAF — never re-scanned, which is what prevents double-expansion.
     ⚑ ``~`` expands ONLY at position 0; elsewhere it is literal.
-    ⚑ *defer_env* emits the ENVIRONMENT tokens (``~``, ``$VAR``) VERBATIM for a LATER resolver in
-    a DIFFERENT environment; ``@``-refs (CONFIG) still expand here.
+    ⚑ *defer_env* emits the ENVIRONMENT tokens (``~``, ``{$VAR}``) VERBATIM for a LATER resolver
+    in a DIFFERENT environment; ``{key}``-refs (CONFIG) still expand here.
     """
     out: list[str] = []
     for tok in iter_expr_tokens(expr):
@@ -858,9 +901,8 @@ def expand_expr(
                 out.append(ctx.host_home if space == "host" else GUEST_HOME)
         elif kind == "escape":
             # ⚑ THE ESCAPE RULE INVERTS UNDER DEFERRAL: host-side ``\\x`` -> ``x``, but a
-            # DEFERRED escape of an ENVIRONMENT-significant char is carried VERBATIM so the
-            # BOX resolver still sees it.  ``\\@`` is unescaped — this pass owns ``@``.
-            out.append(f"\\{value}" if defer_env and value != "@" else value)
+            # DEFERRED escape is carried VERBATIM so the BOX resolver still sees it.
+            out.append(f"\\{value}" if defer_env else value)
         elif kind == "brace":
             # ⚑ A literal brace stays DOUBLED under deferral, so the box pass reads it the same way.
             out.append(value * 2 if defer_env else value)

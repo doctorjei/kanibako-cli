@@ -633,7 +633,7 @@ helper_log mounts.
 ⚑ `workset.logs` is what makes the helper-log bind a SINGLE row for all modes: the bind is the
 spec's own `{workset.logs}/{meta.box.name}.jsonl` (§2c ALL PROJECTS), so the per-mode variation is
 this anchor and nothing downstream. The braced `{...}` delimits the ref so the `.jsonl` suffix
-survives — the bare form would swallow it into the ref name (`settings_resolve.match_ref`).
+survives; the old bare `@meta.box.name.jsonl` is refused by the one-release guard.
 There is deliberately NO `meta.box.helper_log` anchor: it is not a spec-declared key (§2c declares
 `meta.box.{path,name,workspace,inbox,share_*,auth.*}` and never it), so under §0's closed keyspace
 it is not a key at all — one bind, one spelling.

@@ -382,7 +382,7 @@ class TestSetTimeResolvesTheCommandsTarget:
         of the file being written — the guess spec §2a removes."""
         files = _files(tmp_path)
         message = _set(
-            "workset.channelroot", f"@meta.workset.path/{_BARE}", files,
+            "workset.channelroot", f"{{meta.workset.path}}/{_BARE}", files,
             ConfigLevel.workset,
         )
         assert message.startswith("Error:"), message
@@ -629,17 +629,16 @@ class TestEveryNounPassesItsTarget:
 # The system PATH TIER's @-ref scope (system-design "Ordering rule": a key depends only on preceding sets)
 # ---------------------------------------------------------------------------
 
-#: Shapes whose ``@``-ref names a key OUTSIDE the system path tier.  Each parses to a
+#: Shapes whose ``{key}``-ref names a key OUTSIDE the system path tier.  Each parses to a
 #: real ref the set-time CASCADE floor can satisfy, and each reads as
 #: ``Unknown reference`` at the launch — the two doors disagreeing, which is the defect.
 _OUT_OF_TIER_SHAPES = [
     "{box.image}/x",
     "{box.enable_vault}/x",
     "{box.shell}/x",
-    "@box.image./x",
+    "{box.image}./x",
     "{box.image}",
-    "@box..image/x",
-    "@box.image /x",
+    "{box.image} /x",
 ]
 
 
@@ -708,7 +707,7 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
         assert len(referable) > 10, referable
         for ref in referable:
             files = _files(tmp_path / ref.replace(".", "_"))
-            value = f"@{ref}/sub"
+            value = f"{{{ref}}}/sub"
             message = _set("system.template", value, files, ConfigLevel.system)
             assert not message.startswith("Error:"), f"{ref}: {message}"
             assert load_doc(files["system"])["system"]["template"] == value

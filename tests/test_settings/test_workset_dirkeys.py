@@ -205,7 +205,7 @@ class TestTheRouteItself:
     def test_spec_default_formula_resolves_to_the_root_leaf(self, tmp_path):
         # The exact value the keyspec declares as the default for all five keys.
         assert resolve_workset_dir_key(
-            Path("/ws"), f"@{WORKSET_PATH_REF}/boxes", "boxes", key="boxes",
+            Path("/ws"), f"{{{WORKSET_PATH_REF}}}/boxes", "boxes", key="boxes",
             early=_scope(tmp_path, {}),
         ) == Path("/ws/boxes")
 
@@ -246,7 +246,7 @@ class TestTheRouteItself:
 
     def test_embedded_ref_resolves_mid_path(self, tmp_path):
         assert resolve_workset_dir_key(
-            Path("/ws"), f"/mnt/@{{{WORKSET_PATH_REF}}}/b", "boxes", key="boxes",
+            Path("/ws"), f"/mnt/{{{WORKSET_PATH_REF}}}/b", "boxes", key="boxes",
             early=_scope(tmp_path, {}),
         ) == Path("/mnt/ws/b")
 

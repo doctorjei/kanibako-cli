@@ -342,14 +342,14 @@ class TestTheCellClassification:
         assert kinemata_views.classify_spec_cell("k", "true") == kinemata_views.STATED
 
     def test_a_reference_cell_states_no_floor(self):
-        """A braced key ref is delivered elsewhere, as the old `@` cell was; a
-        `{}` is no ref and stays the ABSENCE cell."""
+        """A braced key ref is delivered elsewhere; a `{}` is no ref and stays the
+        ABSENCE cell; `@` is an ordinary character, so an `@` cell is a stated literal."""
         assert kinemata_views.classify_spec_cell("k", "{meta.box.name}") \
             == kinemata_views.NOT_EXPRESSIBLE
         assert kinemata_views.classify_spec_cell("k", "{meta.box.name}/x") \
             == kinemata_views.NOT_EXPRESSIBLE
         assert kinemata_views.classify_spec_cell("k", "@meta.box.name") \
-            == kinemata_views.NOT_EXPRESSIBLE
+            == kinemata_views.STATED
         assert kinemata_views.classify_spec_cell("k", "{}") == kinemata_views.MEMBERSHIP
 
 
@@ -385,7 +385,7 @@ class TestTheDescriptorSideIsTheRealWiring:
 
         raw = get_target_env("claude", "KANIBAKO_DIRECTIVE_FINAL")
         assert raw.startswith(GUEST_HOME), (
-            f"claude's KANIBAKO_DIRECTIVE_FINAL no longer arrives as a $GUEST_HOME "
+            f"claude's KANIBAKO_DIRECTIVE_FINAL no longer arrives as a {{$GUEST_HOME}} "
             f"expansion ({raw!r}); the fold in agent_tier_defaults is now untested"
         )
         assert kinemata_views.agent_tier_defaults("claude")[

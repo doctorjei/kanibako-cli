@@ -350,8 +350,8 @@ def resolve_workset_dir_key(
             f"workset.{key} is set to {repoint!r} in "
             f"{where}, which cannot be resolved: {str(exc).rstrip('.')}. "
             f"Use an absolute path, '~', '{{$XDG_*}}', or {_USABLE_REFS}; a "
-            f"LITERAL '$', '~' or '@' in a directory name must be "
-            f"backslash-escaped."
+            f"LITERAL '~' or '\\' in a directory name is written '\\~' or '\\\\', "
+            f"and a literal brace is doubled."
         ) from exc
 
     return Path(expanded)

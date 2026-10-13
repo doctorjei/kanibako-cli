@@ -830,7 +830,7 @@ class TestRootJoin:
             LevelView("agent", {"agent.bindings.rw.plugins": ["plugins", "~/.claude/plugins"]}),
             LevelView("system", {}, defaults={"system.agents": "/data/agents"}),
         ]
-        scope_roots = {"agent.bindings.rw": "@system.agents/$AGENT/share"}
+        scope_roots = {"agent.bindings.rw": "{system.agents}/{$AGENT}/share"}
         e = _one(levels, ctx, scope_roots=scope_roots)
         assert e.host_src == "/data/agents/claude/share/plugins"
 

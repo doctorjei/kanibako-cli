@@ -6823,7 +6823,7 @@ class TestANamelessBoxGetsNoNameDerivedKey:
         assert not [k for k in omitted if k in floors]
         assert not [
             (k, v) for k, v in floors.items()
-            if isinstance(v, str) and any(f"@{o}" in v for o in omitted)
+            if isinstance(v, str) and any(f"{{{o}}}" in v for o in omitted)
         ]
 
     def test_a_named_box_keeps_them(self, std, config, project_dir):
@@ -7393,14 +7393,14 @@ class TestASettingsFileEndpointIsText:
 
     def test_other_keys_still_expand(self, tmp_path):
         """CONTROL — the rule is the endpoint's alone: a sibling key still resolves
-        its ``@``-ref and escape."""
+        its ``{key}``-ref and escape."""
         snap = _persona_snap(
             tmp_path, persona_values={},
             system={"agent": {"claude": {
-                "model": "m-{agent.claude.env.TAG}\\@x", "env": {"TAG": "t"},
+                "model": "m-{agent.claude.env.TAG}@x\\~", "env": {"TAG": "t"},
             }}},
         )
-        assert effective_behavior(snap, active_agent="claude")["model"] == "m-t@x"
+        assert effective_behavior(snap, active_agent="claude")["model"] == "m-t@x~"
 
 
 @pytest.mark.parametrize("box, named", [
@@ -7408,7 +7408,7 @@ class TestASettingsFileEndpointIsText:
     ({"bindings": {"rw": {"{meta.agent.home}": ["/h/src"]}}}, "{meta.agent.home}"),
     ({"bindings": {"ro": {"/opt/u": ["{box.nope}/sub"]}}}, "{box.nope}"),
     ({"env": {"ZED": "{box.nope}"}}, "{box.nope}"),
-    ({"env": {"ODD": "/e{v}\\$q"}}, "{v}"),
+    ({"env": {"ODD": "/e{v}$q"}}, "{v}"),
 ], ids=["embedded-dest", "whole-dest", "embedded-src", "whole-env", "embedded-env"])
 def test_a_ref_that_names_no_key_is_refused_by_name(tmp_path: Path, box, named):
     """Spec §0: the keyspace is closed, so an ``@``-ref to an undeclared key is refused

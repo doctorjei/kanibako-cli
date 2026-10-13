@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP
 from kanibako.settings.keyspace_manifest import manifest_doc
-from kanibako.settings.settings_resolve import SettingsError, match_braced, match_ref
+from kanibako.settings.settings_resolve import match_braced
 
 if TYPE_CHECKING:
   from kinemata.contract import Entry  # type: ignore[import-not-found, import-untyped]
@@ -574,8 +574,7 @@ class KeyspaceRegistry:
 
     A braced ``{a.b.c}`` is read by ``match_braced``, left to right so a ``{{``
     literal brace is consumed whole and opens no ref; a ``{$NAME}`` variable is
-    not a key. An ``@`` abutting an identifier character (``user@box.host``)
-    opens no ref. A name must pass the same candidate syntax as a whole literal;
+    not a key, and ``@`` is text. A name must pass the same candidate syntax as a whole literal;
     that syntax's segments admit no ``℘``, so a persona node's ref is not seen.
     """
     i = 0
@@ -589,17 +588,6 @@ class KeyspaceRegistry:
         continue
       kind, name, i = braced
       if kind == "ref" and self._candidate_re.fullmatch(name):
-        yield name
-    # The ``@`` spelling: B1b deletes this branch when ``@`` stops being a sigil.
-    for at in re.finditer("@", text):
-      i = at.start()
-      if i and re.match(self.boundary, text[i - 1]):
-        continue
-      try:
-        name, _end = match_ref(text, i)
-      except SettingsError:
-        continue
-      if self._candidate_re.fullmatch(name):
         yield name
 
   def __post_init_check__(self) -> None:

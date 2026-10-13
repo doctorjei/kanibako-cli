@@ -196,10 +196,10 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
 
     def test_a_dotdot_sibling_store_is_the_users_and_survives(
             self, config, std, tmp_home):
-        """``@meta.workset.path/../<name>`` names a SIBLING project, not this box's store."""
+        """``{meta.workset.path}/../<name>`` names a SIBLING project, not this box's store."""
         root = _make_standalone(config, std, tmp_home, "esc_sibling")
         sibling = root.parent / f"{root.name}_store"
-        _point_at_verbatim(root, f"@meta.workset.path/../{sibling.name}", sibling)
+        _point_at_verbatim(root, f"{{meta.workset.path}}/../{sibling.name}", sibling)
         (sibling / "MY_OTHER_PROJECT.md").write_text("not this box's\n")
 
         rc = _rm(root, "--purge")

@@ -328,7 +328,7 @@ class TestWhatStaysLenient:
     @pytest.mark.parametrize("key,value", [
         ("system.canon", "/abs/canon"),  # a legal path still lands
         ("system.canon", ""),             # an empty value is not this rule's business
-        ("system.canon", "@system.cache"),  # an '@'-ref still lands
+        ("system.canon", "{system.cache}"),  # a reference still lands
     ])
     def test_a_non_null_value_is_untouched(self, key, value, tmp_path):
         files = _files(tmp_path)
