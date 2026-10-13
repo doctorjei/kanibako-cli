@@ -41,7 +41,7 @@ WARN_SA_SHADOWED_BY_PATH = ("'%s' resolved to the path %s; the registered standa
 WARN_WS_BOX_BAD_NAME = ("box name '%s' does not meet the naming rules (%s); it resolves by its " +
                         "path only, not by that name. Rename it.")           # box name, box_name_reason()
 
-# ⚑ KUID FIRST, box name second — the reverse of every other advisory here.
+# ⚑ KUID FIRST, box name second — the reverse of the box-name and vault advisories.
 WARN_BOX_BAD_KUID =    ("Warning: invalid KUID '%s' for standalone box '%s' (invalid kuid); it " +
                         "still resolves; fix workset.kuid or set workset.skip_kuid_check=true to " +
                         "silence this.")

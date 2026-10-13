@@ -110,12 +110,6 @@ in the table reaches `StandardPaths`.
 further subtrees without minting a new key (spec §2g). The box-bound handbook is
 `@system.canon/handbook`.
 
-`system.template` — M-11: `system.base_template` → `system.template`, and the default moved
-`global/base_template` → `global/template` at the same time. ⚑ The default moved; the user's dir did
-not: an existing install's populated (possibly user-edited) `global/base_template/` is ORPHANED by
-the rename — setup installs packaged content at the new root and the old dir is left behind.
-Documentation-only, deliberately (`MIGRATION.md`): no code auto-migrates a user's store.
-
 `settings/defaults_inventory.py` registers both tables by name (`"bootstrap.py (config tier)"` /
 `"bootstrap.py (system tier)"`).
 
@@ -175,9 +169,10 @@ marker DIR plus a `workset.yaml` declaring standalone. Renaming the constant bre
 every standalone box already on disk — a data-layout change, not a code change.
 
 ⚑ It is **not a bare marker dir** (spec §4): it is the real box store, holding `home/` and the
-by-default-ABSENT `box.yaml`. `@workset.boxes` resolves to it too, as the empty leaf
-(`project/workset.py`'s `_STANDALONE_BOXES_LEAF`), and the standalone `workset.logs` default is
-`@workset.boxes`. Import the constant; never re-spell the string.
+by-default-ABSENT `box.yaml`. `@workset.boxes` defaults to it in standalone mode
+(`{meta.workset.path}/box_data`; `project/workset.py`'s `_STANDALONE_BOXES_LEAF`), so
+`@meta.box.path` is that same dir, and the standalone `workset.logs` default is `@workset.boxes`.
+Import the constant; never re-spell the string.
 
 ## Registry tokens
 
@@ -196,18 +191,3 @@ KIND_PROJECT = "project" · KIND_WORKSET = "workset"
 ```
 The two entity kinds `project.names.resolve_name` returns beside a resolved path. A bare name can
 name either, and the two are separate namespaces, so the caller branches on the kind.
-
----
-
-## Dropped as false
-
-Prose in the pre-relocation source was checked against the code and the spec. These claims were
-**deleted, not relocated**, and are recorded here so nobody restores them from git history.
-
-| # | site | the claim | what the code / spec says |
-|---|---|---|---|
-| 1 | `CONFIG_PATH_DEFAULTS` banner | *"config keys finalized at 5"* | The table has one more entry than that, and the spec declines to state a count: *"no fixed count is stated; the set may grow"*. The "finalized" stamp was a DATE, not a size. |
-| 2 | `SYSTEM_PATH_DEFAULTS` banner | *"each `@`-refs a Layer-1 config key or an XDG base"* | **Five entries ref neither** — `system.channels.{common,chat,mailboxes,share}` ref `{system.channelroot}` and `system.channels.broadcast` refs `{system.channels.chat}`, all Layer-2 keys in this same table. |
-| 3 | the channels sub-comment | *"the type-roots derive from `system.channelroot`"* | True of four of the five; `system.channels.broadcast` derives from `{system.channels.chat}`, which is what makes the block order-dependent. |
-| 4 | `messages.py.md` (before this file existed) | *"`load_system_config` resolves this table from the CONFIG file set alone"* | `load_system_config` reads the system settings file too; `test_repoint_reaches_std_paths.py` pins the repoint reaching `StandardPaths`. |
-| 5 | `messages.py.md` (before this file existed) | *"`settings/config.py` carries its own literals for these keys"* | `config.py` imports both tables from this module. |
