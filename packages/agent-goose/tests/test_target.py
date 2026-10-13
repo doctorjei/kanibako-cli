@@ -800,13 +800,18 @@ class TestCanonHooksPlugin:
     def _deliver(self, root: Path) -> bool:
         return GooseTarget().deliver_directive_hook(config_root=root, access="full")
 
-    def test_writes_plugin_files_with_modes(self, tmp_path):
+    def test_writes_only_hooks_json(self, tmp_path):
         assert self._deliver(tmp_path) is True
         hooks = tmp_path / _HOOKS
-        assert sorted(p.name for p in hooks.iterdir()) == ["hooks.json", "mail-stop.sh"]
-        assert (hooks / "hooks.json").stat().st_mode & 0o777 == 0o644
-        assert (hooks / "mail-stop.sh").stat().st_mode & 0o777 == 0o755
+        assert sorted(p.name for p in hooks.iterdir()) == ["hooks.json"]
         assert not (tmp_path / ".config").exists()
+
+    def test_adapter_ships_in_the_charter_chapter(self):
+        """The adapter reaches the box through the rom bind, never a copy (Single route)."""
+        rom = GooseTarget().rom_root()
+        assert rom is not None
+        assert (rom / "ROM_AGENT.md").is_file()
+        assert (rom / "scripts" / "hooks" / "mail-stop.sh").is_file()
 
     def test_event_map(self, tmp_path):
         self._deliver(tmp_path)
@@ -821,7 +826,7 @@ class TestCanonHooksPlugin:
             "AfterFileEdit": [_CANON_HOOKS + "edited.sh"],
             "Stop": [
                 _CANON_HOOKS + "stop.sh",
-                'bash "${PLUGIN_ROOT}/hooks/mail-stop.sh"',
+                "bash ~/canon/charter/agent/scripts/hooks/mail-stop.sh",
             ],
         }
         # goose tests a matcher against "" for session events, so none may be set.
@@ -845,18 +850,8 @@ class TestCanonHooksPlugin:
         hooks = tmp_path / _HOOKS
         hooks.mkdir(parents=True)
         (hooks / "hooks.json").write_text("{}")
-        (hooks / "mail-stop.sh").write_text("old")
-        (hooks / "mail-stop.sh").chmod(0o600)
         assert self._deliver(tmp_path) is True
         assert "SessionStart" in (hooks / "hooks.json").read_text()
-        assert (hooks / "mail-stop.sh").read_text().startswith("#!/usr/bin/env bash")
-        assert (hooks / "mail-stop.sh").stat().st_mode & 0o777 == 0o755
-
-    def test_mode_only_drift_is_repaired(self, tmp_path):
-        self._deliver(tmp_path)
-        (tmp_path / _HOOKS / "mail-stop.sh").chmod(0o644)
-        assert self._deliver(tmp_path) is True
-        assert (tmp_path / _HOOKS / "mail-stop.sh").stat().st_mode & 0o777 == 0o755
 
     def test_symlinked_parent_is_not_followed(self, tmp_path):
         home, outside = tmp_path / "home", tmp_path / "outside"

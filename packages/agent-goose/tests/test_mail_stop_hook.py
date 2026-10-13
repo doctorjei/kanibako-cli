@@ -18,7 +18,7 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[3]
 ADAPTER = (
-    _REPO / "packages/agent-goose/src/kanibako/plugins/goose/data/agents-plugin/hooks"
+    _REPO / "packages/agent-goose/src/kanibako/plugins/goose/data/rom/scripts/hooks"
     / "mail-stop.sh"
 )
 CHECK_COMMS = (
@@ -27,7 +27,7 @@ CHECK_COMMS = (
 )
 _TOOLS = (
     "bash", "cat", "mkdir", "touch", "find", "head", "wc",
-    "sort", "md5sum", "cut", "sed", "rm",
+    "sort", "md5sum", "cut", "sed", "rm", "stat",
 )
 
 
@@ -55,12 +55,16 @@ def _no_jq_path(tmp_path: Path) -> str:
     return str(shim)
 
 
-def _stop(home: Path, name: str, path: str | None = None) -> subprocess.CompletedProcess:
+def _stop(
+    home: Path, name: str, path: str | None = None, session: str = "s",
+) -> subprocess.CompletedProcess:
     env = {"HOME": str(home), "KANIBAKO_NAME": name,
            "PATH": path if path is not None else os.environ["PATH"]}
     return subprocess.run(
         [shutil.which("bash") or "/bin/bash", str(ADAPTER)],
-        input='{"event":"Stop","session_id":"s","matcher_context":null}',
+        input=json.dumps(
+            {"event": "Stop", "session_id": session, "matcher_context": None},
+        ),
         capture_output=True, text=True, env=env, timeout=30,
     )
 
@@ -94,8 +98,9 @@ def test_new_mail_blocks_once_with_the_alert(box, path):
     assert (again.returncode, again.stdout) == (0, "")
 
 
-def test_a_repeating_alert_blocks_only_once(box, path):
-    """A check-comms fault re-alerts every run; one block, not GOOSE_STOP_HOOK_BLOCK_CAP."""
+def test_a_repeating_alert_blocks_once_per_session(box, path):
+    """A check-comms fault re-alerts every run; one block per goose session, not
+    GOOSE_STOP_HOOK_BLOCK_CAP, and a later session is shown it again."""
     home, inbox, name = box
     locked = inbox / "locked"
     locked.mkdir()
@@ -107,12 +112,30 @@ def test_a_repeating_alert_blocks_only_once(box, path):
         assert "MAIL SCAN INCOMPLETE" in json.loads(first.stdout)["reason"]
         second = _stop(home, name, path)
         assert (second.returncode, second.stdout) == (0, "")
+        later = _stop(home, name, path, session="20261013_2")
+        assert "MAIL SCAN INCOMPLETE" in json.loads(later.stdout)["reason"]
+        assert _stop(home, name, path, session="20261013_2").stdout == ""
     finally:
         locked.chmod(0o755)
     # A clean check clears the memo, so the next alert blocks again.
     assert _stop(home, name, path).stdout == ""
     (inbox / "b.md").write_text("hi")
     assert json.loads(_stop(home, name, path).stdout)["reason"] == "NEW MAIL (1): b.md"
+
+
+def test_same_text_with_a_moved_marker_blocks_again(box, path):
+    """A new broadcast reads like the last one; check-comms has consumed it, so it shows."""
+    home, _inbox, name = box
+    chat = home / "channels" / "chat"
+    chat.mkdir()
+    broadcast = chat / "broadcast.md"
+    broadcast.write_text("one\n")
+    assert _stop(home, name, path).stdout == ""
+    broadcast.write_text("two\n")
+    first = json.loads(_stop(home, name, path).stdout)["reason"]
+    assert first.startswith("NEW BROADCAST on ")
+    broadcast.write_text("three\n")
+    assert json.loads(_stop(home, name, path).stdout)["reason"] == first
 
 
 def test_missing_canon_script_allows_the_stop(tmp_path):

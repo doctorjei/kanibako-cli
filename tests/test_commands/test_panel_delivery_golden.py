@@ -84,9 +84,9 @@ DELIBERATE content changes so far (each = a reviewed regeneration commit):
   fixtures are byte-UNCHANGED.
 
 Matrix per agent (delivered file: claude ``.claude/settings.json``, codex
-``.codex/config.toml``).  goose delivers NOTHING — its tier reaches the launched
-goose as the ``GOOSE_MODE`` env var only — so it has no fixtures; the module's
-last test asserts its config.yaml is left byte-identical at every tier:
+``.codex/config.toml``).  goose delivers no tier — it reaches the launched goose
+as the ``GOOSE_MODE`` env var only — so it has no fixtures; the module's last
+test asserts its config.yaml is left byte-identical at every tier:
 
 * pre-state ∈ {absent, user (representative user content incl. user-chosen
   values + a user hook group), relaunch (the absent-run output fed back in —
@@ -454,7 +454,9 @@ def test_goose_delivers_nothing(tmp_path, pre, tier):
         agent="goose", config_root=config_root, access=tier, provider=None,
     )
 
-    assert wrote is False
+    # The seam writes goose's canon-hooks plugin (~/.agents/plugins/kanibako), never
+    # config.yaml: a fresh home reports that write.
+    assert wrote is True
     after = delivered_path.read_bytes() if delivered_path.exists() else None
     assert after == before
     if pre == "absent":

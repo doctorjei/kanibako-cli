@@ -14,7 +14,7 @@ _BINARY = Path.home() / '.local' / 'bin' / 'goose'
 _DEFAULTS_PACKAGE = 'kanibako.plugins.goose'
 _DEFAULTS_FILE = 'goose-defaults.yaml'
 _HOOKS_DIR = ('.agents', 'plugins', 'kanibako', 'hooks')
-_HOOK_FILES = (('hooks.json', 420), ('mail-stop.sh', 493))
+_HOOKS_FILE = 'hooks.json'
 _GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 _GOOSE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 ```

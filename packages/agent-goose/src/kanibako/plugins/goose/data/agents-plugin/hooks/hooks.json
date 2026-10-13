@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${PLUGIN_ROOT}/hooks/mail-stop.sh\"",
+            "command": "bash ~/canon/charter/agent/scripts/hooks/mail-stop.sh",
             "timeout": 5
           }
         ]

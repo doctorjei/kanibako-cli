@@ -122,11 +122,13 @@ launch refuses `editing`, which no goose mode realizes.
 
 goose 1.38 loads hooks only from plugins: any directory under `~/.agents/plugins/` with a
 `hooks/hooks.json` (claude-shaped; no manifest or trust step). `deliver_directive_hook` writes the
-kanibako-owned `~/.agents/plugins/kanibako/hooks/` from this package's
-`data/agents-plugin/hooks/` at EVERY start, so existing boxes get it too: `hooks.json` (0644) and
-the `mail-stop.sh` adapter (0755). A file whose bytes and mode already match is left alone (the
-seam returns whether it wrote). Every operation goes through `kanibako.boxfs`; a symlink at the
-leaf or a parent skips the write with a warning. Directives still reach goose as a context file
+kanibako-owned `~/.agents/plugins/kanibako/hooks/hooks.json` from this package's
+`data/agents-plugin/hooks/` at EVERY start, so existing boxes get it too; a file whose bytes
+already match is left alone (the seam returns whether it wrote). That is the only file written:
+every hook runs in place from canon, and the `mail-stop.sh` adapter ships in this plugin's charter
+chapter (`data/rom/scripts/hooks/`, bound read-only at `~/canon/charter/agent`, as claude's
+`statusline.sh` is). The write goes through `kanibako.boxfs`; a symlink at the leaf or a parent
+skips it with a warning. Directives still reach goose as a context file
 (`goose-defaults.yaml`, `KANIBAKO_DIRECTIVE_FINAL`), not through this plugin.
 
 | claude event | goose event | runs |
@@ -151,12 +153,14 @@ in the hook shell is goose.
 advances its mail marker once it has printed, so wired to PostToolUse it would mark mail seen
 without showing it. `mail-stop.sh` runs `check-comms.sh` at Stop instead and turns its alert into
 `{"decision":"block","reason":<alert>}`; goose adds the reason to the context and continues the
-turn, and the next Stop finds nothing new. Canon scripts are read-only, which is why the adapter
-ships with the plugin. It never exits non-zero (goose would ignore a failure, and exit 2 would block
-with stderr). It does not block twice running with the same alert: a `check-comms.sh` fault
-re-alerts on every run, and goose would otherwise block each turn end up to
-`GOOSE_STOP_HOOK_BLOCK_CAP` (default 8) times. The memo
-(`/tmp/kanibako-comms-<name>/goose-stop-last`) clears on the first clean check.
+turn, and the next Stop finds nothing new. It never exits non-zero (goose would ignore a failure,
+and exit 2 would block with stderr). A `check-comms.sh` fault re-alerts on every run, and goose
+would otherwise block each turn end up to `GOOSE_STOP_HOOK_BLOCK_CAP` (default 8) times, so a
+repeat is not blocked when the same goose session (stdin `session_id`) already got that exact
+alert and `check-comms.sh` moved neither marker (`last-mail-check` mtime, `last-bcast-check`
+content) on this run; a moved marker means news, such as a broadcast whose text matches the last
+one. Each session sees a persistent fault once. The memos
+(`/tmp/kanibako-comms-<name>/goose-stop-last-<session>`) clear on the first clean check.
 
 ⚑ **KNOWN LIMITS.** goose fires SessionStart/SessionEnd only from goose-cli sessions (`goose acp` /
 `serve` were not checked). A turn that ends without reaching a blocking Stop (cancel, error, max
