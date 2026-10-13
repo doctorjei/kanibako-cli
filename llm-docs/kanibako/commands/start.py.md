@@ -231,7 +231,7 @@ the model they implemented is retired: home never enters the entry list at all n
 its own parameter. Until 6-H, home was ALSO a `bindings.rw` row in `data/rom/settings/core-defaults.yaml`, so the
 same fact arrived twice and the seam had to pull one copy back out before the producer could fold
 the rest. Deleting the row removes the duplication at its source: home does **not** route through
-`bindings.rw` (spec `:1015`, amendment 2026-08-08a / A9), and `_install_assembly_collapse` builds the
+`bindings.rw` (spec §2c's `meta.box.home` row), and `_install_assembly_collapse` builds the
 foundation itself —
 
 ```python
@@ -762,7 +762,7 @@ masks, so only this arm can observe the deletion.
 ## `_launch_seed_list` / `_snapshot_assembly_seeded` — the seed applier consumes the LEAF (cutover 2b-2)
 
 **Authority:** `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md` §2b (consumer 5) ·
-`~/canon/workbook/specs/settings-keyspace-1.8.0.md:147-149` (*"both flat scope-ordered lists"*,
+`~/canon/workbook/specs/system-design-1.8.0.md` § *The collapse* (*"both flat scope-ordered lists"*,
 *"nothing is arbitrated at a destination"*) · 2b-1 (the seed leaf's own gate).
 
 ### What the switch is
@@ -846,7 +846,7 @@ fallback on every box — a cutover that moved nothing.
 ## `_apply_synced_copies` / `_launch_synced_list` / `_synced_host_dest` — the sync applier consumes the LEAF (cutover 2b-3)
 
 **Authority:** `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md` §2b-3-MEASURED (consumer 6) ·
-`~/canon/workbook/specs/settings-keyspace-1.8.0.md:147-149` (*"both flat scope-ordered lists"*) ·
+`~/canon/workbook/specs/system-design-1.8.0.md` § *The collapse* (*"both flat scope-ordered lists"*) ·
 spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.
 
 ### 🛑🛑 The switch required MOVING the pass, and that is a MEASUREMENT, not a preference

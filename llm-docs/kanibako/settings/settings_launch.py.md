@@ -672,7 +672,8 @@ through the home bind. Same word, adjacent paths, opposite directions of travel.
 `BOX_HOME_KEY` is NAMED, unlike its sibling floor keys, because it has readers OUTSIDE this module:
 the assembly seam builds the pid-0 foundation bind from it
 (`commands/start.py._install_assembly_collapse`) and `box show --effective` renders it. One spelling
-for the producer and both consumers. ⚑ Home does NOT route through `bindings.rw` (spec `:1015`) —
+for the producer and both consumers. ⚑ Home does NOT route through `bindings.rw` (spec §2c's
+`meta.box.home` row) —
 this key is what every launch's home mount resolves through. Do not re-inline the formula anywhere
 downstream, and do not re-derive it from `proj.shell_path`.
 

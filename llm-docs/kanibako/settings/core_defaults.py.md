@@ -248,7 +248,8 @@ workset-scoped meta_ref entry on a standalone box is still omitted.
 Build the core box mounts (workspace + vault) as `default_categories` (step 3).
 
 🛑 **NO HOME ROW SINCE CUTOVER 6-H.** The box home does NOT route through `bindings.rw` (spec
-`:1015`): it is pid 0, the FOUNDATION the whole set folds over, built at the assembly seam
+§2c's `meta.box.home` row): it is pid 0, the FOUNDATION the whole set folds over, built at the
+assembly seam
 (`commands/start.py._install_assembly_collapse`) from the RO DERIVED key `meta.box.home`. Its mount
 options are seam machinery and live with the seam. A `key: home` row here would be a SECOND bind at
 the foundation's point, which the collapse refuses by name — do not re-add one.

@@ -702,7 +702,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
 * **`<scope>.env.<VAR>`** — the ENV category at a NON-agent scope: a SCALAR write to the command
   scope's SETTINGS file at the nested slot (the shape `_file_partial` reads into the cascade and
   `settings_launch._emit_scope_node` delivers as a `category="env"` entry). Spec §2a declares the
-  key (L383) and puts it under "Scalars → full CLI set" (L496); the AGENT form
+  key and lists it under "What remains CLI-settable"; the AGENT form
   `agent.<node>.env.<VAR>` is DISCRIMINATED and routed by the persona branch. The value is
   written VERBATIM — the set-time E3 probe already ran on it (`_probes_at_set_time`: this arm IS
   host-expanded at launch, so a dangling `@`-ref must be caught now).

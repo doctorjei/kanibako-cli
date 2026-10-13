@@ -111,10 +111,10 @@ default TABLE is the source, never a second literal at a consumer site.
 * **`workset.channelroot`** — spec §2c ALL-WORKSETS default `@meta.workset.path/channels`.
   Standalone has no workset channels (the key is `<None>` there), so callers gate on mode before
   calling the resolver.
-* **`workset.canon`** — default `@meta.workset.path/canon`, and spec `:962` declares it UNIFORM IN
+* **`workset.canon`** — default `@meta.workset.path/canon`, and spec §2c declares it UNIFORM IN
   EVERY MODE, deliberately not a per-mode key, so a lone standalone root carries the tier too.
 * **`workset.template`** — default `@meta.workset.path/template`; `<None>` in standalone (spec
-  `:936`), which has no future boxes for a workset template to seed. Its sibling above still
+  §2c), which has no future boxes for a workset template to seed. Its sibling above still
   applies there — the two halves do not travel together.
 * **`workset.boxes` / `workset.logs`** — defaults `@meta.workset.path/{boxes,logs}`. Resolved by
   the DETECTION locator (`_workset_skeleton_dirs`), by the `Workset.projects_dir` / `logs_dir`

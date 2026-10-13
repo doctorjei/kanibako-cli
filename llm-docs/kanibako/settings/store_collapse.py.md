@@ -152,7 +152,8 @@ now does — it runs immediately after the create-time seed, **UNGATED** (`skip_
 launch gate compares against its own prior write. The prune deleted a declared copy to work around a
 gate; this restores the gate's own invariant instead.
 
-**What that buys the keyspace.** `nothing is arbitrated at a destination` (spec `:147-149`) now holds
+**What that buys the keyspace.** `nothing is arbitrated at a destination` (system-design § *The
+collapse*) now holds
 across the two arms as well as within one: a dest may carry a seed row AND a sync row, both survive
 the collapse, and DELIVERY ORDER decides — seed, then sync, at create. A user who declares both gets
 both, in the order the two categories mean.
@@ -444,7 +445,7 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   the wrong mechanism.
 
   ⚑ **It names BOTH participants by KEY** — the arriving declaration and each subsumed one —
-  which is what keyspec `:153-165` obliges. The remedy above tells the reader to null a KEY, so a
+  which is what system-design § *Collision arbitration* obliges. The remedy above tells the reader to null a KEY, so a
   message naming none asked for an edit without saying where to make it. 🛑 **The old boarded 🐞
   said this "structurally cannot" be done and that the fix was a producer-shape change. BOTH halves
   were wrong and neither may be repeated.** The key travels BESIDE the shape, off the ENTRY LIST —
@@ -476,7 +477,7 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   `meta.box.home` and in no scope's arm, so there is no bind-shaped key to suppress. Pointing a
   reader at a key they cannot write would be worse than the silence it replaced. This is the one
   refusal with a single-sided diagnosis, and *"the refusal is symmetric; the diagnosis is not"*
-  (`:153-165`) is the sentence that licenses it
+  (system-design § *Collision arbitration*) is the sentence that licenses it
   it. Refused BEFORE the sweep, so a mask that cannot be accepted deletes nothing first.
 * **seed outside home** — names the source and the destination, points at the home bind, and offers
   `synced` as the category that is not home-only.
@@ -615,7 +616,7 @@ snapshot still has no key to give, and re-deriving one from the finished map is 
 reason above.
 
 And the tuples may not grow regardless: the keyspec declares `meta.assembly.bindings` as
-`dict[guest_dest → (host_src, opts)]` (`:434`) and both copy leaves as
-`list[(host_src, guest_dest, opts)]` (`:440`, `:450`). Those arities are NORMATIVE — and the env
-leaf's `(value, scope, key)` (`:467`) shows the spec grants provenance in a tuple deliberately where
+`dict[guest_dest → (host_src, opts)]` and both copy leaves as
+`list[(host_src, guest_dest, opts)]` (§1A's `meta.assembly.*` rows). Those arities are NORMATIVE —
+and the env leaf's `(value, scope, key)` shows the spec grants provenance in a tuple deliberately where
 it means to.

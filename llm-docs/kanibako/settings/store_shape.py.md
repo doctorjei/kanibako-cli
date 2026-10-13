@@ -107,8 +107,9 @@ module.
 
 ⚑⚑ **A dest is a KEY on a mount and DATA on a copy, and that split IS the arm types.** A mount
 arbitrates at a destination — two mounts at one dest is an error in every scope combination — so
-dest-keying a mount arm makes the rule true by construction. A copy arbitrates at nothing: spec
-`:147-149` calls `meta.assembly.seeded`/`.synced` *"both flat scope-ordered lists"* and rules that
+dest-keying a mount arm makes the rule true by construction. A copy arbitrates at nothing: the
+system design's § *The collapse* calls `meta.assembly.seeded`/`.synced` *"both flat scope-ordered
+lists"* and rules that
 *"nothing is arbitrated at a destination"*, and the manifest's `meta.assembly.seeded` row spells it
 *"the CONCATENATION of every scope's `seeded` arm ... nothing is pruned, and a dest **MAY
 repeat**"*. A dict cannot express a list with repeats, so it silently

@@ -91,7 +91,7 @@ The vault + logs roots DEFAULT to `@config.primary_workset/vault/{ro,rw}` and
 PRIMARY workset.
 
 ⚑⚑ **All four PRIMARY roots are RESOLVED, not composed.** The spec declares no `system.boxes`,
-`system.logs`, `system.vault_ro` or `system.vault_rw` at all (`:335`) — these fields are SURROGATES
+`system.logs`, `system.vault_ro` or `system.vault_rw` at all (§1) — these fields are SURROGATES
 for the PRIMARY workset's `@workset.{boxes,logs,vault_ro,vault_rw}`, which are declared,
 CLI-settable, repointable keys in EVERY mode (§2c ALL PROJECTS, R-29). The PRIMARY workset root is
 an ordinary workset root carrying an ordinary `workset.yaml`, so it repoints exactly as a named one
@@ -1139,8 +1139,8 @@ write. `add_project` uses it.
 
 The primary per-workset `boxes:` membership is the SOLE store of default-mode (PRIMARY) box names
 since the global `projects:` section retired (clean split, 2026-07-08). Membership is name →
-EXTERNAL-workspace path in `@config.primary_workset/registry.yaml` (spec L514, via
-`kanibako.project.workset_registry`).
+EXTERNAL-workspace path in `@config.primary_workset/registry.yaml` (spec §2c's `workset.registry`
+row, via `kanibako.project.workset_registry`).
 
 These helpers mirror the retired `names.py` project-name API
 (`pick`/`assign`/`register`/`unregister`/reverse-lookup) but on the primary membership, so callers
@@ -1295,7 +1295,8 @@ still came up with the vault created and mounted.
 ⚑ **The resolved value is not the written one.** `ProjectPaths.vault_enabled()` resolves through the
 cascade and drives the mounts; `authored_vault` reads the box tier ALONE (via
 `read_box_enable_vault`, which no longer takes a fallback at all) and is the only one persisted,
-since spec `:868` keeps the key sparse — persisting an inherited default would PIN it, turning an
+since spec §2b's `box.enable_vault` row keeps the key sparse — persisting an inherited default would
+PIN it, turning an
 overridable workset default into a box override later workset edits cannot reach.
 
 ### Sparse create + dual-register on the NAMED path

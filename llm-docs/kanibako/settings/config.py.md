@@ -368,7 +368,7 @@ values OVER them, so a file storing exactly the defaults was a fourth carrier th
 against two real stores: the old file (568 bytes) and the new one (0 bytes) resolve to a
 byte-identical 21-key system path map, and to identical flat scalars.
 `tests/test_settings/test_config.py::test_sparse_file_resolves_identically_to_the_old_verbatim_defaults`
-is the standing pin. This generalizes the rule spec `:868` already stated for one key,
+is the standing pin. This generalizes the rule spec §2b already states for one key,
 `box.enable_vault`.
 
 ⚑ **THE FILE IS STILL CREATED.** `cli._ensure_initialized` uses its EXISTENCE as the "already
@@ -428,7 +428,8 @@ box identity lives in the registries (`box_resolve`), not on disk — Option A).
   default-vault primary/named box gets no `box.yaml` written here.
 
 ⚑ WHICH value a caller hands in is the resolver's business, not this writer's: PRIMARY and NAMED
-pass the BOX-AUTHORED read, never the workset-resolved one (spec `:868` keeps the key sparse);
+pass the BOX-AUTHORED read, never the workset-resolved one (spec §2b's `box.enable_vault` row keeps
+the key sparse);
 STANDALONE passes the resolved one on purpose — that write IS the M-8 migration.
 
 Paired reader: :func:`read_box_enable_vault`.

@@ -513,7 +513,8 @@ collapse folds every scope over a home bind; a workset names no BOX, and the hom
 (`@meta.box.path/home`), so there is no true answer to give. Only the foundation's DEST takes part in
 arbitration, and the placeholder cannot reach the display anyway: a share AT that dest is refused as
 a second bind at the foundation's point, and one INSIDE it holds its own destination. It carries NO
-options — home's are seam machinery (spec `:1015`), and `config_display` declines to print them for
+options — home's are seam machinery (spec §2c's `meta.box.home` row), and `config_display` declines
+to print them for
 the same reason.
 
 ⚑ The COLLISION WARNINGS a launch emits (`emit_collision_warnings`) are deliberately NOT raised here.

@@ -823,7 +823,8 @@ and `seeded` deriving a COPY rather than a mount is precisely the distinction th
 ## `effective_bindings_and_template_sources` — the declaration/delivery pairing
 
 Returns `store_collapse.Derivation` rows, one per ABSTRACT declaration, sorted by declaration
-key. It discharges keyspec `:88`: *"`--effective` shows BOTH the declaration and the derived
+key. It discharges system-design § *The store shape*: *"`--effective` shows BOTH the declaration
+and the derived
 binding and a user can see WHY a mount exists."*
 
 **The single source.** This is the ONE place the pairing is calculated. A caller that recomputes
@@ -866,9 +867,9 @@ declaration that produced it is the OTHER direction, the one `_refuse_bind_over_
 🐞 wants, and it still needs the producer shape change.
 
 🛑 **And the tuples may not grow.** The keyspec declares `meta.assembly.bindings` as
-`dict[guest_dest → (host_src, opts)]` (`:434`) and both copy leaves as
-`list[(host_src, guest_dest, opts)]` (`:440`, `:450`). Those arities are NORMATIVE, and the env
-leaf's `(value, scope, key)` (`:467`) shows the spec grants provenance in a tuple deliberately
+`dict[guest_dest → (host_src, opts)]` and both copy leaves as
+`list[(host_src, guest_dest, opts)]` (§1A's `meta.assembly.*` rows). Those arities are NORMATIVE,
+and the env leaf's `(value, scope, key)` shows the spec grants provenance in a tuple deliberately
 where it means to. Widening either tuple to carry a declaration key would put the code in
 contradiction with the spec.
 

@@ -200,7 +200,8 @@ what a reader re-derives.
    🛑 A corollary worth keeping: **the message must not tell a user this noun cannot STORE the
    key** — it can, and it does.
 3. **THE FRAGMENT BASIS** — ADOPTED. A terminal category key is **merged per entry across tiers**
-   (spec `:1085`), so one tier's copy is a FRAGMENT, never the value. At its OWN noun the fragment
+   (spec §2a, PER-ENTRY CASCADE MERGE), so one tier's copy is a FRAGMENT, never the value. At its
+   OWN noun the fragment
    is a complete statement of that scope's contribution (R-9's honest read — `system get
    system.caches` stays); at a FOREIGN noun it is a partial map no box sees. A SCALAR is held
    whole by one tier, so `system get box.image` is a complete answer and stays. `get`-native,
@@ -660,14 +661,14 @@ env-name shape (no dots).
 
 ## The LIVE scoped env family — `_SCOPE_ENV_RE`
 
-``<scope>.env.<VAR>`` for the non-agent scopes (system/workset/box) — spec §2a L383
-``<scope>.env.<VAR> | value | scoped env var``; §2a L496 "Scalars (incl. ``env.<VAR>``, whose value is
-scalar) → full CLI set". The AGENT scope form ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed
+``<scope>.env.<VAR>`` for the non-agent scopes (system/workset/box) — spec §2a
+``<scope>.env.<VAR> | value | scoped env var``, and §2a's "What remains CLI-settable: scalars,
+including ``env.<VAR>``". The AGENT scope form ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed
 by `_is_persona_agent_key` (the node file); this covers the other three, which write a scalar to the
 COMMAND scope's OWN settings file at ``<scope>.env.<VAR>`` — the shape `_file_partial` reads into the
 cascade and `settings_launch._emit_scope_node` delivers as a ``category="env"`` entry. Deliberately
 the SIBLING-EXACT twin of `_SCOPE_SECRET_RE`: same three scopes, same VAR shape (no dots), same
-NOUN-file destination. VAR matching is CASE-SENSITIVE (spec §0 "Reserved key names" / §2a L386) —
+NOUN-file destination. VAR matching is CASE-SENSITIVE (spec §0 "Reserved key names") —
 there is no case-folding anywhere on this path.
 
 ## The scoped SECRET family — `_SCOPE_SECRET_RE`
@@ -1151,7 +1152,7 @@ The branch-by-branch reasons, in dispatch order:
   (recognized on the ``+``-form too, before canonicalization). Checked here so get/show + the
   project-name heuristic treat it as a KEY. Also the NON-agent ``<scope>.secret_path.<VAR>`` scope
   form.
-* **``<scope>.env.<VAR>``** (system/workset/box) — the LIVE env family (spec §2a L383). Its agent twin
+* **``<scope>.env.<VAR>``** (system/workset/box) — the LIVE env family (spec §2a). Its agent twin
   ``agent.<node>.env.<VAR>`` is recognized by the per-persona arm.
 * **``agent.<node>.<key>``** — the per-persona agent key (block B1): a settable key (recognized on the
   ``+``-form too, before canonicalization) so get/show + the project-name heuristic treat it as a KEY,

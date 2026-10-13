@@ -615,10 +615,10 @@ top-level and deny-by-default goes blind.
 
 ⚑ `_CANON_CHAPTER_LEAF` is `handbook` alone (read from `core_defaults.HANDBOOK_REL`, never
 respelled), because the canon ROOT it hangs off is resolved per workset. The chapter is
-guarantee-created (D7) under `workset.canon` on BOTH paths — spec `:962` declares that key UNIFORM
+guarantee-created (D7) under `workset.canon` on BOTH paths — spec §2c declares that key UNIFORM
 IN EVERY MODE, so a lone standalone root has the tier too — which is why that one line sits outside
 the `canon_only` branch. Its sibling half does NOT transfer: `workset.template` is `<None>` in
-standalone (spec `:936`), and the box-template skeleton rooted there seeds FUTURE boxes, of which a
+standalone (spec §2c), and the box-template skeleton rooted there seeds FUTURE boxes, of which a
 standalone root will never have one.
 
 ⚑ The whitelist matters MOST here, though not because the tree is the user's own source. A
@@ -644,7 +644,7 @@ through `_workset_stamp_dirs`, so the STAMP and its PRE-FLIGHT refuse identicall
 lands BEFORE THE FIRST BYTE.
 
 ⚑ The check is PER-LEAF and `canon_only` gates the template one: standalone's `workset.template` is
-`<None>` (spec `:936`) and that path consults neither the key nor the skeleton, so a value it never
+`<None>` (spec §2c) and that path consults neither the key nor the skeleton, so a value it never
 uses must not refuse a root that is otherwise fine.
 
 ⚑ A `None` repoint still reaches it — when the DEFAULT leaf is itself a symlink out of the root —

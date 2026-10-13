@@ -56,7 +56,8 @@ per-workset registry as a `boxes:` entry (design D10).
 **The `projects` section is RETIRED** (clean split, 2026-07-08). It used to map a default-mode box
 name to its external workspace. A PRIMARY box's identity now lives SOLELY in the primary workset's
 per-workset `boxes:` membership (`@config.primary_workset/registry.yaml`, via
-`kanibako.project.workset_registry`), which is the AUTHORITATIVE source of box names (spec L514).
+`kanibako.project.workset_registry`), which is the AUTHORITATIVE source of box names (spec §2c's
+`workset.registry` row).
 The section is no longer loaded or written, and because it is absent from `_SECTIONS`, a stale
 `projects` block left behind by an older install is simply dropped on the next `save_registry` — no
 migration, no legacy read. Dropping it from that tuple is what does both jobs at once: it stops the
