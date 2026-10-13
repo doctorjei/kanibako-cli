@@ -300,27 +300,33 @@ by a new ACTIVE box now occupying the SAME metadata path (e.g. a create that re-
 AND drops the stale entry — the entry is definitively wrong, since an active box owns that path, so
 it must stop shadowing. The active box's home is never deleted.
 
-The two teardowns are the single deletion routines shared by the active `--purge` path and the
-deregistered `--purge` path — same paths, same order, same guards:
+Every purge runs as a plan of `_PurgeStep`s: a per-kind planner lists the paths, `_confirm_purge`
+prints them (and what the run keeps) and asks unless `--force`, and `_run_purge_plan` deletes them
+in order. The active `rm --purge` paths, the deregistered `rm --purge` path and the `purge` command
+(`commands/clean.py`) share the two planners, so they delete the same paths in the same order:
 
-* `_teardown_primary_box` removes the box dir, then the PRIMARY vault `ro`/`rw` under
-  `@config.primary_workset/vault/{ro,rw}/<name>` (which is NOT under `metadata_dir`), then the
-  per-box helper log at `@config.primary_workset/logs/<box>.jsonl`, keyed by the registry name.
-* `_teardown_standalone_box` removes the in-tree `box_data/` marker, the ROOT `workset.yaml` and
-  the box's vault. The ROOT file is the WORKSET tier AND the other half of the
-system-design § "Detection & import" detection marker,
-  so dropping it is what stops the box being re-detected; the BOX tier lives inside `box_data/` and
-  goes with the dir. The user's workspace files, and `root` itself, are never touched.
-  ⚑⚑ **The vault is RESOLVED via `project.workset.standalone_vault_teardown(root)`, and that call
-  is the FIRST thing the function does** — before the metadata purge, not after. `root/"vault"` is
-  not the box's vault once `workset.vault_ro`/`vault_rw` is repointed, the ROOT file this teardown
-  unlinks is the only carrier of that repoint, and an unresolvable repoint RAISES — a refusal that
-  has to land while the box is still whole. Resolving mid-teardown left a half-purged box behind
-  the traceback. An arm outside `root` is printed as `Note: left the vault at …` and left alone.
+* `_primary_purge_plan` lists the PRIMARY vault `ro`/`rw` leaves (which are NOT under
+  `metadata_dir`), the box's snapshot store, the per-box logs keyed by the registry name, and
+  finally the box dir as the ANCHOR. A looped vault leaf or store is kept and named after the run.
+* `_standalone_purge_plan` lists the logs, an unheld creds-watcher lock, kanibako's `.gitignore`
+  line, the removable canon, the removable vault arms, an in-tree snapshot store, the box store as
+  the ANCHOR, and LAST the ROOT `workset.yaml`. That file is the WORKSET tier and holds the
+  `workset.registry: null` standalone marker (system-design § "Detection & import"), so it goes
+  after the anchor: if an earlier step fails, a retry still resolves the box's repoints. It
+  returns the steps plus a *retained* list (paths outside the box's root, a kept canon or vault,
+  the channel dirs), each reported after the run. The user's workspace files, and `root` itself,
+  are never touched.
+  ⚑⚑ **The plan resolves everything BEFORE anything is deleted or unregistered** — the vault
+  split via `project.workset.standalone_vault_teardown`, the canon split via
+  `standalone_canon_teardown`, and the store via `standalone_store_teardown_plan`. An
+  unresolvable repoint RAISES there, while the box is still whole.
+
+A GATED step is kept once the anchor could not be removed, and the anchor itself is kept when any
+earlier step failed, so re-running the purge can finish.
 
 A purge step is removed by `kanibako.runtime.container.remove_path`: a link loses only the link,
 and a folder goes through `remove_box_tree`, which EVERY box-tree deleter shares — `extract`,
-`move`, `duplicate` and `purge` all need the same `podman unshare` escalation, and since J-7 they
+`move`, `duplicate` and `purge` all need the same `podman unshare` escalation, and they
 need it on every box (the canon skeleton is root-owned by construction).
 
 ## The listing
@@ -519,7 +525,7 @@ Raises `ProjectError` on a conflict; returns `None` when the home is free — th
 leaves a normal create byte-identical. See "Names, homes, and the I4 data-loss guard" above for
 the two detected states and why the internal ordering is load-bearing.
 
-```_check_persona_store_for_create(agent_ref: str, project_path) -> str | None```
+```_check_persona_store_for_create(agent_ref: str) -> str | None```
 ⚑ READ-ONLY create-side persona-grata store CHECK; an `"Error: …"` or `None`.
 
 The create-side trigger (DESIGN §4): when the explicit agent ref names a persona whose
@@ -527,11 +533,9 @@ persona-grata store entry EXISTS, read the store and refuse the create NOW if it
 usable persona — BEFORE the persona create verdict, so a broken store is reported as itself rather
 than as the verdict's downstream "no endpoint configured".
 
-⚑ NOTHING IS WRITTEN. This used to IMPORT the store into `agents/<node>/agent.yaml`; the store
-is a LIVE resolution input now (`read_persona_bundle` → the launch's persona cascade level), and
-the agent settings file holds user-intent values only, so there is nothing to persist and no
-`agent.yaml` for a corrupt-file arm to trip over. The gates themselves are UNCHANGED: same hard
-errors, same WARN-ONLY probe.
+⚑ NOTHING IS WRITTEN. The store is a LIVE resolution input (`read_persona_bundle` → the
+launch's persona cascade level), and the agent settings file holds user-intent values only, so
+there is nothing to persist. The store errors are hard refusals; the probe only warns.
 
 Returns an `"Error: …"` message for the caller to print-and-refuse (malformed ref, unusable store
 config, a store naming no endpoint), or `None` when there is nothing to do — a bare/plain ref, no
@@ -559,8 +563,12 @@ not use is indistinguishable here from a dead credential, and the wording this r
 to fix a valid one. The evidence block is rendered by `PersonaProbeOutcome.evidence_block()` — the
 same call the launch error makes, so the two shapes cannot drift.
 
-```run_create(args: argparse.Namespace) -> int```
+```run_create(args: argparse.Namespace, outcome: _CreateOutcome) -> int```
 Create a new kanibako project (replaces `kanibako init`).
+
+Wrapped by `_unmakes_its_dirs_on_failure`, so callers call `run_create(args)`: the wrapper passes
+a fresh `_CreateOutcome`, removes the empty dirs a create that never committed made, and turns an
+`OSError` into exit 1 with its cure line.
 
 The full ordering, the J1 journal and the fresh-create-only persists are documented in "`create`:
 the ordering IS the design" above.
@@ -589,88 +597,109 @@ List only orphaned projects (the `--orphan` handler).
 Raises `ProjectError` on any violation. The refusal set and the strict-containment rule are in
 "Purge safety" above.
 
-```_teardown_primary_box(std, name: str, metadata_dir: Path) -> bool```
-Delete a PRIMARY box's metadata: box dir + vault ro/rw + helper log.
+```class _PurgeStep```  *(frozen dataclass)*
+One path `box rm --purge` deletes: listed before the question, then removed as listed. Fields:
+`kind`, `what` (the listing label), `path`, and the flags `anchor` (the box metadata dir — the
+retry address), `gated` (kept once the anchor could not go) and `edit` (an in-place edit, such as
+stripping kanibako's `.gitignore` line, rather than a delete).
 
-Returns True if the box dir was removed. ⚑ The CALLER is responsible for containment-validating
-*metadata_dir* first when it comes from an untrusted `deregistered` entry — see
-`_assert_deletable`.
+```_primary_purge_plan(std, name: str, metadata_dir: Path, loop_keeps: "list[tuple[str, Path, str | None]] | None" = None) -> list[_PurgeStep]```
+What purging a PRIMARY box deletes: box dir, vault ro/rw, per-box logs.
 
-```_standalone_teardown_plan(root: Path, registered_name: str) -> _StandaloneTeardown```
-Resolve what the teardown deletes — the vault split, the logs dir and the box's log name — before
-anything is deleted or unregistered. An unresolvable value (a bare-relative repoint, or a null
-`workset.boxes`, which the standalone logs default chains through) raises here, while the box is
-whole.
+The anchor (the box dir) is appended LAST. A looped vault leaf or store is kept and pushed into
+*loop_keeps*, which also gets the box's channel dirs (`box_channel_keeps`); the caller names them
+after the run. Steps whose path holds a recorded workspace are dropped and named. ⚑ The CALLER
+containment-validates *metadata_dir* first when it comes from an untrusted `deregistered` entry —
+see `_assert_deletable`.
 
-```_teardown_standalone_box(root: Path, registered_name: str, *, plan: _StandaloneTeardown | None = None) -> bool```
-Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched. *plan*
-comes from a caller that resolved it before an irreversible step of its own.
+```_standalone_purge_plan(root: Path, registered_name: str, *, std: StandardPaths, early: EarlyScope) -> tuple[list[_PurgeStep], list[tuple[str, Path, str | None]]]```
+What purging a STANDALONE box deletes: logs, store, root workset.yaml, canon, vaults.
 
-Removes the in-tree `box_data/` marker, the root `workset.yaml` and the box's RESOLVED vault — the
-same set the active standalone purge and the `purge` command delete. Returns True if the
-`box_data/` marker was removed.
+Returns `(steps, retained)`; *retained* is reported by `_report_retained_roles`. Everything
+resolves before anything is deleted or unregistered (see "Purge safety" above): an in-root
+repoint is removed with the box, an out-of-root arm is retained and named, and an unresolvable one
+raises while the box is whole. When the box has no store kanibako created, only the logs and the
+creds lock are planned.
 
-⚑ The vault split comes from `standalone_vault_teardown`, called FIRST (see the teardown notes
-above): an in-root repoint is removed with the box, an out-of-root arm is reported and kept, and an
-unresolvable one refuses the whole purge before anything is deleted.
+```_confirm_purge(steps: list[_PurgeStep], *, force: bool, retained: Sequence[tuple[str, Path, str | None]] = ()) -> bool```
+List what *steps* deletes AND what the run keeps, then ask unless *force*.
+
+The KEPT list prints before the question. A symlink step prints its target as kept. With no steps
+it says the purge deletes nothing and returns True.
+
+```_run_purge_plan(steps: list[_PurgeStep], std: StandardPaths) -> bool```
+Delete *steps* in order; True when every step was removed.
+
+A gated step is kept and reported once the anchor could not go, and the anchor is kept when an
+earlier step failed. The `.gitignore` line, the leftover default canon folder (rmdir only, against
+the live mold stamp in *std*) and a creds-watcher lock that is held again are handled by kind; every
+other step goes through `remove_path`, and a failure prints the `podman unshare rm -rf` cure.
 
 ```_read_box_image(settings_file: Path) -> str | None```
-Best-effort read of a box's `box.image` from its box.yaml; failure is `None`.
+The box's `box.image`: `None` if unreadable, refusing if `box` is not a table.
 
-Captured into the deregistered blob for a later readopt (I2). Purge does not need it, so any read
-failure degrades to `None` rather than erroring.
+Captured into the deregistered blob for a later readopt (I2). An unreadable file degrades to
+`None`; a scalar `box` section raises through `refuse_scalar_sections`.
 
 ```_read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None```
 `_read_box_image` over a `(box_tier, workset_tier)` pair, box tier wins.
 
 `box.image` is a BOX-scope key, so it is read from the box tier; the workset tier is consulted only
-as the R2 downward-default. That fallback is DECLARED DESIGN (keyspec §2c), not a compat path; it is
-also what keeps a pre-P2 standalone box — whose `box.image` was written to its ROOT file when that
-file WAS the box tier (M-8) — capturable into the deregistered blob.
+as the R2 downward-default. That fallback is DECLARED DESIGN (keyspec §2c), not a compat path: a
+`box.image` set in a standalone box's ROOT `workset.yaml` is captured into the deregistered blob
+too.
 
-```_purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int```
+```_purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace, *, config) -> int```
 Handle `rm <name>` when *name* resolves only to a deregistered entry.
 
 Without `--purge` the box is already deregistered — print the recovery guidance and return 0, with
 no re-error and no re-deregister. With `--purge`, validate the stored metadata path for
-containment, delete it via the shared per-kind teardown, then drop the deregistered entry.
-IDEMPOTENT: an entry whose dir is already gone is simply dropped, with no error and no prompt. The
-stale-active-owner refusal is described in "Purge safety" above.
+containment, refuse while the box is running (`_refuse_purge_while_live`, probed by kind), build
+the per-kind plan (`_standalone_purge_plan` or `_primary_purge_plan`), confirm it, run it, then
+drop the deregistered entry. IDEMPOTENT: an entry whose store is already gone is simply dropped,
+with no error and no prompt. A purge that leaves the metadata keeps the entry and prints its cure.
+The stale-active-owner refusal is described in "Purge safety" above.
 
-For a standalone entry the stored `metadata` is the in-tree ROOT: only fixed children are deleted,
-but a bare or protected root is still refused. For a primary entry the metadata must be strictly
-under `std.boxes`.
+For a standalone entry the stored `metadata` is the in-tree ROOT: only planned children are
+deleted, but a bare or protected root is still refused. For a primary entry the metadata must be
+strictly under `std.boxes`.
 
-```_resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None]```
-Resolve a `box rm` *target* (NAME or PATH) to `(box_name, root)`, else two `None`.
+```_resolve_standalone_target(std, config, target: str, *, purge: bool = True) -> tuple[str | None, Path | None, bool]```
+Resolve a `box rm` *target* to `(box_name, root, registered)`; unregistered by PATH only.
 
-*target* may be a registered standalone box NAME (looked up in `registry.standalone`) or a PATH
-(resolved by ancestor-walk detection, then matched to its registered root). Mirrors how `box purge`
-finds standalone boxes.
+*target* may be a registered standalone box NAME (looked up case-blind in `registry.standalone`,
+returning the stored spelling) or a PATH (resolved by ancestor-walk detection, then matched to its
+registered root). A same-named PATH ranks first. An unregistered standalone box resolves by PATH
+only, with `registered` False. Without *purge*, a row registered at the literal *target* resolves
+even when it is another spelling of a registered box's identity: dropping that row is the cure.
 
-⚑ **The blanket `except Exception` here treats any detection failure as "not this box" — with ONE
-carve-out: `LegacyWorksetIdentityError` re-raises.** A workset root still on the retired
-`workset.meta` spelling (MIGRATION.md § "A workset root no longer carries an identity table; an
-un-migrated root refuses") is a named thing to fix, and swallowing it here would report the path as
-an unresolvable box instead of printing the cure.
+⚑ **The blanket `except Exception` here treats any detection failure as "not this box" — except
+`LegacyWorksetIdentityError`, `DerivedBoxNameError` and `ConfigError`, which re-raise**, and an
+`ImportConflictError` re-raises unless the plain-`rm` literal row above applies. A workset root
+still on the retired `workset.meta` spelling (MIGRATION.md § "A workset root no longer carries an
+identity table; an un-migrated root refuses"), a directory with no ASCII spelling, or a malformed
+root file is a named thing to fix, and swallowing it here would report the path as an unresolvable
+box instead of printing the cure.
 
-```_rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int```
-Remove a standalone box: always drop its registry entry, its `box_data/` on `--purge`.
+```_rm_standalone(std, box_name: str, root, args: argparse.Namespace, *, registered: bool, config) -> int```
+Remove a standalone box: drop its registry entry if any, its store on `--purge`.
 
-Standalone state lives in-tree under `<root>/box_data` (plus `<root>/vault`) and the box is indexed
-in `registry.standalone`. With `--purge` the in-tree metadata is deleted (on confirmation, with the
-`vault/` tree); without it, a deregistered entry is parked so a later `rm --purge` or `register`
-can find the retained metadata BY NAME, since the index was just dropped. The user's workspace
-files are never touched. With `--purge` the teardown plan resolves BEFORE the registry entry is
-dropped, so a refusal leaves the box registered and whole.
+An unregistered box has no entry to drop, so a plain `rm` of one refuses and prints the
+`rm <root> --purge` cure. The box is indexed in `registry.standalone`, and its store is the
+resolved `workset.boxes` (`standalone_box_store`). With `--purge` the plan is built and confirmed
+BEFORE the registry entry is dropped, so a refusal or a declined question leaves the box registered
+and whole. Without `--purge`, or when a purge leaves the metadata, a deregistered entry is parked
+so a later `rm --purge` or `register` can find the retained metadata BY NAME. The user's workspace
+files are never touched. *config* is required: without it the running-box probe cannot see a live
+box.
 
 ```run_rm(args: argparse.Namespace) -> int```
-Unregister a project/workset from the registry, optionally purging metadata.
+Unregister a box (primary or standalone), optionally purging metadata.
 
 Resolution order, the membership routing and the deregistered parking rule are in "`rm`,
 `register`, and the deregistered section" above.
 
-```_readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int```
+```_readopt_deregistered(std, name: str, entry: dict) -> int```
 ⚑ INDEX-ONLY, SEED-FREE readopt: move a box from `deregistered` back to active.
 
 Writes ONLY the active membership index (the primary per-workset `boxes:` /
@@ -688,11 +717,13 @@ The two unified operations, the already-active guards and the `import_standalone
 ```_format_credential_age(creds_path: Path) -> str```
 Return a human-readable age string for a credentials file, or 'n/a'.
 
-```_check_container_running(proj) -> tuple[bool, str]```
-Is a kanibako container running for this project? Returns `(is_running, detail)`.
+```_check_container_running(proj, *, fail_closed: bool = False, container_name: str | None = None) -> tuple[bool, str]```
+Is *proj*'s container running? `(running, detail)`; *fail_closed* raises on no answer.
 
-Accepts a `ProjectPaths` or a duck-typed equivalent. A stopped PERSISTENT container still exists
-and is reported as such.
+*container_name* overrides *proj*'s rendered name; otherwise the container is found by its labels.
+Accepts a `ProjectPaths` or a duck-typed equivalent. A container stuck part-way out is reported
+with its `rm` cure, and an exited or paused container still holds the name and is reported as
+such.
 
 ```run_info(args: argparse.Namespace) -> int```
 Show per-box status, paths, container state, image, agent and credentials. *(No docstring in

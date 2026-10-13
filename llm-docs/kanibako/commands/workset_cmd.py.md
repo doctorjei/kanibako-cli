@@ -146,12 +146,11 @@ The `pref:` table is flattened by that same walk, the only `pref` producer at ev
 declarations through the flatten above, and the binding each ABSTRACT one derives through
 `_print_effective_derivations` below.
 
-⚑ **The derived half was once thought unavailable here**, on the ground that a derivation is
-materialized by a launch resolve (`_resolve_launch_snapshot`), which needs a box identity and an
-agent a working set does not have. That is true of the LAUNCH's route and false as a conclusion:
-§0 leaves *"WHERE the derivation is materialized"* to the implementation and obliges only what the
-user SEES, and `_print_effective_shares` had already built a workset-only collapse with no box.
-The derived block feeds the same one. What it CANNOT answer without a box is stated at
+⚑ **The derived half needs no box.** The LAUNCH materializes a derivation in its resolve
+(`_resolve_launch_snapshot`), which needs a box identity and an agent a working set does not have,
+but §0 leaves *"WHERE the derivation is materialized"* to the implementation and obliges only what
+the user SEES. The derived block feeds the workset-only collapse `_print_effective_shares` builds,
+with no box. What it CANNOT answer without a box is stated at
 `_print_effective_derivations` and is narrower than "the pair": no box's OWN settings file and no
 agent file is read (the base, system and working-set files are, and the working set file's `box:`
 defaults-down table with them, so a `box.masks` written there does apply), and a `seeded` row names
@@ -170,9 +169,9 @@ two's `(mount)`.
 
 ⚑ **THE GATE IS "IS THERE AN ABSTRACT DECLARATION", and it gates the COLLAPSE ONLY.** Every §0
 *arbitration* refusal — bind-over-bind, mask-on-mask, seed-outside-home — is raised by the collapse,
-so a working set that declares none of the trio can no longer meet one from this verb.
+so a working set that declares none of the trio cannot meet one from this verb.
 
-🛑 **THE RESOLVE IS NOT GATED, AND THAT IS A BEHAVIOR CHANGE TO A SHIPPED VERB.** The entry list is
+🛑 **THE RESOLVE IS NOT GATED.** The entry list is
 built BEFORE the gate, `expand` is strict, and `snapshot_category_entries` refuses an undeclared
 shape — while the `show` arm's own rendering is a YAML flatten that expands nothing. So a working
 set carrying only `bindings.ro: {/opt/x: ["$NOPE/y"]}`, with no abstract declaration anywhere,
@@ -259,11 +258,8 @@ copied — so `share list --effective` never meets an entry `share add` answered
 ### The stored entry shape
 
 **The stored value is the 1-ELEMENT `[host_src]` entry** (R-3/R-6, `kb_store.BindEntry`): the
-destination is the KEY and appears exactly once. P4′ deliberately left it as the 2-element
-`[host_src, box_dest]` pair — the destination written twice — because the reader could not flip
-alone: the floor producers still emitted name-keyed entries into the SAME merged arm, and a merged
-arm must be HOMOGENEOUS. P6 flipped the reader, the floor and this writer together, which is what
-made the deferred "drop element 2" safe.
+destination is the KEY and appears exactly once. The reader, the floor producers and this writer
+all use the dest-keyed shape, so the merged arm stays HOMOGENEOUS.
 
 The store REFUSES a 3-element entry outright (*"Dest-keyed binding entry must have 1 or 2 elements
 [src[, options]] … The DESTINATION is the map key, not part of the entry."*), so the live on-disk
@@ -279,8 +275,8 @@ lands on the NEXT box launch and a running box is unaffected.
 ### Canonicalize the destination; never the source
 
 The stored DESTINATION is canonicalized (R-11): a leading `~` expands to the fixed guest home, so
-`~/x` and `/home/agent/x` are ONE entry rather than two at one destination. *(Verified: adding
-`/host/a:~/x` then `/host/b:/home/agent/x` prints "Added" then "Updated" at `/home/agent/x`.)*
+`~/x` and `/home/agent/x` are ONE entry rather than two at one destination: adding
+`/host/a:~/x` then `/host/b:/home/agent/x` prints "Added" then "Updated" at `/home/agent/x`.
 
 The stored `host_src` is NOT canonicalized — its `~` is the INVOKING USER's home, and a workset file
 is read by other users on other machines (spec §2a, "the destination is canonicalized; the source is
@@ -288,8 +284,7 @@ not"). `normalize_bind_dest` carries an `@`-ref, a `$var` and a bare leaf throug
 what makes the retired-name cure below spellable.
 
 Without that canonicalization, `~/x` and `/home/agent/x` would be two dict entries at ONE place and
-`share rm` could only ever remove the spelling the user happened to retype — which is the collision
-that triggered R-11 in the first place.
+`share rm` could only ever remove the spelling the user happened to retype.
 
 On the `share rm` side, R-11 is applied to the ARGUMENT rather than to every stored key — the stored
 keys are already canonical by construction, and a user who types the `~` spelling of the same place
@@ -301,30 +296,16 @@ as `\:` (there, the `:` is the separator).
 
 A BARE-RELATIVE host source is ABSOLUTIZED AGAINST THE WORKSET ROOT at WRITE time (spec §2a: a
 stored source must fully resolve on its own). The documented convenience — "a relative `host_src` is
-resolved under the working set root" — is preserved EXACTLY: the same input yields the same mount,
-because this join is the one the launch used to apply (the retired assembly-time prepend). What
-changes is the ARTIFACT: the stored value is now the full path, so it resolves the same in every
-context that reads it (launch, `--effective`, another tool) instead of only in the one that knew
-the root. The command says so when it happens. *(Verified: `share add <ws> reldir:/box/rel` stores
+resolved under the working set root" — holds: the stored value is the full path, so it resolves
+the same in every context that reads it (launch, `--effective`, another tool), and no reader
+applies a root-join. The command says so when it happens: `share add <ws> reldir:/box/rel` stores
 `<ws_root>/reldir` and prints "(relative source resolved under the working set root and stored as
-…)".)*
+…)".
 
-The DEFAULT workset REFUSES a relative source instead, because it has no bindings root. The old
-root-join lived in TWO places — `_launch_snapshot_inputs` in `start.py` (since replaced by
-`settings_launch.resolve_inputs`) and `_print_effective_shares` here — and NEITHER applied to the
-default workset, so a relative source there never joined and went to the mount spec as a relative
-string, resolved against whatever the process CWD happened to be.
-There is no defensible root to pick at write time either: `@config.primary_workset` is kanibako's
-own internal store, not a user project dir, so rooting there would swap a visible failure for a
-silent wrong path. Refusing names the mistake at the moment it is made. *(Verified: refused, with
-the "an absolute path, '~/…', '$VAR' or an '@'-reference" cure.)*
-
-> ⚑ **A STALE PARENTHETICAL WAS DROPPED HERE.** The old `run_share_add` docstring said the two root
-> tables *"deliberately excluded it (`_launch_snapshot_inputs` and `_print_effective_shares` set the
-> workset arms only `if not is_default`)"* — present tense. Neither root table exists any more:
-> `_print_effective_shares` has no root-join at all (see below), and the launch's input builder
-> (`settings_launch.resolve_inputs`) has no `is_default` workset-bindings arm. The correct, PAST-tense statement of the same fact
-> is the one carried above, which is how `_print_effective_shares`' own docstring already phrased it.
+The DEFAULT workset REFUSES a relative source instead, because it has no bindings root:
+`@config.primary_workset` is kanibako's own internal store, not a user project dir, so rooting
+there would swap a visible failure for a silent wrong path. Refusing names the mistake at the
+moment it is made, with the "an absolute path, '~/…', '$VAR' or an '@'-reference" cure.
 
 ### The bind grammar
 
@@ -355,41 +336,34 @@ launch (P3).
 * **`--effective`** (`_print_effective_shares`): resolves through the LAUNCH's own builder —
   `settings_launch.resolve_inputs(subject=WORKSET)` then `build_launch_snapshot`, then
   `snapshot_category_entries` — with the `GENERAL_SLOT` placeholder agent and no agent file.
-  ⚑ **The pipeline itself now lives in
+  ⚑ **The pipeline itself lives in
   `_workset_preview_entries`, the arbitration in `_workset_preview_collapse` and the refusal arm in
   `_preview_refusal`**, because the derived-binding block of `workset show --effective` describes
   the same working set: two resolves of one file would be two answers about it. Everything the rest
   of this section says about the resolve, the floor, the collapse and the framing holds of those
-  three; only the function it sits in moved. This replaced a retired `resolve_shares` /
-  `read_bindings` / `LevelView` path; `resolve_shares` and `read_bindings` are gone from the tree,
-  while `LevelView` itself survives and is still live in `settings/paths.py` and
-  `settings/settings_resolve.py` — it is only this function's use of it that was retired.
+  three.
 
   Every stored `host_src` resolves ON ITS OWN (spec §2a), because `share add` absolutizes a relative
-  source at WRITE time, so there is no root to apply here. No ROOT-JOIN can make this display
-  diverge from what a launch mounts, which it previously could — but see the floor below for the
-  divergence that had nothing to do with root-joins.
+  source at WRITE time, so there is no root to apply here and no ROOT-JOIN can make this display
+  diverge from what a launch mounts.
 
-⚑⚑ **THE RESOLVE IS THE LAUNCH'S, SO ITS FILES, FLOORS AND REFUSALS ARE TOO** (S1 Pass 2a). The
-preview used to assemble the workset file alone by hand: no system or base file, no `pref:`
-requests, no §2c auth chain, one anchor floored, and no `config:`-table refusal. So a working set
-the launch refuses — a `config:` table in the workset file, a bare-relative `pref.agent.<a>.canon`
-request, an undeclared key in the system file — previewed at rc 0, and a share sourced at
-`@workset.auth.path/notes` listed `/notes` while a launch mounts `<ws_root>/auth/notes` (all
-measured). Now every file a box in the set reads, except the box's own and the agent file, is read,
-judged and named, and `refuse_config_table`, the retired-spelling refusal and
-`refuse_read_time_faults` run inside `build_launch_snapshot` as they do at launch.
+⚑⚑ **THE RESOLVE IS THE LAUNCH'S, SO ITS FILES, FLOORS AND REFUSALS ARE TOO.** Every file a box
+in the set reads, except the box's own and the agent file, is read, judged and named — the system
+and base files, the `pref:` requests and the §2c auth chain included — and `refuse_config_table`,
+the retired-spelling refusal and `refuse_read_time_faults` run inside `build_launch_snapshot` as
+they do at launch. So a working set the launch refuses (a `config:` table in the workset file, a
+bare-relative `pref.agent.<a>.canon` request, an undeclared key in the system file) refuses here
+too, and a share sourced at `@workset.auth.path/notes` lists `<ws_root>/auth/notes`, as a launch
+mounts it.
 `ResolveSubject.WORKSET` (from `as_kwargs`) gives the §0 message this noun's verbs. The refusals
 raise `SettingsError`, so both listings report through `_preview_refusal` at rc 1.
 ⚑ **A box-scope anchor is OMITTED, never fabricated** (`resolve_inputs`): a working set names no
 box, so a source spelled `@meta.box.path/x` or `@box.canon/y` expands its missing anchor to `""`
-and lists as `/x` / `/y`, as it did before this route. Rendering such a row is S1 fork F3, a later
-pass.
-⚑ **`run_share_list` TAKES ITS `--effective` BRANCH BEFORE THE EMPTY-SHARES RETURN.** The raw
-view's early *"No bindings configured"* sat first once, so a working set with NO shares never
-reached the preview and a `workset: {frob: 1}` answered rc 0 while every box refused (measured).
-`_print_effective_shares` gives that same one-line empty answer (`_print_no_shares`, one carrier) —
-but only AFTER the resolve and the arbitration have run.
+and lists as `/x` / `/y`.
+⚑ **`run_share_list` TAKES ITS `--effective` BRANCH BEFORE THE EMPTY-SHARES RETURN**, so a working
+set with NO shares still reaches the preview, and a `workset: {frob: 1}` refuses there as every box
+does. `_print_effective_shares` gives the raw view's one-line empty answer (`_print_no_shares`, one
+carrier) — but only AFTER the resolve and the arbitration have run.
 
 The context and floors come from `resolve_inputs`, which keeps the **resolver SPLIT** (spec §1A /
 JC-2): Layer-1 `config.*` is the `ctx.config` foundation (`agent_select.host_resolve_ctx`), and
@@ -432,15 +406,14 @@ per-mode choice lives (§1A) — one rung below this key, and not a variation at
 named both land on `ws.root` here; standalone cannot reach this noun at all (`workset create
 --standalone` is refused, and `resolve_workset_name` reads the registry).
 
-⚑ **This listing no longer floors the anchor itself.** It comes from `resolve_inputs`' WORKSET
+⚑ **This listing does not floor the anchor itself.** It comes from `resolve_inputs`' WORKSET
 floors (`_workset_floors`), the sequence a member box's launch also runs, with
 `meta.runtime.ws_root` and every `workset.*` layout anchor beside it. `workset set` takes the same
 floors at set time (`config_interface._set_time_target`), so there is no separate carrier left.
 
-`tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor` pins it, and pins it by
-DERIVATION now: it drives this display with a binding sourced at every key the launch floor answers
-and names no key itself. The version that guarded the split before compared each function's SOURCE
-TEXT against four hard-coded names, so it was green through the whole of the above.
+`tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor` pins it by DERIVATION: it
+drives this display with a binding sourced at every key the launch floor answers and names no key
+itself.
 
 The DEST column is the share's IDENTITY (R-10) and is exactly the argument `share rm` takes.
 
@@ -458,18 +431,16 @@ declarations with. **The shares stay the SUBJECT**: a share the collapse swallow
 gains a reason rather than vanishing, because dropping a row silently is the failure the floor
 above guards against.
 
-* **A delivered share earns the ARROW**: `<src> -> <dest>  [<mode>]`, exactly as before — this half
-  of the output did not move.
+* **A delivered share earns the ARROW**: `<src> -> <dest>  [<mode>]`.
 * **A share that receives nothing is printed in DECLARATION form** — `<dest>  [<mode>]  (declared:
   <src>)` — with `store_collapse.derivation_result`'s phrase indented beneath it. A reader skimming
   for mounts cannot take a loss for one.
 
 ⚑⚑ **A COLLISION IS CAUGHT HERE AND FRAMED — one added line, and the refusal itself is printed FROM
-the exception.** `CategoryCollisionError` used to fall out to `cli.main`, which printed the launch's
-own `Error: …` and exited 1. That is the right message and the right code, and it is context-free:
-the user asked what a box in this working set would MOUNT and got a bare collision, which reads as a
-listing failure rather than as the answer. `_preview_refusal` catches it and prints, to
-stderr, above the refusal:
+the exception.** The launch's own `Error: …` and exit 1 are the right message and code, but alone
+they are context-free: the user asked what a box in this working set would MOUNT, and a bare
+collision reads as a listing failure rather than as the answer. `_preview_refusal` catches
+`CategoryCollisionError` and prints, to stderr, above the refusal:
 
 ```
 Cannot say what working set 'myws' would mount: its declarations collide at '/opt/arb', so no box in it can launch. The refusal a launch gives follows.
@@ -514,10 +485,10 @@ containment as a loss) and TWO mutations, each on a throwaway stand-in rather th
 
 ### The retired name-keyed refusal
 
-`_workset_raw_shares` REFUSES a retired name-keyed entry (R-10), and it does so on the KEY. P4′
-could compare the key against the value's own stored destination; P6 dropped that element (R-6), so
-the test is instead whether the key is SPELLABLE as a destination at all — absolute, or leading
-`~` / `$` / `@` (spec §2a self-resolving).
+`_workset_raw_shares` REFUSES a retired name-keyed entry (R-10), and it does so on the KEY: the
+entry holds no destination to compare against, so the test is whether the key is SPELLABLE as a
+destination at all — absolute, or leading `~` / `$` / `@` (spec §2a self-resolving,
+`is_self_resolving`).
 
 A bare leaf like `docs` is a NAME, and there is no honest way to DISPLAY one: the DEST column would
 print a name, and the `share rm` argument it advertises would be a name too. So it is named and
@@ -526,9 +497,9 @@ refused rather than silently mis-rendered (Code Convention 0; disk-store R-8's p
 command.
 
 The cure the error prints is deliberately spellable: `share rm` deletes whatever key it is given,
-because `normalize_bind_dest` passes a bare leaf through unchanged. *(Verified end-to-end: a
-hand-written `docs:` key makes `share list` print the refusal, and the prescribed
-`workset share rm <ws> docs --mode rw` removes it verbatim.)*
+because `normalize_bind_dest` passes a bare leaf through unchanged: a hand-written `docs:` key makes
+`share list` print the refusal, and the prescribed `workset share rm <ws> docs --mode rw` removes it
+verbatim.
 
 ### The arity trap
 
@@ -654,16 +625,16 @@ contains that destination; errors if it exists in both (ambiguous) or in neither
 def run_share_list(args: argparse.Namespace) -> int
 ```
 The raw view by default, the resolved-mount view under `--effective`. See "Listing: single route, no
-second resolver". Note the empty-config early return runs BEFORE the `--effective` branch, so a
-workset with no bindings prints the same one-line message either way.
+second resolver". The `--effective` branch runs BEFORE the empty-shares return, so a workset with no
+bindings still reaches the resolve; both views print the same one-line empty answer.
 
 ```python
-def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]
+def _workset_raw_shares(files: Sequence[SettingsFile]) -> dict[tuple[str, str], object]
 ```
-The workset file's `workset.bindings.{ro,rw}` as a `{(mode, dest): raw}` map. See "The retired
-name-keyed refusal" and "The arity trap". `assemble_levels` returns
-`[box, workset, agent.<active>, agent.default, system, base]`, so index 1 is the workset partial —
-the only file passed.
+The workset file's `workset.bindings.{ro,rw}` as a `{(mode, dest): raw}` map (the RAW view);
+*files* is its `NARROW` read. See "The retired name-keyed refusal" and "The arity trap".
+`assemble_levels` returns `[box, workset, agent.<active>, agent.default, system, base]`, so index 1
+is the workset partial — the only file read.
 
 ```python
 def _workset_preview_entries(ws, std) -> list[CategoryEntry]

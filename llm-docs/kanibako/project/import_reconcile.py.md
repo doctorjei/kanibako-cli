@@ -54,21 +54,15 @@ fire on a plain `kanibako box register`.
    `kanibako box register <root>`. That refusal lives here only, not in `refuse_second_link`,
    because `box register` is the route that re-registers a parked box at a new spelling.
 
-## The RETIRED third mode — PRIMARY
+## No PRIMARY mode
 
-A third **PRIMARY** mode once lived here: `import_primary_box`, `import_primary_box_for_workspace`
-and `reconcile_primary_boxes`. It re-associated a central primary box with its external workspace by
-reading that box's on-disk `project:` / `resolved:` meta.
+This module has no primary import or reconcile. A primary box does not self-describe its identity
+on disk, so there is nothing on disk to re-import from: for primary mode the registry is the sole
+identity authority.
 
-It was **RETIRED FROM THE LIVE PATH (P8b / Option A)**. Under sparse create, a primary box no longer
-self-describes its identity on disk, so there is nothing on disk to re-import from — for primary
-mode the registry is the sole identity authority.
-
-Its skeleton — enumerate, match-by-workspace, collision-refuse, journal-atomic — is the seed of a
-future heuristic `system recover`, so it was not deleted but **sequestered** into
-`salvage/primary_reconcile.py` (a non-shipping frozen reference snapshot, P8c). It is no longer part
-of the live package. 🛑 Do not re-import it here; if `system recover` is ever built, it starts from
-the salvage snapshot, not from a revived live path.
+A frozen, non-shipping reference copy of a primary reconcile lives in
+`salvage/primary_reconcile.py`; it is the starting point for a heuristic `system recover`. 🛑 Do
+not import it here.
 
 ## Conflict semantics — the same rule in every mode
 

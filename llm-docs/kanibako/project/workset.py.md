@@ -150,7 +150,8 @@ layer, and a null `channelroot` or vault arm omits its bind.
   ⚑ The three destructive paths RESOLVE BEFORE THEY UNREGISTER, so the refusal lands while the
   box is still registered: `delete_workset` (purge) resolves the store before `unregister_name`,
   `remove_project` resolves `_member_store_bases` before `release_project`, and `box rm --purge`
-  of a standalone box takes `_standalone_teardown_plan` before `unregister_standalone`.
+  of a standalone box builds `_standalone_purge_plan` (in `_parser._rm_standalone`) before
+  `registry_store.unregister_standalone`.
   🛑 STILL OPEN: box trees under a `workset.boxes` the user pointed OUTSIDE the root survive
   `workset rm --purge`, deliberately — `delete_workset`'s loop is a pre-pass for `rmtree(root)`, so
   it is owed only to what that call reaches. Closing it needs a retained-path report, not a wider

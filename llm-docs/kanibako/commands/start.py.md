@@ -513,8 +513,15 @@ sync leaf is gated on the bind fold by design, because a sync dest is meaningles
 So the launch-time pass runs below the main resolve and below the emit, and consumes them:
 
 ```
-_apply_synced_copies(snapshot=_snapshot, bindings=launch_binds, logger=logger, skip_if=...)
+_apply_synced_copies(
+    snapshot=_snapshot, bindings=launch_binds,
+    logger=logger, skip_if=_synced_uptodate,
+    declared_by=deliveries.declared_by,
+)
 ```
+
+The second call site is the create-time write in `_sync_box_at_create`, which passes
+`bindings=_launch_bind_map(snapshot)` and `skip_if=None` (see below).
 
 ⚑ **The inputs are ONE collapse.** `collapse_store_shapes` builds the sync list and the bind map from
 one set of shapes. Resolving a sync dest against a bind map from a *different* resolve would resolve
