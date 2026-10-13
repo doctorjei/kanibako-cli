@@ -211,7 +211,7 @@ def test_the_nested_set_arm_prints_the_delete_before_the_cure(tmp_path) -> None:
     """``env``/``secret_path`` cure with ``agent set``, which READS the file the
     stale table sits in — so that table has to be gone before the set can land."""
     msg = _nested_refusal(
-        {"claude": {"env": {"KANI_PROBE": "yes"}}}, path=tmp_path / "claude" / "agent.yaml",
+        {"claude": {"env": {"KANI_PROBE": "yes"}}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert "  Delete the `self.claude` table from " in msg
     assert msg.index("Delete the `self.claude` table") < msg.index("Fix: ")
@@ -223,7 +223,7 @@ def test_the_no_category_arm_moves_first_and_deletes_after(tmp_path) -> None:
     Deleting first would destroy what the user was just told to move (review RETURN
     item 1)."""
     msg = _nested_refusal(
-        {"claude": {"not_a_category": 1}}, path=tmp_path / "claude" / "agent.yaml",
+        {"claude": {"not_a_category": 1}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert msg.index("Fix: ") < msg.index("then delete the `self.claude` table")
     assert "UP ONE LEVEL" in msg
@@ -233,7 +233,7 @@ def test_the_no_category_arm_moves_first_and_deletes_after(tmp_path) -> None:
 def test_another_agents_sub_table_is_moved_to_that_agents_file(tmp_path) -> None:
     """``self.<sub>`` in ANOTHER agent's file is ``agent.<sub>``'s content: up one
     level here would land it on THIS file's node. Every arm names the sub's own file."""
-    stale = tmp_path / "shell" / "agent.yaml"
+    stale = agent_settings_path(tmp_path, "shell")
     home = _agent_store(tmp_path, "claude")
     for root_tbl in ({"claude": {"model": "sonnet"}},
                      {"claude": {"env": {"A": "x"}, "model": "sonnet"}},
@@ -253,7 +253,7 @@ def test_a_non_verb_category_is_a_hand_edit_and_deletes_after(category, tmp_path
     check keeps the verb out."""
     _agent_store(tmp_path, "goose")
     msg = _nested_refusal(
-        {"goose": {category: {"a": "/x"}}}, path=tmp_path / "claude" / "agent.yaml",
+        {"goose": {category: {"a": "/x"}}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert msg.index("Fix: ") < msg.index("then delete the `self.goose` table")
     assert "kanibako agent set" not in msg, msg
@@ -511,7 +511,7 @@ _ALL_FIX_CMDS = re.compile(r"^\s*(?:Fix: )?(kanibako agent set [^\n]+)$", re.MUL
 def test_the_nested_set_arm_prints_one_set_per_entry(tmp_path) -> None:
     _agent_store(tmp_path, "goose")
     msg = _nested_refusal(
-        {"goose": {"env": {"FOO": "bar", "BAZ": "qux"}}}, path=tmp_path / "claude" / "agent.yaml",
+        {"goose": {"env": {"FOO": "bar", "BAZ": "qux"}}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert _ALL_FIX_CMDS.findall(msg) == [
         "kanibako agent set goose env.BAZ=qux",
@@ -523,7 +523,7 @@ def test_the_nested_set_arm_prints_one_set_per_entry(tmp_path) -> None:
 def test_the_hand_edit_arm_lists_every_entry(tmp_path) -> None:
     _agent_store(tmp_path, "shell")
     msg = _nested_refusal(
-        {"shell": {"caches": {"a": "/x", "b": "/y"}}}, path=tmp_path / "claude" / "agent.yaml",
+        {"shell": {"caches": {"a": "/x", "b": "/y"}}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert "kanibako agent set" not in msg, msg
     assert "        a: /x\n        b: /y" in msg
@@ -603,7 +603,7 @@ def test_the_printed_set_lines_quote_every_value_for_the_shell(tmp_path) -> None
     _agent_store(tmp_path, "claude")
     msg = _nested_refusal(
         {"claude": {"env": dict(_HARD_VALUES)}}, node="shell",
-        path=tmp_path / "shell" / "agent.yaml",
+        path=agent_settings_path(tmp_path, "shell"),
     )
     words = {}
     for line in _ALL_FIX_CMDS.findall(msg):
@@ -621,7 +621,7 @@ def test_the_printed_yaml_quotes_every_value(tmp_path) -> None:
         ({"claude": {"env": dict(_HARD_VALUES), "model": "x"}}, ["self"]),
         ({"default": {"env": dict(_HARD_VALUES)}}, ["agent", "default"]),
     ):
-        msg = _nested_refusal(root_tbl, node="shell", path=tmp_path / "shell" / "agent.yaml")
+        msg = _nested_refusal(root_tbl, node="shell", path=agent_settings_path(tmp_path, "shell"))
         block = re.search(r"\n((?:    [^\n]*\n)+)", msg + "\n").group(1)
         doc = _yaml_of_block(block)
         for key in outer:
@@ -713,7 +713,7 @@ def test_a_bool_value_takes_the_hand_edit_not_a_set_word(tmp_path) -> None:
     assert agent_file._set_word(True) is None
     assert agent_file._set_word(1) == "1"
     msg = _nested_refusal(
-        {"claude": {"env": {"B": True, "N": 1}}}, path=tmp_path / "claude" / "agent.yaml",
+        {"claude": {"env": {"B": True, "N": 1}}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert "kanibako agent set" not in msg, msg
     block = _HAND_BLOCK.search(msg).group(1)
@@ -747,11 +747,11 @@ def test_a_mixed_case_sub_key_names_the_canonical_agent(tmp_path) -> None:
     """``Claude`` reaches the node ``claude`` (Q87): the cure names ``agents/claude/``, the
     store the launch reads — never ``agents/Claude/``, which nothing reads."""
     (tmp_path / "claude").mkdir()
-    (tmp_path / "claude" / "agent.yaml").write_text("self:\n  model: opus\n")
+    agent_settings_path(tmp_path, "claude").write_text("self:\n  model: opus\n")
     for root_tbl in ({"Claude": {"env": {"W": "x"}}},
                      {"Claude": {"env": {"W": "x"}, "model": "y"}},
                      {"Claude": {"model": "y"}}):
-        msg = _nested_refusal(root_tbl, node="shell", path=tmp_path / "shell" / "agent.yaml")
+        msg = _nested_refusal(root_tbl, node="shell", path=agent_settings_path(tmp_path, "shell"))
         assert "Claude/" not in msg and "agent.Claude" not in msg, msg
         assert "agent set Claude" not in msg, msg
         assert str(tmp_path / "claude" / "agent.yaml") in msg, msg
@@ -782,7 +782,7 @@ def test_a_target_with_no_file_is_created_by_hand_before_the_delete(tmp_path) ->
     """``set`` refuses an agent with no file ("not found") — after a delete-first step had
     already destroyed the entries. So no ``set``: the cure creates the file, THEN deletes."""
     msg = _nested_refusal(
-        {"shell": {"env": {"W": "x"}}}, node="claude", path=tmp_path / "claude" / "agent.yaml",
+        {"shell": {"env": {"W": "x"}}}, node="claude", path=agent_settings_path(tmp_path, "claude"),
     )
     assert "kanibako agent set" not in msg and "FIRST" not in msg, msg
     assert _NEW_HOME.search(msg).group(1) == str(tmp_path / "shell" / "agent.yaml"), msg
@@ -819,7 +819,7 @@ def test_a_sub_key_no_agent_answers_to_gets_no_move(tmp_path) -> None:
     """A typo (``secrets``) names no store and no installed agent: a move-to-agent cure
     would create agent ``secrets``. The refusal names the key and moves nothing there."""
     for root_tbl in ({"secrets": {"env": {"W": "x"}}}, {"secrets": {"W": "/x"}}):
-        msg = _nested_refusal(root_tbl, path=tmp_path / "claude" / "agent.yaml")
+        msg = _nested_refusal(root_tbl, path=agent_settings_path(tmp_path, "claude"))
         assert "`self.secrets" in msg and "`secrets` names no agent" in msg, msg
         assert "agent set" not in msg and "agents/secrets" not in msg, msg
         assert "agent.secrets`" not in msg.split("Fix: ", 1)[1], msg
@@ -840,7 +840,7 @@ def test_a_sub_key_no_agent_answers_to_refuses_through_the_cli(tree) -> None:
 def test_a_non_string_sub_key_is_refused_by_name(key, spelled, tmp_path) -> None:
     """``1:`` / ``true:`` are YAML keys that are not strings: the refusal quotes them as the
     file spells them, instead of a TypeError before any message exists."""
-    msg = _nested_refusal({key: {"env": {"W": "x"}}}, path=tmp_path / "claude" / "agent.yaml")
+    msg = _nested_refusal({key: {"env": {"W": "x"}}}, path=agent_settings_path(tmp_path, "claude"))
     assert f"`self.{spelled}.env` is not a settings key" in msg, msg
     assert f"`{spelled}` names no agent" in msg and "agent set" not in msg, msg
 
@@ -866,7 +866,7 @@ def test_an_unreadable_target_store_is_a_hand_edit_not_a_traceback(tmp_path) -> 
     home.parent.chmod(0)
     try:
         msg = _nested_refusal(
-            {"goose": {"env": {"W": "x"}}}, path=tmp_path / "claude" / "agent.yaml",
+            {"goose": {"env": {"W": "x"}}}, path=agent_settings_path(tmp_path, "claude"),
         )
     finally:
         home.parent.chmod(0o755)
@@ -879,7 +879,7 @@ def test_a_looping_target_store_is_a_hand_edit_not_a_new_file(tmp_path) -> None:
     """``agents/<x>`` a symlink loop (ELOOP): not "create it" — a file may stand there."""
     (tmp_path / "goose").symlink_to(tmp_path / "goose")
     msg = _nested_refusal(
-        {"goose": {"env": {"W": "x"}}}, path=tmp_path / "claude" / "agent.yaml",
+        {"goose": {"env": {"W": "x"}}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert "kanibako agent set" not in msg and "NEW file" not in msg, msg
     assert "names no agent" not in msg, msg
@@ -903,7 +903,7 @@ def test_a_plugin_that_fails_to_import_still_names_an_agent(monkeypatch, tmp_pat
     monkeypatch.setattr(kanibako.targets, "entry_points", eps)
     monkeypatch.setattr(agent_file, "entry_points", eps, raising=False)
     msg = _nested_refusal(
-        {"ghost": {"env": {"W": "x"}}}, path=tmp_path / "claude" / "agent.yaml",
+        {"ghost": {"env": {"W": "x"}}}, path=agent_settings_path(tmp_path, "claude"),
     )
     assert "names no agent" not in msg, msg
     assert _NEW_HOME.search(msg).group(1) == str(tmp_path / "ghost" / "agent.yaml"), msg

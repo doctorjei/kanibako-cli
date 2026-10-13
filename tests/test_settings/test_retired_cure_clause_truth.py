@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _refuse_nested_tables
 from kanibako.settings.settings_assemble import (
     _behavior_cure_checks_file,
@@ -442,11 +443,11 @@ def test_the_nested_table_arm_promises_a_refusal_only_in_its_own_file(
     stores ``self.claude``, rc 0 when shell's does. Case folds as the node does.
     claude's file EXISTS: a ``set`` is printed only into one that does."""
     (tmp_path / "claude").mkdir()
-    (tmp_path / "claude" / "agent.yaml").write_text("self:\n  model: opus\n")
+    agent_settings_path(tmp_path, "claude").write_text("self:\n  model: opus\n")
     with pytest.raises(SettingsError) as exc:
         _refuse_nested_tables(
             {"claude": {"env": {"KANI_PROBE": "yes"}}}, node=node,
-            path=tmp_path / node / "agent.yaml",
+            path=agent_settings_path(tmp_path, node),
         )
     msg = str(exc.value)
     assert (_PROMISES_BAD_ENTRY_REFUSAL in msg) is refuses

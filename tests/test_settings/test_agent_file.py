@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from kanibako.settings.agent_config import AgentConfig
+from kanibako.settings.agent_config import AgentConfig, agent_settings_path
 from kanibako.settings.agent_file import (
     AgentFileLevel,
     _FLAT_AGENT_CATEGORIES,
@@ -562,7 +562,7 @@ class TestTheDestIsData:
     _DOTTED = "~/.cache/uv"
 
     def _file_with(self, tmp_path, body):
-        path = tmp_path / "claude" / "agent.yaml"
+        path = agent_settings_path(tmp_path, "claude")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body)
         return path
@@ -689,13 +689,13 @@ class TestTheArgvSHAPEIsTheFileS:
         from kanibako.settings.config_io import load_doc
 
         write_leaf(self._slot(tmp_path), "--c --d")
-        data = load_doc(tmp_path / "claude" / "agent.yaml")
+        data = load_doc(agent_settings_path(tmp_path, "claude"))
         assert data["self"]["run_args"] == ["--c", "--d"]
 
     def test_what_write_leaf_STORES_is_what_load_READS(self, tmp_path):
         """The whole defect in one row: the write route and the record must agree."""
         write_leaf(self._slot(tmp_path), "--c --d")
-        assert agent_record(tmp_path / "claude" / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
+        assert agent_record(agent_settings_path(tmp_path, "claude"), node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
 
     def test_read_leaf_gives_back_the_line_that_was_typed(self, tmp_path):
         """⚑ NOT the Python repr.  ``kanibako system get agent.claude.run_args``
@@ -706,7 +706,7 @@ class TestTheArgvSHAPEIsTheFileS:
 
     def test_a_legacy_STRING_on_disk_still_reads_back(self, tmp_path):
         """The files the retired write route already wrote keep working, unedited."""
-        path = tmp_path / "claude" / "agent.yaml"
+        path = agent_settings_path(tmp_path, "claude")
         path.parent.mkdir(parents=True)
         path.write_text('self:\n  run_args: "--c --d"\n')
         assert read_leaf(self._slot(tmp_path)) == "--c --d"
@@ -716,7 +716,7 @@ class TestTheArgvSHAPEIsTheFileS:
         """No migration step, and no second shape left on disk afterwards."""
         from kanibako.settings.config_io import load_doc
 
-        path = tmp_path / "claude" / "agent.yaml"
+        path = agent_settings_path(tmp_path, "claude")
         path.parent.mkdir(parents=True)
         path.write_text('self:\n  run_args: "--c --d"\n')
         save(path, agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE))
@@ -735,7 +735,7 @@ class TestTheArgvSHAPEIsTheFileS:
         assert read_leaf(slot) is None                    # absent
         write_leaf(slot, "")
         assert read_leaf(slot) == ""                      # present, no arguments
-        assert agent_record(tmp_path / "claude" / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
+        assert agent_record(agent_settings_path(tmp_path, "claude"), node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
         write_leaf(slot, "--c")
         assert read_leaf(slot) == "--c"                   # present, one argument
         assert remove_leaf(slot) is True
@@ -746,7 +746,7 @@ class TestTheArgvSHAPEIsTheFileS:
         from kanibako.settings.config_io import load_doc
 
         write_leaf(self._slot(tmp_path), None)
-        assert load_doc(tmp_path / "claude" / "agent.yaml")["self"]["run_args"] is None
+        assert load_doc(agent_settings_path(tmp_path, "claude"))["self"]["run_args"] is None
 
     def test_stored_leaf_text_joins_the_words_for_every_list_valued_leaf(self):
         """The PUBLIC renderer the display surfaces outside this module call.
@@ -800,7 +800,7 @@ class TestTheArgvSHAPEIsTheFileS:
         from kanibako.settings.config_io import load_doc
 
         write_leaf(slot_for(tmp_path, "claude", "model"), "opus 4 5")
-        data = load_doc(tmp_path / "claude" / "agent.yaml")
+        data = load_doc(agent_settings_path(tmp_path, "claude"))
         assert data["self"]["model"] == "opus 4 5"
 
     def test_the_list_valued_set_is_exactly_AgentConfig_s_list_FIELDS(self):
