@@ -1873,9 +1873,9 @@ class TestDescriptorLaunchPath:
             assert "acceptEdits" not in cli_args
             i = cli_args.index("--permission-mode")
             assert cli_args[i + 1] == "default"
-            # ...while the panel seam still got the STORED tier, not the -S one.
+            # ...and the panel seam got the same ONE launch tier, -S folded in.
             m.target.deliver_panel_permissions.assert_called_once_with(
-                config_root=m.proj.shell_path, access="editing",
+                config_root=m.proj.shell_path, access="restricted",
             )
 
     def test_unknown_stored_tier_refuses_the_launch(self, start_mocks):

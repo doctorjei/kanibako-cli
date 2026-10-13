@@ -1296,8 +1296,9 @@ class Target(ABC):
         """Write this agent's BOX-INVARIANT panel config (e.g. codex's ``sandbox_mode``).
 
         ⚑ No tier is written: the `access` key is not projected, and the tier reaches the
-        launched agent only as launch flags or env. *access* is the box's CASCADE-resolved
-        tier, passed for an implementation that must refuse one it cannot render.
+        launched agent only as launch flags or env. *access* is the box's launch tier (the
+        cascade value with any ``-S``/``-A`` folded in), passed for an implementation that
+        must refuse one it cannot render.
         Best-effort: the caller wraps the call. Returns whether a write occurred.
         """
         return False
