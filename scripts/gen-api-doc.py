@@ -307,8 +307,14 @@ def document(src_path: Path, mirror_rel: str, src: str) -> str:
 
 SOURCE_ROOTS = ("src", "packages")
 
-# WHAT api-docs COVER: the importable library code of the five distributions - nothing else.
-# Three families under the source roots are NOT that, and are skipped:
+# WHAT api-docs COVER: every .py under src/ and packages/, except three skipped families.
+# That is the library code of the five distributions, plus two modules that are not:
+#
+#   src/kinemata_views.py                     unshipped; kinemata.toml predicates and parity
+#                                             oracles import it.
+#   src/kanibako/scripts/import-directives.py in-box script run by path, not imported.
+#
+# The skipped families:
 #
 #   build/                gitignored wheel-build copies of packages/*/src - duplicates, not source.
 #   tests/                not API surface.  The main repo's tests/ tree is already outside the
@@ -390,15 +396,19 @@ ORDERING
   then public methods, then private methods, then nested classes.
 
 SCOPE
-  api-docs cover the IMPORTABLE LIBRARY CODE of the five distributions.  --all walks src/ and
-  packages/ and skips three families that are not that:
+  api-docs cover every .py under src/ and packages/ except three skipped families.  That is
+  the library code of the five distributions, plus two modules that are not:
+    src/kinemata_views.py                      unshipped; kinemata.toml predicates and parity
+                                               oracles import it
+    src/kanibako/scripts/import-directives.py  in-box script run by path, not imported
+  Skipped:
     build/            gitignored wheel-build copies of packages/*/src
     tests/            not API surface
     data/base/canon/  shipped data payloads, run standalone in a box; their interface is --help
 
 MODES
   <source>          regenerate one doc
-  --all             regenerate every module under src/ and packages/ (see SCOPE)
+  --all             regenerate every .py under src/ and packages/ (see SCOPE)
   --check           exit 1 if a doc is missing or stale, instead of writing
   --check --all     CI staleness gate over the whole tree
   --stdout          print instead of writing
@@ -497,7 +507,7 @@ def main() -> int:
   ap.add_argument("source", nargs="?",
                   help="repo-relative path, e.g. src/kanibako/settings/paths.py")
   ap.add_argument("--all", action="store_true",
-                  help="regenerate every importable module under src/ and packages/ (see SCOPE)")
+                  help="regenerate every .py under src/ and packages/ (see SCOPE)")
   ap.add_argument("--out", help="output path (default: api-docs/<mirror>.md)")
   ap.add_argument("--check", action="store_true", help="exit 1 if a doc is missing or stale")
   ap.add_argument("--stdout", action="store_true", help="print instead of writing")
