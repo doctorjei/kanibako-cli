@@ -35,6 +35,7 @@ from kanibako.targets.base import (
     access_outcome,
     probe_general_access,
     probe_model_access,
+    probe_token,
 )
 
 from kanibako.plugins.claude.credentials import (
@@ -369,6 +370,7 @@ class ClaudeTarget(Target):
         *,
         env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
+        token: str | None = None,
     ) -> PersonaProbeOutcome:
         """Two-axis anthropic probe of a persona endpoint: ``GET /v1/models``, then ``/v1/messages``.
 
@@ -378,7 +380,8 @@ class ClaudeTarget(Target):
         credential).  The MODEL axis is a genuine 1-token completion request (the
         messages wire an ``ANTHROPIC_BASE_URL`` endpoint serves).  Both always run,
         each with its own *timeout*, bearer-authed with the token at *token_path*
-        when one is configured — the same delivery shape the box uses
+        when one is configured, or with *token*, a ``-e`` value that wins over it
+        (:func:`~kanibako.targets.base.probe_token`) — the same delivery shape the box uses
         (the declared token var → ``Authorization: Bearer``).  The verdict is
         :func:`~kanibako.targets.base.access_outcome`'s; ``model_exact`` is True only
         for a full model id.  It is False for a tier alias, resolved or not, since a
@@ -422,19 +425,10 @@ class ClaudeTarget(Target):
         persisted.
         """
         headers: dict[str, str] = {"anthropic-version": "2023-06-01"}
-        credential: tuple[str, str] | None = None
-        if token_path is not None:
-            try:
-                token = token_path.read_text(encoding="utf-8").strip()
-            except (OSError, UnicodeDecodeError):
-                return PersonaProbeOutcome.not_applicable(
-                    f"the token file ({token_path}) could not be read"
-                )
-            if not token:
-                return PersonaProbeOutcome.not_applicable(
-                    f"the token file ({token_path}) is empty"
-                )
-            credential = ("Authorization", f"Bearer {token}")
+        bearer, unread = probe_token(token_path, token)
+        if unread is not None:
+            return unread
+        credential = None if bearer is None else ("Authorization", f"Bearer {bearer}")
         wire_model, model_origin = _wire_model(model, env)
         body: dict = {
             "max_tokens": 1,
@@ -446,7 +440,8 @@ class ClaudeTarget(Target):
             endpoint=endpoint,
             model=wire_model,
             model_origin=model_origin,
-            token_path=token_path,
+            token_path=None if token is not None else token_path,
+            token_by_value=token is not None,
         )
         base = endpoint.rstrip("/")
         general = probe_general_access(

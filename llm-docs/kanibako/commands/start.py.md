@@ -987,7 +987,9 @@ it carries the store's own verdict on itself:
 every keyspace-configured goose persona that owns a store directory.
 
 **`probe`** runs the PER-LAUNCH verify probe once endpoint and token both resolve
-(`_persona_probe_error`). It is opt-in and set ONLY by the launch: the create path keeps its own
+(`_persona_probe_error`). A non-empty `-e` value for the token var (**`cli_env`**, launch only)
+satisfies the token gate and is the token the probe sends; an empty one is ignored. `probe` is opt-in and
+set ONLY by the launch: the create path keeps its own
 WARN-ONLY probe (locked ruling #2). The bundle's `env` — the persona STORE's own block, not the
 collapsed `env` family — rides along so the harness can rewrite a tier alias the way its runtime
 will. See `Target.verify_persona` in the `targets/base.py` llm-doc for the measured false `REJECTED`

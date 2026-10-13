@@ -564,6 +564,7 @@ class ProbeEvidence:
     status: int | None = None
     provider_text: str = ""
     request: str = ""
+    token_by_value: bool = False
 
 class PersonaProbeOutcome(NamedTuple):
     verdict: PersonaProbeVerdict
@@ -618,7 +619,8 @@ states the status, the inputs and the provider's own words, and the reading is t
 *model* is what went ON THE WIRE, which is not always what the user configured: a harness that
 resolves a tier alias through an env var records the id it SENT and says where it came from in
 *model_origin*, or the message reads as if kanibako invented an id. *token_path* is a PATH, never a
-value, so it carries no secret by construction. *provider_text* is different: `http_probe` capped
+value, so it carries no secret by construction; *token_by_value* marks a token sent from `-e`, and
+is a flag for the same reason. *provider_text* is different: `http_probe` capped
 and scrubbed it of every header value the request carried, and it is also **re-serialized** when the
 body was JSON — the provider's meaning, not its bytes. 🛑 **Scrubbed is not proven clean.** The
 record inherits `ProbeResponse.body`'s documented residue verbatim; read this block as an error
@@ -753,7 +755,13 @@ def probe_general_access(list_url: str, *, headers: dict[str, str],
 def probe_model_access(url: str, *, headers: dict[str, str], body: dict, sent: ProbeEvidence,
                        timeout: float) -> AxisResult
 def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOutcome
+def probe_token(token_path: Path | None,
+                token: str | None) -> tuple[str | None, PersonaProbeOutcome | None]
 ```
+
+**`probe_token`** picks the token a probe sends: *token*, a `-e` value, wins over *token_path*;
+with neither the probe is keyless. An unreadable or empty file returns a `NOT_APPLICABLE` outcome
+naming the path, which the plugin returns as is.
 
 **The general axis** (`probe_general_access`) GETs *list_url*, the model list, a request that names
 no model. With a *credential* (header name, value) it sends a GET carrying it and then — only if
@@ -1230,7 +1238,7 @@ def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
 
 def verify_persona(
     self, endpoint: str, token_path: Path | None, model: str | None,
-    *, env: Mapping[str, str] | None = None, timeout: float = 5.0,
+    *, env: Mapping[str, str] | None = None, timeout: float = 5.0, token: str | None = None,
 ) -> PersonaProbeOutcome
 ```
 
@@ -1285,10 +1293,10 @@ a VALID token — in the box, Claude Code reads that alias through `ANTHROPIC_DE
 and sends `gemma-4-31b-it`, which the same endpoint serves. Claude implements this in `_wire_model`;
 codex names its model in `config.toml` and sends it verbatim, so it accepts *env* and ignores it.
 
-🛑 **The TOKEN half is an open defect.** The persona pre-flight reads its token from the
-`secret_path` file, never from `-e`: a launch whose token variable only `-e` gives is refused as
-having no token, and with both, the probe sends the file's token, so a revoked file token refuses a
-launch whose `-e` token is good.
+⚑ ***token* is the `-e` value of the token var.** `-e` outranks a `secret_path` file (spec §1A),
+so the box gets that value and the launch mounts no file for it; the pre-flight therefore accepts
+the token var from `-e` alone and sends that value, not the file's (`probe_token`). The launch
+passes *token* only when `-e` sets it, so a plugin whose signature lacks it is called as before.
 
 ⚑ **Resolving a mapping the USER wrote is not the substitution the rule above forbids; inventing
 one is.** A model with no such var goes out AS GIVEN, and `None` stays `None`.

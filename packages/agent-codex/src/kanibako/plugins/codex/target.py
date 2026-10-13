@@ -49,6 +49,7 @@ from kanibako.targets.base import (
     access_outcome,
     probe_general_access,
     probe_model_access,
+    probe_token,
 )
 
 if TYPE_CHECKING:
@@ -519,6 +520,7 @@ class CodexTarget(Target):
         *,
         env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
+        token: str | None = None,
     ) -> PersonaProbeOutcome:
         """Two-axis OpenAI probe of a persona endpoint: ``GET /models``, then ``/responses``.
 
@@ -561,29 +563,26 @@ class CodexTarget(Target):
         ``config.toml`` and sends that id verbatim, so what is configured is already
         what goes out and there is nothing here to resolve.
 
-        The one ``NOT_APPLICABLE`` decided here is a CONFIGURED (non-``None``)
-        token file that is unreadable or empty.  The token is read once,
+        *token*, a ``-e`` value, wins over *token_path*
+        (:func:`~kanibako.targets.base.probe_token`).  The one ``NOT_APPLICABLE``
+        decided here is a CONFIGURED (non-``None``) token file that is unreadable or
+        empty.  The token is read once,
         transiently, and sent on the keyed model-free request and the model request
         only — never on the control request; never logged or persisted.
         """
         headers: dict[str, str] = {}
-        credential: tuple[str, str] | None = None
-        if token_path is not None:
-            try:
-                token = token_path.read_text(encoding="utf-8").strip()
-            except (OSError, UnicodeDecodeError):
-                return PersonaProbeOutcome.not_applicable(
-                    f"the token file ({token_path}) could not be read"
-                )
-            if not token:
-                return PersonaProbeOutcome.not_applicable(
-                    f"the token file ({token_path}) is empty"
-                )
-            credential = ("Authorization", f"Bearer {token}")
+        bearer, unread = probe_token(token_path, token)
+        if unread is not None:
+            return unread
+        credential = None if bearer is None else ("Authorization", f"Bearer {bearer}")
         body: dict = {"input": "ping", "max_output_tokens": 16}
         if model:
             body["model"] = model
-        sent = ProbeEvidence(endpoint=endpoint, model=model, token_path=token_path)
+        sent = ProbeEvidence(
+            endpoint=endpoint, model=model,
+            token_path=None if token is not None else token_path,
+            token_by_value=token is not None,
+        )
         base = endpoint.rstrip("/")
         general = probe_general_access(
             base + "/models",

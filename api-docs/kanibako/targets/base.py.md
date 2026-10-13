@@ -35,6 +35,7 @@ def descriptor_floor(descriptors: Iterable[TargetSetting], *, plugin: str='') ->
 def http_probe(url: str, *, headers: dict[str, str], body: dict | None=None, timeout: float) -> ProbeResponse
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
 def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
+def probe_token(token_path: Path | None, token: str | None) -> tuple[str | None, PersonaProbeOutcome | None]
 def probe_general_access(list_url: str, *, headers: dict[str, str], credential: tuple[str, str] | None, sent: ProbeEvidence, timeout: float) -> AxisResult
 def probe_model_access(url: str, *, headers: dict[str, str], body: dict, sent: ProbeEvidence, timeout: float) -> AxisResult
 def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOutcome
@@ -169,6 +170,7 @@ class ProbeEvidence:
     status: int | None = None
     provider_text: str = ''
     request: str = ''
+    token_by_value: bool = False
 
     def lines(self, indent: str='  ', *, resolved_from: str='') -> tuple[str, ...]
     def block(self, indent: str='  ', *, resolved_from: str='') -> str
@@ -287,7 +289,7 @@ class Target(ABC):
     def deliver_directive_hook(self, *, config_root: Path, access: str, model_provider: 'CodexModelProvider | None'=None) -> bool
     def reattach_config_notice(self) -> str | None
     def read_persona_settings(self, config_dir: Path) -> PersonaReadOutcome
-    def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0) -> PersonaProbeOutcome
+    def verify_persona(self, endpoint: str, token_path: Path | None, model: str | None, *, env: Mapping[str, str] | None=None, timeout: float=5.0, token: str | None=None) -> PersonaProbeOutcome
     def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
     def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
     def writeback_extra(self, *, project_home: Path, host_home: Path) -> None

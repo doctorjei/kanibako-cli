@@ -4142,6 +4142,9 @@ def _run_container(
             # and the probe's env.  ``probe=True`` is the LAUNCH path only: the create
             # path keeps its separate WARN-ONLY probe (locked ruling #2).
             bundle=persona_bundle, probe=True,
+            # ``-e`` outranks a ``secret_path`` file (spec §1A); the gate and the
+            # probe read the token the box will get.
+            cli_env=cli_env_values,
         )
         if persona_error is not None:
             print(persona_error, file=sys.stderr)
@@ -6597,7 +6600,7 @@ def _persona_probe_env(secret_paths, bundle) -> "Mapping[str, str] | None":
 
 def _persona_probe_error(
     target, endpoint: str, token_ptr: "str | None", model: "str | None", display: str,
-    logger, env: "Mapping[str, str] | None" = None,
+    logger, env: "Mapping[str, str] | None" = None, token: "str | None" = None,
 ) -> "str | None":
     """PER-LAUNCH persona verify probe — the load gate's last question.
 
@@ -6651,6 +6654,10 @@ def _persona_probe_error(
     not say which input was at fault.  State the status, the inputs and the provider's
     own words, and let the user read them.
 
+    ⚑ *token* is the ``-e`` value of the token var (:func:`_persona_cli_token`); when
+    set it is sent instead of the file at *token_ptr*.  It is passed only when set,
+    so a plugin whose ``verify_persona`` predates it is still called as before.
+
     The probe contract is NEVER-RAISE; a third-party plugin can still break it,
     so a raise is caught and treated as INCONCLUSIVE (a plugin bug IS an anomaly
     worth surfacing) — no launch may die on a probe bug.  Returns the error
@@ -6663,10 +6670,13 @@ def _persona_probe_error(
     if target is None:
         return None
     try:
-        outcome = target.verify_persona(
-            endpoint, Path(token_ptr) if token_ptr is not None else None, model,
-            env=env,
-        )
+        if token is not None:
+            outcome = target.verify_persona(endpoint, None, model, env=env, token=token)
+        else:
+            outcome = target.verify_persona(
+                endpoint, Path(token_ptr) if token_ptr is not None else None, model,
+                env=env,
+            )
     except Exception:
         if logger is not None:
             logger.debug("persona '%s': verify probe raised; inconclusive",
@@ -6782,6 +6792,7 @@ def _preflight_persona_load(
     keyspace_model: object = __MISSING__,
     bundle=None,
     probe: bool = False,
+    cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[str | None, str | None, CodexModelProvider | None]":
     """Resolve a persona's LOADABILITY — a TRUE pre-flight.
 
@@ -6802,6 +6813,10 @@ def _preflight_persona_load(
     ⚑ ``probe`` is opt-in and set ONLY by the launch: the create path keeps its own
     WARN-ONLY probe (locked ruling #2), so a create must not inherit this one's hard
     error on a rejected token.
+
+    *cli_env* is the launch's parsed ``-e`` map (only ``start`` has ``-e``).  A
+    non-empty ``-e`` value for the token var satisfies the token gate and is the
+    token the probe sends (:func:`_persona_cli_token`).
 
     See ``llm-docs/kanibako/commands/start.py.md``, "``_preflight_persona_load`` — a
     persona's LOADABILITY", for the two harness gates and what each input means.
@@ -6834,13 +6849,29 @@ def _preflight_persona_load(
     if wiring.endpoint_delivery == "config_file":
         return _preflight_config_file_persona(
             agent_id, secret_paths, keyspace_endpoint, keyspace_model, wiring, display,
-            bundle=bundle, target=target, probe=probe, logger=logger,
+            bundle=bundle, target=target, probe=probe, logger=logger, cli_env=cli_env,
         )
 
     return _preflight_env_persona(
         secret_paths, keyspace_endpoint, keyspace_model, wiring, display,
-        bundle=bundle, target=target, probe=probe, logger=logger,
+        bundle=bundle, target=target, probe=probe, logger=logger, cli_env=cli_env,
     )
+
+
+def _persona_cli_token(cli_env: "Mapping[str, str] | None", var: "str | None") -> "str | None":
+    """The ``-e`` value of token var *var*, stripped, or ``None`` when ``-e`` gives none.
+
+    ``-e`` outranks a ``secret_path`` file (spec §1A): the launch then mounts no file
+    for *var* and the box reads this value.  An EMPTY value counts as none, so the
+    gate and the probe act on the file exactly as they did before ``-e`` was read
+    here: no launch that passes today is refused.  Never logged.
+    """
+    if not var or not cli_env:
+        return None
+    value = cli_env.get(var)
+    if value is None:
+        return None
+    return value.strip() or None
 
 
 def _model_tristate(keyspace_model: object) -> object:
@@ -6875,6 +6906,7 @@ def _preflight_env_persona(
     target=None,
     probe: bool = False,
     logger=None,
+    cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[str | None, str | None, CodexModelProvider | None]":
     """Token + (optional) model gate for an ENV-delivery harness (claude, goose).
 
@@ -6899,7 +6931,8 @@ def _preflight_env_persona(
        ``secret_path`` key does not mean a bearer token is present. A usable
        pointer is STAT'd arm's length — never read; the value flows only
        through the launch mount.  A declared block with NO token var gets no
-       token check.
+       token check.  A non-empty ``-e`` value for the token var
+       (:func:`_persona_cli_token`) passes this gate whatever the file's state.
     2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model``
        id (``keyspace_model``, :func:`_model_tristate`) — ABSENT ⇒ error (a
        third-party OpenAI-compatible endpoint has no meaningful default model —
@@ -6919,9 +6952,10 @@ def _preflight_env_persona(
     there is no config-file provider to carry (``provider`` None).
     """
 
+    cli_token = _persona_cli_token(cli_env, wiring.token_var)
     token_state = (
         _persona_token_pointer(secret_paths, wiring.token_var)
-        if wiring.token_var else None
+        if wiring.token_var and cli_token is None else None
     )
     if token_state is __MISSING__ or (
         isinstance(token_state, str) and not _secret_pointer_usable(token_state)
@@ -6936,7 +6970,7 @@ def _preflight_env_persona(
             f"file).",
             _PERSONA_KEY_CURE,
         ), None
-    # PRESENT-null (deliberately keyless) or a usable path — proceed either way.
+    # PRESENT-null (deliberately keyless), a usable path, or ``-e`` — proceed.
     token_ptr = token_state if isinstance(token_state, str) else None
     model_state = _model_tristate(keyspace_model)
     if wiring.model_required and model_state is __MISSING__:
@@ -6953,7 +6987,7 @@ def _preflight_env_persona(
     if probe:
         probe_err = _persona_probe_error(
             target, endpoint, token_ptr, model, display, logger,
-            env=_persona_probe_env(secret_paths, bundle),
+            env=_persona_probe_env(secret_paths, bundle), token=cli_token,
         )
         if probe_err is not None:
             return None, probe_err, None
@@ -7026,6 +7060,7 @@ def _preflight_config_file_persona(
     target=None,
     probe: bool = False,
     logger=None,
+    cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[str | None, str | None, CodexModelProvider | None]":
     """Token + model gate + provider resolve for a CONFIG-FILE harness (codex, INC 2/3).
 
@@ -7048,6 +7083,9 @@ def _preflight_config_file_persona(
          file" (names the key + path) — NOT a blanket "none was found";
        * the single key's pointer is PRESENT-null (deliberately keyless) →
          proceeds, ``env_key`` still resolves, no token mounted.
+       * a non-empty ``-e`` value for that key (:func:`_persona_cli_token`) passes
+         whatever the pointer's state; the key must still be declared, because it
+         names the provider ``env_key``.
     2. a real ``model`` id (``keyspace_model``, the box-level cascade override,
        :func:`_model_tristate`) — ABSENT ⇒ error (a NaviGator
        ``[model_providers.<id>]`` block needs a model — never ship ``model =
@@ -7060,7 +7098,7 @@ def _preflight_config_file_persona(
     """
 
     token_err = _codex_persona_token_error(
-        secret_paths, wiring, endpoint, display,
+        secret_paths, wiring, endpoint, display, cli_env=cli_env,
     )
     if token_err is not None:
         return None, token_err, None
@@ -7129,12 +7167,15 @@ def _preflight_config_file_persona(
             f"`persona.model_required: true` in the harness descriptor."
         ), None
     if probe:
-        probe_token_state = _persona_token_pointer(secret_paths, env_key)
+        cli_token = _persona_cli_token(cli_env, env_key)
+        probe_token_state = (
+            _persona_token_pointer(secret_paths, env_key) if cli_token is None else None
+        )
         probe_err = _persona_probe_error(
             target, endpoint,
             probe_token_state if isinstance(probe_token_state, str) else None,
             model, display, logger,
-            env=_persona_probe_env(secret_paths, bundle),
+            env=_persona_probe_env(secret_paths, bundle), token=cli_token,
         )
         if probe_err is not None:
             return None, probe_err, None
@@ -7146,6 +7187,7 @@ def _preflight_config_file_persona(
 
 def _codex_persona_token_error(
     secret_paths, wiring, endpoint: str, display: str,
+    *, cli_env: "Mapping[str, str] | None" = None,
 ) -> "str | None":
     """The SUB-CASE-specific bearer-token error for a config-file persona, or ``None``.
 
@@ -7171,6 +7213,8 @@ def _codex_persona_token_error(
             "Leave exactly one, then retry.",
         )
     env_key = _resolve_codex_persona_env_key(secret_paths, wiring)
+    if env_key and _persona_cli_token(cli_env, env_key) is not None:
+        return None  # ``-e`` gives the token; the launch mounts no file for it.
     token_state = (
         _persona_token_pointer(secret_paths, env_key)
         if env_key else __MISSING__

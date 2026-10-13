@@ -550,8 +550,9 @@ class ProbeEvidence:
 
     Filled in TWO halves: a plugin builds the request half before the call, and
     `probe_outcome` fills *status* / *provider_text* from the answer.
-    ⚑ *token_path* is a PATH, never a value, so it carries no secret by construction.
-    *provider_text* is what `http_probe` returned: 🛑 SCRUBBED IS NOT PROVEN CLEAN — this
+    ⚑ *token_path* is a PATH, never a value, so it carries no secret by construction;
+    *token_by_value* says the token was handed over by VALUE from `-e` instead, and is
+    a flag for the same reason.  *provider_text* is what `http_probe` returned: 🛑 SCRUBBED IS NOT PROVEN CLEAN — this
     record inherits `ProbeResponse.body`'s residue verbatim.  Read the block as an error
     message for a human, not as a record proven free of secrets.
 
@@ -567,6 +568,7 @@ class ProbeEvidence:
     status: int | None = None       # None = the endpoint was never reached
     provider_text: str = ""
     request: str = ""               # method and path, e.g. "GET /v1/models"; "" = not recorded
+    token_by_value: bool = False    # True = the token came from `-e`, not *token_path*
 
     def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
@@ -604,10 +606,12 @@ class ProbeEvidence:
         model = "(omitted)" if not self.model else self.model
         if self.model and self.model_origin:
             model = f"{self.model}  ({self.model_origin})"
-        token = (
-            "(none — this persona declares the endpoint keyless)"
-            if self.token_path is None else _tilde(self.token_path)
-        )
+        if self.token_by_value:
+            token = "(the value of -e on the command line)"
+        elif self.token_path is None:
+            token = "(none — this persona declares the endpoint keyless)"
+        else:
+            token = _tilde(self.token_path)
         out = [
             f"{indent}{'endpoint':<10}{_scrub_endpoint_userinfo(self.endpoint)}",
             f"{indent}{'model':<10}{model}",
@@ -750,7 +754,7 @@ class PersonaProbeOutcome(NamedTuple):
             return ""
         out: list[str] = []
         if self.verdict is PersonaProbeVerdict.REJECTED:
-            keyed = model.token_path is not None
+            keyed = model.token_path is not None or model.token_by_value
             asked = (
                 f"the request for model '{model.model}'" if model.model
                 else "the request that named no model"
@@ -870,6 +874,33 @@ def probe_outcome_no_model(
             f"the persona names none"
         )
     return probe_outcome(response, sent)
+
+
+def probe_token(
+    token_path: Path | None, token: str | None,
+) -> tuple[str | None, PersonaProbeOutcome | None]:
+    """The token a persona probe sends: `(token, None)`, or `(None, outcome)` to return.
+
+    *token* is a VALUE from `-e` and wins over *token_path* (spec §1A: the box gets
+    the `-e` value, not the file).  With neither, the token is `None`: a KEYLESS probe.
+    A configured file that is unreadable or empty yields a `NOT_APPLICABLE` outcome
+    naming the PATH.  The token is never logged and never part of an outcome.
+    """
+    if token is not None:
+        return token, None
+    if token_path is None:
+        return None, None
+    try:
+        text = token_path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None, PersonaProbeOutcome.not_applicable(
+            f"the token file ({token_path}) could not be read"
+        )
+    if not text:
+        return None, PersonaProbeOutcome.not_applicable(
+            f"the token file ({token_path}) is empty"
+        )
+    return text, None
 
 
 def _request_line(method: str, url: str) -> str:
@@ -1342,12 +1373,16 @@ class Target(ABC):
         *,
         env: Mapping[str, str] | None = None,
         timeout: float = 5.0,
+        token: str | None = None,
     ) -> PersonaProbeOutcome:
         """Probe *endpoint*, credential-authed with the token at *token_path* — a minimal real ack.
 
         ⚑ *token_path* MAY be `None` (a KEYLESS persona): probe it with the credential header
         (`Authorization` for the first-party plugins) OMITTED rather than decline, and NEVER
         substitute a placeholder credential.
+        ⚑ *token* is the token VALUE when the launch's `-e` gives the token var; it wins
+        over *token_path* because the box gets the `-e` value (`probe_token`).  The
+        launch passes it only when set, so a plugin without it keeps working.
         ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
         ⚑ *env* is the box's env.  At LAUNCH it is the collapsed `env` family (every rung,
         the store, `-e`), folded off the pre-flight snapshot; at CREATE, which resolves no

@@ -133,16 +133,17 @@ def _persona_wiring(target) -> 'PersonaSpec | None'
 def _persona_token_pointer(secret_paths: 'Mapping[str, object]', var: str) -> object
 def _persona_secret_path_keys(secret_paths: 'Mapping[str, object]') -> 'list[str]'
 def _persona_probe_env(secret_paths, bundle) -> 'Mapping[str, str] | None'
-def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 'str | None', display: str, logger, env: 'Mapping[str, str] | None'=None) -> 'str | None'
+def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 'str | None', display: str, logger, env: 'Mapping[str, str] | None'=None, token: 'str | None'=None) -> 'str | None'
 def _resolve_codex_persona_env_key(secret_paths, wiring) -> 'str | None'
 def _resolve_codex_persona_provider(agent_id: str, endpoint: str, env_key: str, model: str, wiring) -> 'CodexModelProvider'
-def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: object=__MISSING__, bundle=None, probe: bool=False) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: object=__MISSING__, bundle=None, probe: bool=False, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _persona_cli_token(cli_env: 'Mapping[str, str] | None', var: 'str | None') -> 'str | None'
 def _model_tristate(keyspace_model: object) -> object
-def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _persona_endpoint_refusal(display: str, endpoint: str, missing: str, detail: str, cure: str) -> str
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str
-def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
-def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str) -> 'str | None'
+def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str, *, cli_env: 'Mapping[str, str] | None'=None) -> 'str | None'
 def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
 def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object, dict[str, object]]'

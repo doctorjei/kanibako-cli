@@ -7901,7 +7901,9 @@ persona's token pointer included.
 **What changed.** The box used to get the secret file's value: the box exported it at agent start,
 after the `-e` value was set, so the file won. Now the `-e` value wins for that launch, as `-e`
 beats every other key. kanibako does not mount the secret file for that variable on that launch.
-The `secret_path` key is unchanged, and the next launch without `-e` mounts it again.
+The `secret_path` key is unchanged, and the next launch without `-e` mounts it again. The persona
+check before a launch reads the same value: a persona token given only by `-e` is accepted, and the
+endpoint check sends the `-e` value, not the file's. An empty `-e` value does not count as a token.
 
 A launch that creates the box still stops on such a `-e` (see *A launch that creates a box saves its
 flags*).
