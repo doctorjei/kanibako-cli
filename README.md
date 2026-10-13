@@ -343,7 +343,7 @@ fails on any host where the wrapper's path does not exist. To undo the change,
 set `"dev.containers.dockerPath": "podman"`.
 
 If a remote attach fails, check `vscode-remote/dispatch.log` under the
-`system.state` key, which defaults to `$XDG_STATE_HOME/kanibako` --
+`system.state` key, which defaults to `{$XDG_STATE_HOME}/kanibako` --
 `~/.local/state/kanibako/vscode-remote/dispatch.log` when `XDG_STATE_HOME` is
 unset, and wherever you have repointed that key otherwise. One line per engine
 call, showing the resolved route and context.
@@ -857,20 +857,20 @@ Each layer has a `box/` subtree with the same two entries, and each entry has
 its own destination:
 
 ```
-                                            ->  <box_dir>/home       (delivered at ~/)
-1. system   @system.template/box/...        ->  <box_dir>/canon/handbook
-2. agent    @agent.<agent>.template/box/... (= agents/<agent>/template/box; if an agent is set)
-3. workset  @workset.template/box/...       (= <wsroot>/template/box; optional, primary/named)
+                                             ->  <box_dir>/home       (delivered at ~/)
+1. system   {system.template}/box/...        ->  <box_dir>/canon/handbook
+2. agent    {agent.<agent>.template}/box/... (= agents/<agent>/template/box; if an agent is set)
+3. workset  {workset.template}/box/...       (= <wsroot>/template/box; optional, primary/named)
 ```
 
 - `box/home/**` seeds the box HOME -- what you see at `~/` inside the box,
   including `~/canon/notebook` and `~/canon/workbook`, the two books the box
   owns and can write.
-- `box/canon/handbook/**` seeds the box's HANDBOOK CHAPTER at `@box.canon`,
+- `box/canon/handbook/**` seeds the box's HANDBOOK CHAPTER at `{box.canon}`,
   which is a **sibling** of the home, not inside it. It is bound back into the
   box read-only at `~/canon/handbook/box`.
 
-⚑ `@box.canon` is not `~/canon`: the first is the box's contribution to the
+⚑ `{box.canon}` is not `~/canon`: the first is the box's contribution to the
 canon (on the host), the second is the assembled canon (in the box).
 
 Per-file rule: plain ordered copy, **last layer wins**, seed-once. There is no
@@ -1103,16 +1103,16 @@ is `.yaml`.
 
 The global config (`~/.config/kanibako.cfg`) holds only the `config.*` bootstrap
 paths -- the ones kanibako must resolve before it can find anything else.  Values
-may use the resolver grammar -- `@`-refs, `$XDG_*`, `~`:
+may use the resolver grammar -- `{key}` refs, `{$XDG_*}`, `~`:
 
 ```yaml
 config:
-  data: "$XDG_DATA_HOME/kanibako"                 # data root
-  settings: "@config.data/global/settings.yaml"   # the system settings file
-  agents: "@config.data/agents"                   # per-agent store
-  primary_workset: "@config.data/primary_workset"
-  registry: "@config.data/global/registry.yaml"   # name -> path resolution
-  journal: "@config.data/global/journal.yaml"     # lifecycle write-ahead log
+  data: "{$XDG_DATA_HOME}/kanibako"                # data root
+  settings: "{config.data}/global/settings.yaml"   # the system settings file
+  agents: "{config.data}/agents"                   # per-agent store
+  primary_workset: "{config.data}/primary_workset"
+  registry: "{config.data}/global/registry.yaml"   # name -> path resolution
+  journal: "{config.data}/global/journal.yaml"     # lifecycle write-ahead log
 ```
 
 Everything else is a setting and goes in `global/settings.yaml`, including the

@@ -67,7 +67,7 @@ Optional overrides (sensible defaults provided by the base class):
 | `check_auth()` | `True` | Validate host auth before launch |
 | `prepare_host(install, *, auto_auth, data_path)` | no-op | Touch the host before mounts (binary update, auth refresh) — set `descriptor.host_prep=True` to enable |
 | `default_common()` | `{}` | Declare default `agent.<agent>.common` / `agent.<agent>.caches` binds |
-| `default_category_binds()` | `{}` | Declare default `@`-ref-sourced binds in any agent-scope category |
+| `default_category_binds()` | `{}` | Declare default reference-sourced binds in any agent-scope category |
 | `default_seeds()` | `{}` | Declare default `agent.<agent>.seeded` copy-once seeds |
 | `default_envs()` | `{}` | Declare default `agent.<agent>.env.<VAR>` environment variables |
 | `setting_descriptors()` | `[]` | Advertise runtime settings (key, default, choices) |
@@ -188,7 +188,7 @@ descriptor:
   bindings:
     - key: binary
       origin: binary
-      box_dest: "$GUEST_HOME/.local/bin/codex"
+      box_dest: "{$GUEST_HOME}/.local/bin/codex"
       kind: file
       scope: agent_critical
       ro: true
@@ -316,7 +316,7 @@ fields, set `filtered=True` on the relevant `CredFileSpec` and override
 `transform_cred` to allowlist or merge (Claude and Goose do this).  Note that
 in 1.6.0 kanibako no longer imports your **host** agent config into a box — a
 box's non-credential config comes from the agent's curated template
-(`@agent.<agent>.template`), not the host.
+(`{agent.<agent>.template}`), not the host.
 
 ## Method reference
 
@@ -394,17 +394,18 @@ The three hooks differ only in what they are *for*, and in rooting:
 
 | Hook | Declares | Source rooting |
 |---|---|---|
-| `default_common()` | your agent's shared dirs (claude's `plugins`, `cache`) | a bare leaf is **rooted at your agent store**: `plugins` → `@meta.agent.<agent>.path/common/plugins` |
+| `default_common()` | your agent's shared dirs (claude's `plugins`, `cache`) | a bare leaf is **rooted at your agent store**: `plugins` → `{meta.agent.<agent>.path}/common/plugins` |
 | `default_seeds()` | copy-once-at-create seeds — a **copy**, never a mount | none applied; give a self-resolving source |
-| `default_category_binds()` | any agent-scope category, sourced from an `@`-ref | **none** — a bare-relative source is refused, not rooted |
+| `default_category_binds()` | any agent-scope category, sourced from a `{key}` reference | **none** — a bare-relative source is refused, not rooted |
 
-An already self-resolving `host_src` (absolute, `~`, `$var`, or an `@`-ref) is
-always stored verbatim.  In a **defaults file** `box_dest` is a `$GUEST_HOME`
-(or `~`) expression, expanded and normalized by the loader.  From **Python**
-there is no expander — `$GUEST_HOME` is not a variable kanibako resolves, and a
-launch that meets one fails with `Unknown variable: $GUEST_HOME` — so write the
-guest path in full (`/home/agent/.claude/x`).  Either way kanibako owns the host
-layout only; the guest path is always spelled out.
+An already self-resolving `host_src` (absolute, `~`, `{$VAR}`, or a `{key}`
+reference) is always stored verbatim.  In a **defaults file** `box_dest` is a
+`{$GUEST_HOME}` (or `~`) expression, expanded and normalized by the loader.  From
+**Python** there is no expander — `{$GUEST_HOME}` is not a variable kanibako
+resolves, and a launch that meets one fails with
+`Unknown variable: {$GUEST_HOME}` — so write the guest path in full
+(`/home/agent/.claude/x`).  Either way kanibako owns the host layout only; the
+guest path is always spelled out.
 
 These land as the **agent level's declared floor**, under every settings file, so
 a user overrides one by writing the same key in a nearer file — the system file
@@ -416,7 +417,7 @@ rather than repoint it, a user present-`null`s that destination inside the value
 
 **Prefer the defaults file to Python.**  The shipped plugins declare `common:`
 and `env:` in their `<agent>-defaults.yaml` and read them with the loaders, which
-apply the rooting, the `$GUEST_HOME` expansion, the destination normalization,
+apply the rooting, the `{$GUEST_HOME}` expansion, the destination normalization,
 and — for `env:` — the closed-keyspace check for you:
 
 ```python
@@ -429,7 +430,7 @@ def default_common(self) -> dict[str, BindArm]:
 ```yaml
 common:
   - host_src: plugins                          # rooted -> agents/<agent>/common/plugins
-    box_dest: "$GUEST_HOME/.claude/plugins"
+    box_dest: "{$GUEST_HOME}/.claude/plugins"
 ```
 
 `default_seeds()` has no loader — return the mapping from Python.
@@ -443,7 +444,7 @@ own store**, where it creates a symlink back to yours.  So the persona shares
 your content by default, and a user who replaces that symlink with a real
 directory gives the persona its own — which is why the source is re-rooted
 rather than pointed straight at your store.  A source that is *not* under your
-store (an absolute path, a `~`, an unrelated `@`-ref) is left exactly as you
+store (an absolute path, a `~`, an unrelated `{key}` reference) is left exactly as you
 wrote it: that is you naming a specific path, not your store.
 
 ⚑ **Do not declare the same box destination twice.**  Declaring one destination
@@ -465,7 +466,7 @@ Declare environment variables your agent needs, as
 `env:` section for you).  They are ordinary settings keys, not a private
 channel: a user overrides one by writing the same key in a nearer file, and
 naming the same variable at a second scope refuses the launch naming both.
-Values must be strings — quote `"1"` and `"true"` — and `$GUEST_HOME` is
+Values must be strings — quote `"1"` and `"true"` — and `{$GUEST_HOME}` is
 expanded at load.  Static variables belong here, not in the descriptor.
 
 ### `setting_descriptors() -> list[TargetSetting]`

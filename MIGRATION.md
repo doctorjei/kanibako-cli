@@ -331,8 +331,8 @@ inside boxes. In order of likely impact:
     instead of being anchored somewhere** (see *A bare relative path in a settings key is refused*).
     It used to mean *under the workset root* for the workset directory keys and *under your current
     directory* for every other path key; one key cannot have two answers, and a wrong guess here
-    creates a directory that then holds your data. Respell as `@meta.workset.path/comms` (the old
-    workset-root reading, said out loud), `@config.data/…`, an absolute path, `~/…`, or `$XDG_*/…`.
+    creates a directory that then holds your data. Respell as `{meta.workset.path}/comms` (the old
+    workset-root reading, said out loud), `{config.data}/…`, an absolute path, `~/…`, or `{$XDG_*}/…`.
     Nothing kanibako ships uses this spelling, so this only bites a value you wrote by hand.
 
 29. **Only if you ran a `1.8.0` prerelease: the packaged canon book was renamed `bible` →
@@ -373,7 +373,7 @@ inside boxes. In order of likely impact:
 
 33. **If you use `kanibako code --remote`, run it once after upgrading and accept the `dockerPath`
     update.** The `podman-dispatch` wrapper VS Code's `dev.containers.dockerPath` points at moved from
-    `$XDG_DATA_HOME/kanibako/vscode-remote/bin/` to the cache root, `@system.cache/vscode-remote/bin/`,
+    `$XDG_DATA_HOME/kanibako/vscode-remote/bin/` to the cache root, `{system.cache}/vscode-remote/bin/`,
     on every install. One run, against any remote, regenerates it and re-points the setting; then
     delete `$XDG_DATA_HOME/kanibako/vscode-remote/`. A JSONC `settings.json` needs the line pasted by
     hand — see *The `code --remote` wrapper moved from the data store to the cache root*.
@@ -408,7 +408,7 @@ inside boxes. In order of likely impact:
     it used to print what it could read and exit 0 (see *`workset show --effective` exits 1 on a
     working set file it cannot resolve*); a plain-shell box takes its multiplexer from
     `agent.shell.bootstrap`, not `agent.default.bootstrap` — see *The plain-shell store is
-    `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`*;
+    `<data>/agents/shell/`, and `{$AGENT}` in a plain-shell box is `shell`*;
     `box duplicate --to default` is now `--to primary` and `--to workset` is now `--to named`, with
     no alias — see *`box duplicate --to` takes the mode names: `primary`, `named`, `standalone`*; a
     `bootstrap` of `null` or `""` no longer falls back to `tmux` but means no program — see *A
@@ -434,8 +434,8 @@ inside boxes. In order of likely impact:
     that cannot be a box name is a path*; and `set` refuses an empty `workset.boxes` or one ending
     in `/` — see *`workset.boxes` is refused at the door at a value the launch refuses*; and a
     `system.*` path value referencing outside its tier is refused at `set` — see *A system path
-    value referencing outside its tier is refused at `set`*; and a `set` whose `@`-reference names a
-    key set resolved later is refused — see *A `set` whose `@`-reference names a later key set is
+    value referencing outside its tier is refused at `set`*; and a `set` whose reference names a
+    key set resolved later is refused — see *A `set` whose reference names a later key set is
     refused*; and `set` refuses, unless `--force`, while a settings file it reads stores an entry
     that is not a key — see *`set` refuses while a settings file it reads stores an entry that is
     not a key*; and a `null` at `box.image`, `box.share_images`, or `box.enable_vault` that wins the
@@ -519,6 +519,8 @@ inside boxes. In order of likely impact:
     --force` removes a standalone box's marker*.
 56. **`-e VAR=value` now beats a `secret_path.VAR` key for that launch; the secret used to win** — see *`-e`
     beats a `secret_path` key*.
+57. **A reference is written in braces — `{a.b.c}` for a key, `{$NAME}` for a variable — and an old
+    `@a.b.c` or `$NAME` that kanibako recognizes stops the command** — see *References are braced: `{a.b.c}` names a key and `{$NAME}` a variable*.
 
 ---
 
@@ -533,7 +535,7 @@ inside boxes. In order of likely impact:
 | `system.default_agent` (stored as `agent: default: default_agent:` in `global/settings.yaml`) | `system.agent` (same file, `system: agent:`) | **hard launch error** (below) |
 | `<scope>.shared.<name>` (the `shared` mount category) | `<scope>.common.<name>` | **hard refusal** at the resolve (see *An undeclared key in a settings file now stops the command, and the cure is a hand-edit*) |
 | `system.base_template` | `system.template` (and it now names a template ROOT — *Template and per-agent store moves*) | **hard refusal** at the resolve (see *An undeclared key in a settings file now stops the command, and the cure is a hand-edit*) |
-| `@meta.runtime.ws_settings` (reference target) | `@meta.workset.settings` | dangling reference |
+| `@meta.runtime.ws_settings` (reference target) | `{meta.workset.settings}` | dangling reference |
 | settable `box.agent.*` mirror (a `box: agent:` **table**) | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | **hard launch error** (below); write verbs refuse with the pref cure |
 | `auto_approve` (the boolean permission switch) | `access` — a tier, `restricted` \| `editing` \| `full` | **hard launch error** of its own, mapping your stored boolean to a tier (below) |
 
@@ -970,7 +972,7 @@ new box's `canon/handbook` directory, which is then bound read-only into the box
 - **The copy is no longer a `seeded` entry, so the cascade cannot reroute it.** kanibako used to
   declare three `seeded` entries for the handbook (`system.seeded.handbook`,
   `agent.<agent>.seeded.handbook`, `workset.seeded.handbook`, all writing
-  `@box.canon/handbook`); an override of one in a settings file repointed that layer's *source*.
+  `{box.canon}/handbook`); an override of one in a settings file repointed that layer's *source*.
   Those entries are **gone**, and so is that override route. The handbook templates are *host*
   templates — they fill a host directory that a separate read-only bind later delivers — so they
   are copied host-side at create rather than routed through the box's seed category.
@@ -1051,7 +1053,7 @@ and a bare leaf is rooted where it is declared*).
 used to pass through to podman as you typed them, which never mounted the directory you meant —
 *A bare-relative host source is refused, and a bare leaf is rooted where it is declared* has the
 detail and the message you will see. Check every workset's `workset.yaml` for
-`workset.bindings.{ro,rw}` entries whose source does not start with `/`, `~`, `$`, or `@`, and
+`workset.bindings.{ro,rw}` entries whose source does not start with `/`, `~`, or `{`, and
 rewrite each to the absolute path it was supposed to resolve to: `<workset root>/<relative>`.
 
 One behavior change on an already-broken shape: `share add` on the **default** workset now
@@ -1203,12 +1205,12 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   box has left. See **Standalone boxes: a relocated store is read where it is, and never deleted
   for you**.
   🛑 **A value that cannot be resolved now stops these commands instead of being ignored.** In
-  1.7.2 both keys were accepted and never read, so an unresolvable one — `@config.registry/ro`,
+  1.7.2 both keys were accepted and never read, so an unresolvable one — `{config.registry}/ro`,
   say — sat in a settings file doing nothing. It is read now, and a purge or move refuses by name
   **before deleting anything** rather than part-removing the box. If `box rm --purge` exits 1
   saying `workset.vault_ro is set to ... which cannot be resolved`, fix or unset the value and run
   it again; nothing was removed.
-- **`@meta.runtime.ws_settings`** in any settings file: replace with `@meta.workset.settings`
+- **`@meta.runtime.ws_settings`** in any settings file: replace with `{meta.workset.settings}`
   (identical resolved value). **This one is a reference INSIDE a value, not a key path**, so the
   closed keyspace never judges it and nothing refuses. It is the quietest of the four: an
   absent referent propagates absence (the keyspace spec's **Principles**), so a whole-value
@@ -1250,7 +1252,7 @@ the block stays up rather than being cleared against a store setup never touched
 setup --refresh-templates` is the headless path that both refreshes and completes.
 
 In the window before setup runs, non-gated verbs (e.g. `shell`, config/list commands) still
-work; a launch in that window has no `@system.canon/handbook` yet, so `SYS_CONTENTS.md` is
+work; a launch in that window has no `{system.canon}/handbook` yet, so `SYS_CONTENTS.md` is
 dropped with one warning, the `general` chapter is dropped silently, and `~/canon/handbook` is
 empty in-box.
 Nothing is lost — run setup and relaunch. Setup reports what it added, what it refreshed in
@@ -1540,9 +1542,9 @@ file carried happily is now an error, and the message names it:
 
 ```console
 $ kanibako box set <box> box.env.MY_PATH='$HOME/bin'
-Error: 'box.env.MY_PATH': Unknown variable: $HOME
+Error: 'box.env.MY_PATH': Unknown variable: {$HOME}
 $ kanibako box set <box> box.env.MY_PATH='$AGENT/bin'
-Error: 'box.env.MY_PATH': Variable $AGENT is not set in this context.
+Error: 'box.env.MY_PATH': Variable {$AGENT} is not set in this context.
 ```
 
 **The cure is to escape the `$`**: `\$` stores the backslash form in the settings file and
@@ -1554,7 +1556,7 @@ $ kanibako box set <box> box.env.MY_PATH='\$HOME/bin'
 Set box.env.MY_PATH=\$HOME/bin
 ```
 
-An `@`-reference is validated the same way (`box.env.X=@meta.nope.key/x` is refused as a
+A `{key}` reference is validated the same way (`box.env.X={meta.nope.key}/x` is refused as a
 dangling reference), and a lone unescaped `$` is refused as a malformed value.
 
 ---
@@ -2633,15 +2635,15 @@ below `workset`, and expanded like anything else.
    holds your own edits and nothing else, while a persona value is re-read on every launch. The
    env half did not honor that. **If you were relying on a persona value while also having the
    same variable in the agent file, the file's value is what you get now.**
-4. **`~` and `$VAR` in the value are expanded**, exactly as in a value written in any other
+4. **`~` and `{$VAR}` in the value are expanded**, exactly as in a value written in any other
    settings file. Before, an agent-file `env` value reached the box as literal text, so
    `EDITOR: ~/bin/ed` delivered the tilde itself. ⚑ **Expansion resolves against kanibako's own
    namespace, not your shell's, and an unknown name is REFUSED rather than passed through** — this
    is how `<scope>.env.<VAR>` has always behaved and the agent file simply joins it. So an
    agent-file `env` value containing something like `$HOME` **stops the launch with `Unknown
-   variable: $HOME`** where it previously delivered those six characters verbatim (and your box's
+   variable: {$HOME}`** where it previously delivered those six characters verbatim (and your box's
    own shell may well have expanded them later, which is why it can look like a regression). The
-   host paths kanibako does know are spelled as `@`-references (`@config.data`, `@meta.box.home`);
+   host paths kanibako does know are spelled as `{key}` references (`{config.data}`, `{meta.box.home}`);
    for anything meant to be resolved *by the box*, escape it — see below.
 
 **What you must do.** Nothing, unless one of these is true:
@@ -3159,7 +3161,7 @@ refused* says is no longer read. v1.8.0 writes the value nowhere at all: **`COLO
 as a default at `box` scope**, in kanibako's own defaults file, and it simply resolves. No settings
 file mentions it, and no first run creates it.
 
-**And the declared value is `$COLORTERM` — your host's — not the literal `truecolor`.** A box gets
+**And the declared value is `{$COLORTERM}` — your host's — not the literal `truecolor`.** A box gets
 whatever your terminal advertises, and **if your host sets no `COLORTERM`, the box gets none
 either.** Not an empty one: the variable is absent, because programs disagree about what an empty
 `COLORTERM` means and some read the bare presence of the name as the claim.
@@ -3647,12 +3649,12 @@ This now also covers a key the merge hides. An undeclared entry in a workset or 
 refused even when another file's table covers it, and the message names the file to edit by hand.
 Plain `workset share list` refuses such a file too.
 
-An `@`-reference counts too. A reference to a name that is not a key now stops the command, naming
-the reference and the entry that holds it. That covers `@meta.agent.home/x` as a bind destination, a
-typo such as `@box.nope`, and `@meta.box.name.jsonl`, whose name swallows the extension. Before, it
+A `{key}` reference counts too. A reference to a name that is not a key now stops the command, naming
+the reference and the entry that holds it. That covers `{meta.agent.home}/x` as a bind destination, a
+typo such as `{box.nope}`, and `@meta.box.name.jsonl`, whose name swallows the extension. Before, it
 resolved as empty, so the entry was dropped or the path lost that piece. A reference to a declared key
 that has no value is unchanged. The cure is a hand-edit: point the reference at a declared key, write
-`@{meta.box.name}.jsonl` to keep a suffix, or escape a literal `@` as `\@`.
+`{meta.box.name}.jsonl` to keep a suffix, or escape a literal `@` as `\@`.
 
 ### 2.48 `box get` and `workset get` refuse a name that is not a key, and `show` marks the entry
 
@@ -3887,20 +3889,20 @@ source needs:
 
 ```
 $ kanibako system show --effective
-Error: bindings.ro entry at '/home/you/notes' declares a bare-relative host source 'mynotes'; a source must fully resolve on its own — absolute, ~, $var or an @-ref. bindings.ro takes NO root at any scope (spec §2a), so no later layer may supply the missing one: a relative source resolves against whatever directory kanibako happens to be run from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as the name of a NAMED VOLUME rather than as a host path at all. Spell the source out.
+Error: bindings.ro entry at '/home/you/notes' declares a bare-relative host source 'mynotes'; a source must fully resolve on its own — absolute, ~, {$VAR} or a {key} reference. bindings.ro takes NO root at any scope (spec §2a), so no later layer may supply the missing one: a relative source resolves against whatever directory kanibako happens to be run from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as the name of a NAMED VOLUME rather than as a host path at all. Spell the source out.
 ```
 
 ⚑ `synced` is a copy rather than a mount, so podman never saw its source: a bare-relative one was
 read as a path under whatever directory `kanibako` was run from. Wrong in a quieter way, and refused
 by the same rule.
 
-**The cure is to spell the source out** — an absolute path, `~/…`, `$VAR/…`, or an `@`-ref:
+**The cure is to spell the source out** — an absolute path, `~/…`, `{$VAR}/…`, or a `{key}` reference:
 
 ```yaml
 box:
   bindings:
     rw:
-      "~/notes": ["/home/you/notes"]     # or ~/notes, $HOME/notes, or an @-ref
+      "~/notes": ["/home/you/notes"]     # or ~/notes, {$XDG_DATA_HOME}/notes, or a {key} ref
 ```
 
 ⚑ **`masks` and `secret_path` are untouched.** A mask declares no source, and a `secret_path` is a
@@ -3912,10 +3914,10 @@ so a bare leaf is joined under it when the file is read, and what is stored reso
 
 | Declared at | A bare leaf `L` in category `C` becomes |
 |---|---|
-| `system:` | `@config.data/C/L` |
-| `self:` (an agent's `agent.yaml`) | `@meta.agent.<agent>.path/C/L` |
-| `workset:` | `@meta.workset.path/C/L` |
-| `box:` | `@meta.box.path/C/L` |
+| `system:` | `{config.data}/C/L` |
+| `self:` (an agent's `agent.yaml`) | `{meta.agent.<agent>.path}/C/L` |
+| `workset:` | `{meta.workset.path}/C/L` |
+| `box:` | `{meta.box.path}/C/L` |
 
 A source that already resolves on its own is stored exactly as you wrote it — the root is a default
 for a relative source, not a prefix applied to everything. A `pref.agent.<name>.<category>` request
@@ -3923,7 +3925,7 @@ is rooted the way the key it targets would be, so a request and a direct declara
 string.
 
 **What you must do.** Look through every settings file for a source that starts with none of
-`/`, `~`, `$`, `@`. There will usually be none — nothing kanibako ships teaches this spelling, so it
+`/`, `~`, `{`. There will usually be none — nothing kanibako ships teaches this spelling, so it
 only appears in a file you wrote.
 
 - **In `bindings.ro`, `bindings.rw`, or `synced`:** the next command that resolves settings refuses
@@ -3954,7 +3956,7 @@ is now resolved through its own key.
 | `workset.channels.broadcast`, `.mailboxes`, `.share_global` | Nothing. The value was accepted, written to `workset.yaml`, and read back by `kanibako workset get`, and no path moved | The value is used |
 | `workset.channels.chat`, `.share` | The mount followed your override; the rest of kanibako did not | Mount, seeded files, and the `meta.box.*` addresses agree |
 | `workset.channels.common` | Honored | Unchanged |
-| `workset.channelroot` | Honored, but a settings file referencing `@workset.channelroot` got nothing back | The launch resolves it, so the reference works |
+| `workset.channelroot` | Honored, but a settings file referencing `{workset.channelroot}` got nothing back | The launch resolves it, so the reference works |
 
 **What to do.**
 
@@ -4184,8 +4186,8 @@ silently. ...
 | a destination covered by a **`masks`** entry | judged by the mask rules, which already refused a mask as a parent; this rule does not touch it |
 | **`seeded`** | unchanged. A seed is copied at *creation*, when the only mount that exists is home — so its rule was, and remains, that its destination lies inside home. That is the same requirement at a different moment, not a second one. |
 
-⚑ If you were spelling a destination with `$XDG_DATA_HOME` or another XDG variable, note that those
-are expanded on the **host**, so `$XDG_DATA_HOME/z` becomes a path like `/data/z` — a directory on
+⚑ If you were spelling a destination with `{$XDG_DATA_HOME}` or another XDG variable, note that those
+are expanded on the **host**, so `{$XDG_DATA_HOME}/z` becomes a path like `/data/z` — a directory on
 your own machine, which nothing in the box binds by default. Such an entry is refused by the rule
 above unless you bind that path yourself. Deliberately mirroring your host layout into the box that
 way is fine; what is refused is a destination that resolves nowhere.
@@ -4389,18 +4391,19 @@ point at directories with your files in them.
 ### 2.61 `kanibako agent set` now validates the value you give it
 
 **Read this if you have ever set an agent setting to a value containing `@` or `$`.** Kanibako
-checks such a value before writing it: `@config.canon` has to name a real key, `$HOME` has to be a
+checks such a value before writing it: `{config.canon}` has to name a real key, `{$HOME}` has to be a
 well-formed variable, and if either fails the command refuses and writes nothing. `kanibako agent
 set` skipped that check — it reached the agent's settings file by a route of its own — so it
 accepted values that the same setting's other spelling refused:
 
 ```
-$ kanibako agent set claude canon=@bogus.ref
-Set canon=@bogus.ref                          # exit 0, written to the file
+$ kanibako agent set claude canon={bogus.ref}
+Set canon={bogus.ref}                         # exit 0, written to the file
 
-$ kanibako system set agent.claude.canon=@bogus.ref
-Error: 'agent.claude.canon': dangling @-reference '@bogus.ref' (no such config key
-in the keyspace)                              # exit 1, nothing written
+$ kanibako system set agent.claude.canon={bogus.ref}
+Error: 'agent.claude.canon': dangling reference '{bogus.ref}' ('bogus' is not a declared
+namespace (declared: config, system, agent, workset, box, meta, pref) — the keyspace is
+CLOSED (spec §0))                             # exit 1, nothing written
 ```
 
 Both commands give the second answer now.
@@ -4422,7 +4425,7 @@ like every other.
 
 ### 2.62 A bare relative path in a settings key is refused
 
-**Read this if you set any path key to a value that does not start with `/`, `~`, `$XDG_`, or `@` —
+**Read this if you set any path key to a value that does not start with `/`, `~`, or `{` —
 `workset.channelroot: comms`, `system.cache: mycache`, `box.canon: canon`.**
 
 **What changed.** A bare relative path had two different meanings depending on which key carried
@@ -4437,7 +4440,7 @@ It is now refused, at both ends: when you `set` it, and when kanibako resolves a
 check covers every path key in every settings file. Its refusal names every offending key it finds,
 each with the file that holds it. Some earlier checks run first and stop at the first fault they
 find: the `config.*` and `system.*` path keys, the workset directory keys, and a bind source built
-on a path key (`@box.canon/handbook`). So a file with several faults can take more than one pass.
+on a path key (`{box.canon}/handbook`). So a file with several faults can take more than one pass.
 
 ⚑ **`secret_path.<VAR>` is in the rule too, at both ends.** kanibako mounts the file a secret
 pointer names and never reads the file itself, but the pointer is still a value in your settings
@@ -4455,24 +4458,24 @@ a wrong guess produces a confusing message: the path gets created, and then it h
 ```
 $ kanibako workset set workset.channelroot=comms
 Error: workset.channelroot is set to 'comms' in /home/you/ws/workset.yaml, which is a BARE RELATIVE path. kanibako will not guess what it is relative to — both of these readings are plausible and they are DIFFERENT directories:
-    /home/you/ws/comms   (this key's default root, spelled '@meta.workset.path/comms')
+    /home/you/ws/comms   (this key's default root, spelled '{meta.workset.path}/comms')
     /home/you/projects/comms   (the directory kanibako was run from)
-Set the one you mean, spelled so it resolves on its own: an absolute path, '~/...', '$XDG_*/...', or an '@'-ref.
+Set the one you mean, spelled so it resolves on its own: an absolute path, '~/...', '{$XDG_*}/...', or a '{key}' reference.
 ```
 
 **The four legal spellings**, and one of them is the old root-relative reading said out loud:
 
 | You want | Write |
 |---|---|
-| under the workset root | `@meta.workset.path/comms` |
-| under the kanibako data root | `@config.data/comms` |
+| under the workset root | `{meta.workset.path}/comms` |
+| under the kanibako data root | `{config.data}/comms` |
 | an exact place | `/srv/comms` |
-| under your home / an XDG base | `~/comms`, `$XDG_DATA_HOME/comms` |
+| under your home / an XDG base | `~/comms`, `{$XDG_DATA_HOME}/comms` |
 
-⚑ **`$XDG_*` only.** `$AGENT` and `$WORKSET` expand to a bare *name*, so `$AGENT/logs` is as
+⚑ **`{$XDG_*}` only.** `{$AGENT}` and `{$WORKSET}` expand to a bare *name*, so `{$AGENT}/logs` is as
 relative as `logs` is; they are not accepted as a root.
 
-**This also closes a mount hole.** A bind source such as `@box.canon/handbook` resolves on its own
+**This also closes a mount hole.** A bind source such as `{box.canon}/handbook` resolves on its own
 where it is declared, so the parse-time refusal of *A bare-relative host source is refused, and a
 bare leaf is rooted where it is declared* never saw it — it only became relative once `box.canon`
 was read. podman reads a mount source beginning with neither `.` nor `/` as the name of a **named
@@ -4484,11 +4487,11 @@ result.
 `kanibako.cfg`, the system `global/settings.yaml`, each workset root's `workset.yaml`, each box
 dir's `box.yaml`, each agent store's `agent.yaml` — look at the value of every key in the list
 above, and of every `secret_path.<VAR>` you have configured, and check how it starts. If it does
-not start with `/`, `~`, `$XDG_`, or `@`, respell it from the table; `$AGENT/…` and `$WORKSET/…`
+not start with `/`, `~`, or `{`, respell it from the table; `{$AGENT}/…` and `{$WORKSET}/…`
 count as relative, because those variables expand to a bare name.
 There is usually nothing to find: no default kanibako ships is written this way, so a bare relative
 only appears where you typed one. If it was one of the workset directory keys or a
-`workset.channels.*` leaf, `@meta.workset.path/<value>` reproduces exactly what kanibako was doing
+`workset.channels.*` leaf, `{meta.workset.path}/<value>` reproduces exactly what kanibako was doing
 before, and nothing on disk moves. For every other key the old reading was cwd-relative, which
 means the directory kanibako actually used depended on where you ran the command — decide where you
 want it, write that, and move the contents if anything is there.
@@ -4506,7 +4509,7 @@ parent — which is the root only when `workset.workspaces` is left at its defau
 `workset.yaml` live), so the lift aims at it in every layout. Two things follow, and the second is
 the reason this is here rather than only in the changelog:
 
-- With `workset.workspaces` set **one level deeper** (`@meta.workset.path/nested/deep`), the files
+- With `workset.workspaces` set **one level deeper** (`{meta.workset.path}/nested/deep`), the files
   used to land in `nested/` and the box was registered there, one level below the directory you
   converted. They now land at the root. The interposed directory is removed once emptied; if it
   holds anything else of yours, it stays.
@@ -4735,8 +4738,8 @@ see *An undeclared key in a settings file now stops the command, and the cure is
 ⚑ **The refusal now reaches INSIDE the `config:` table too.** Until this release the rule ran one
 way only: a top-level `nonsense:` was refused by name, while `config:` with a `nonsense:` under it
 was accepted without a word. It did not reach the resolved foundation — the resolver builds that
-from the declared keys alone — **but a declared key could still `@`-reference it**, so
-`config: {nonsense: /srv/elsewhere, data: "@config.nonsense/kanibako"}` put your store under
+from the declared keys alone — **but a declared key could still reference it**, so
+`config: {nonsense: /srv/elsewhere, data: "{config.nonsense}/kanibako"}` put your store under
 `/srv/elsewhere/kanibako` off a name that is not a key. Layer 1 holds the `config.*` keys the
 message lists and no others, so a key that is not one of them is an error that names it:
 
@@ -4752,8 +4755,8 @@ That is the shape a typo takes — `data_home:` where `data:` was meant, or a `b
 one level too far and so sitting *under* `config:`. Neither took effect before, and neither said
 so. **If you have ever hand-written this file, read the keys under `config:` once.**
 
-🛑 **The `@`-reference case is the one that can break a working host, so check for it specifically.**
-If a declared key's value contains `@config.<something>` and that something is not in the list the
+🛑 **The reference case is the one that can break a working host, so check for it specifically.**
+If a declared key's value contains `{config.<something>}` and that something is not in the list the
 message prints, the file now refuses where it used to resolve. The cure is to inline the value:
 write `data: /srv/elsewhere/kanibako` and delete the invented key. Nothing moves on disk — the path
 you were already resolving to is the one you write down.
@@ -5364,23 +5367,23 @@ so it never contends with an `env` key of the same name.
 
 **What changed.** `--effective` now also prints the binding each `common` / `caches` / `seeded`
 declaration derives, and producing that means resolving the working set's file the way a launch
-would. That resolution is strict: an unknown `$VAR`, a reference to something that is not a key, or
+would. That resolution is strict: an unknown `{$VAR}`, a reference to something that is not a key, or
 a category table of the wrong shape stops it. Those files used to reach this view untouched — the
 plain listing is a straight read of the YAML and expands nothing — so a working set whose binding
-was sourced at `$NOPE/y` was never resolved at all: the view printed the scalar values it could
-read and exited **0**. It now prints `Error: Unknown variable: $NOPE` and exits **1**.
+was sourced at `{$NOPE}/y` was never resolved at all: the view printed the scalar values it could
+read and exited **0**. It now prints `Error: Unknown variable: {$NOPE}` and exits **1**.
 
 It is not limited to working sets that use the abstract categories: the file is resolved before
 kanibako knows whether there is anything to derive.
 
 `kanibako workset share list <ws> --effective` resolves the same way. Both views read the base and
 system settings files as well as the working set's, apply its `pref:` requests, and resolve its
-`@workset.*`, `@meta.workset.*`, and `@meta.runtime.*` references as a launch does. So they also exit
+`{workset.*}`, `{meta.workset.*}`, and `{meta.runtime.*}` references as a launch does. So they also exit
 **1** on a `config:` table in the working set's settings file and on a `pref:` request a launch
 refuses (a bare relative path, for one). `share list --effective` also exits **1** on an undeclared
 key in the base or system file, which it used to list past; `show --effective` already stopped on
-one, with the message a box gives. A share sourced at `@workset.auth.path/notes` now lists
-`<working set>/auth/notes`, where it listed `/notes`, and one sourced at `@meta.runtime.ws_root/r`
+one, with the message a box gives. A share sourced at `{workset.auth.path}/notes` now lists
+`<working set>/auth/notes`, where it listed `/notes`, and one sourced at `{meta.runtime.ws_root}/r`
 lists `<working set>/r`, where it listed `/r`.
 
 **What to do.** Nothing, if your working set files resolve — and if one of them does not, this is
@@ -5443,7 +5446,7 @@ finally knows what terminal it is in, and there is nothing to do.
 **What changed.** Kanibako declared a terminal type for the plain-shell box and for nothing else, so
 an agent box ran with whatever `TERM` its image happened to set — usually `xterm` or nothing at all,
 whatever your terminal actually was. **`agent.default.env.TERM` is now a declared default whose
-value is `$TERM`**, the host's own terminal type, and every agent inherits it. An empty or unset
+value is `{$TERM}`**, the host's own terminal type, and every agent inherits it. An empty or unset
 host `TERM` resolves to `xterm`, so a box always receives one.
 
 **A `TERM` that is set is passed through exactly as written and is never checked.** Whether the
@@ -5467,7 +5470,7 @@ kanibako system set agent.default.env.TERM=xterm-256color
 ```
 
 A plain-shell box is the exception: the `shell` pseudo-agent inherits nothing from `agent.default`
-(spec §2d), so it carries its own `agent.shell.env.TERM`, also `$TERM`, and
+(spec §2d), so it carries its own `agent.shell.env.TERM`, also `{$TERM}`, and
 `agent.default.env.TERM` does not reach it. Set `agent.shell.env.TERM` to change it there; on a
 plain-shell box the refusal below names `agent.shell.env.TERM` as kanibako's key.
 
@@ -5619,12 +5622,12 @@ you.
    `kanibako system set agent.Kirobo.model=…` writes the `kirobo` node's value, which lives in its
    own settings file (`<data>/agents/kirobo/agent.yaml`), not in `<data>/global/settings.yaml`.
 
-3. **Re-spell the agent inside any `@`-reference you wrote as a VALUE**, not just in the keys. A
-   `@meta.agent.Kirobo.path` or an `@agent.Kirobo.<key>` on the right-hand side of a setting is a
+3. **Re-spell the agent inside any reference you wrote as a VALUE**, not just in the keys. A
+   `{meta.agent.Kirobo.path}` or an `{agent.Kirobo.<key>}` on the right-hand side of a setting is a
    key path too, and the `set` above does not reach one. 🛑 **This is the step with no error to
    warn you:** a reference naming a spelling nothing declares is *dangling*, and a dangling
    reference embedded in a value renders as an empty string rather than failing — so a bind whose
-   source read `@meta.agent.Kirobo.path/caches` becomes a bind of the wrong directory and nothing
+   source read `{meta.agent.Kirobo.path}/caches` becomes a bind of the wrong directory and nothing
    is reported. Search for the old spelling anywhere in your settings files, both sides of the
    colon:
 
@@ -5648,10 +5651,10 @@ keeps its project directory's case*.
 
 ---
 
-### 2.82 The plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`
+### 2.82 The plain-shell store is `<data>/agents/shell/`, and `{$AGENT}` in a plain-shell box is `shell`
 
 **Read this if you ever edited `<data>/agents/general/agent.yaml` or `<data>/agents/no_agent/agent.yaml` by
-hand, or if anything you run inside a plain-shell box reads `$AGENT`.** A stock install has
+hand, or if anything you run inside a plain-shell box reads `{$AGENT}`.** A stock install has
 one thing to do: nothing breaks on its own, but the old directories are left behind and can
 be deleted once you have moved your edits.
 
@@ -5663,7 +5666,7 @@ The slot is now the `shell` pseudo-agent (spec §2d, "Pseudo-agent(s)"): a decla
 that block: a pseudo-agent has no `agent.default` backstop, so the shell tier supplies its own
 `bootstrap` and `template` (both below) and every other value it has. Concretely: the per-agent
 settings file for a plain-shell box lives at `<data>/agents/shell/agent.yaml` (`<data>` is
-`$XDG_DATA_HOME/kanibako`, or whatever `config.data` points at), and `$AGENT` inside a
+`$XDG_DATA_HOME/kanibako`, or whatever `config.data` points at), and `{$AGENT}` inside a
 plain-shell box is now `shell`, not `general`.
 
 **What to do — move your edits by hand, then delete the old directories.** Nothing is
@@ -5693,7 +5696,7 @@ move them into the shell store and point `agent.shell.template` at it:
 ```bash
 mkdir -p <data>/agents/shell/template/box/home
 cp -a <data>/agents/general/template/. <data>/agents/shell/template/box/home/
-kanibako system set agent.shell.template=@config.agents/shell/template
+kanibako system set agent.shell.template={config.agents}/shell/template
 ```
 
 The `set` writes the key to the shell agent's settings file, `<data>/agents/shell/agent.yaml`.
@@ -5703,7 +5706,7 @@ Setting it by hand in the system settings file, `<data>/global/settings.yaml`, w
 # <data>/global/settings.yaml
 agent:
   shell:
-    template: "@config.agents/shell/template"
+    template: "{config.agents}/shell/template"
 ```
 
 Or move them to a template every box reads. The system template seeds EVERY new box, whatever
@@ -5753,8 +5756,8 @@ plain-shell box".) In both it also inherited every `agent.default` category entr
 `common` in v1.8.0-rc2.
 
 One of these moved a bind. In v1.8.0-rc2, repointing `agent.default.canon` also moved a
-plain-shell box's handbook chapter, because the slot's canon was `@agent.default.canon`. It no
-longer does: `agent.shell.canon` is `@config.agents/default/canon` whatever `agent.default.canon`
+plain-shell box's handbook chapter, because the slot's canon was `{agent.default.canon}`. It no
+longer does: `agent.shell.canon` is `{config.agents}/default/canon` whatever `agent.default.canon`
 says. To move it for plain-shell boxes, set their own key:
 `kanibako system set agent.shell.canon=<path>`. The `shell`
 pseudo-agent is not a true agent, and only true agents inherit from `agent.default` (spec §2d):
@@ -5783,8 +5786,8 @@ These launches run no agent program. In v1.7.2 they read the plain-shell slot's 
 is `none`, `kanibako shell --persistent` at its box is now refused, as
 `kanibako start --persistent` already was.
 
-⚑ **Check anything inside a plain-shell box that branches on `$AGENT`.** A script testing
-`$AGENT = general` now takes the wrong arm. The value is `shell`.
+⚑ **Check anything inside a plain-shell box that branches on `{$AGENT}`.** A script testing
+`{$AGENT} = general` now takes the wrong arm. The value is `shell`.
 
 **Selecting the plain-shell box by name.** `--agent no_agent` is now `--agent shell`, and
 `pref.system.agent: no_agent` / `system.agent: no_agent` in a settings file is
@@ -5800,7 +5803,7 @@ grep -rn no_agent <data>/global/settings.yaml <workset root>/workset.yaml <box>/
 
 **Read this if you use `kanibako code --remote`.** The generated `podman-dispatch` wrapper that VS
 Code's `dev.containers.dockerPath` points at moved from `$XDG_DATA_HOME/kanibako/vscode-remote/bin/`
-to `@system.cache/vscode-remote/bin/` (default `$XDG_CACHE_HOME/kanibako/vscode-remote/bin/`). This
+to `{system.cache}/vscode-remote/bin/` (default `$XDG_CACHE_HOME/kanibako/vscode-remote/bin/`). This
 applies to every install, whatever `config.data` says.
 
 **What changed.** The wrapper is regenerable output — `kanibako code --remote` rewrites it on every
@@ -5869,7 +5872,7 @@ refused. The refusal names the setting that gave the value — the agent's own k
 `agent.default.bootstrap`, or a box's or a workset's pref of either, named with its file — and how
 to give the agent a program. A `null` or `""` on `agent.default.bootstrap` reaches every agent
 that does not supply its own; a plain-shell box does (see *The plain-shell store is
-`<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`*).
+`<data>/agents/shell/`, and `{$AGENT}` in a plain-shell box is `shell`*).
 
 **What to do.** Find the line, then delete it (the default `tmux` answers again unless another
 setting names a value) or give the agent a program. For a line in `<data>/global/settings.yaml` or
@@ -5982,14 +5985,14 @@ whose plugin sets no default for that key, which for the shipped agents includes
 
 ### 2.91 A `null` setting inside a bind's source leaves the bind out instead of mounting a host path
 
-**Read this if a settings file embeds a reference inside a longer path** (`@<key>/<more>`, or
-`@{<key>}` followed by more text) and the key it names is `null`: set with `--null`, written as
+**Read this if a settings file embeds a reference inside a longer path** (`{<key>}` followed by more
+text, such as `{<key>}/<more>`) and the key it names is `null`: set with `--null`, written as
 `null`, or `<None>` by declaration, as a standalone box's `workset.auth.path` and
 `workset.template` are, as `box.shell` is when unset, and as the primary workset's
 `workset.workspaces` is when that workset sets none.
 
 **What changed.** In v1.7.2 and v1.8.0-rc2 the `null` rendered as an empty string, so the path
-became one under the host's root: `@workset.auth.path/x` in a standalone box was the host
+became one under the host's root: `{workset.auth.path}/x` in a standalone box was the host
 directory `/x`, and `workset.vault_ro: null` in a primary or named workset made the vault source
 `/<box>`. Such a value is now `null` as a whole:
 
@@ -6001,16 +6004,16 @@ directory `/x`, and `workset.vault_ro: null` in a primary or named workset made 
 - A destination that references such a key refuses the launch and names the destination,
   except in a `seeded` entry, where the layer is skipped.
 - A `secret_path` whose value embeds one is left out, so the box starts without that secret.
-  Before, the secret's host path was the one under `/` (`/tok` for `@workset.auth.path/tok`).
+  Before, the secret's host path was the one under `/` (`/tok` for `{workset.auth.path}/tok`).
   Each launch warns once, naming the `secret_path` key, the `null` key it refers to, and the file
   that set the `null` (or kanibako's defaults for this box, as for a standalone box's
   `workset.auth.path`).
 - An `env` variable whose value embeds one is left out of the box.
 
 A reference to a key that has no value at all is unchanged: it still renders as an empty string.
-In v1.7.2 and v1.8.0-rc2, `@box.image`, `@box.share_images`, `@box.enable_vault`, and `@box.shell`
+In v1.7.2 and v1.8.0-rc2, `{box.image}`, `{box.share_images}`, `{box.enable_vault}`, and `{box.shell}`
 rendered as an empty string at launch unless a settings file set them; they now resolve to their
-declared defaults, so `@box.shell/<path>` is `null` and its bind is left out.
+declared defaults, so `{box.shell}/<path>` is `null` and its bind is left out.
 
 **What to do.** Decide what you meant for each bind:
 
@@ -6910,7 +6913,7 @@ one place, read by both the launch and the set door, so a change to one cannot l
 $ kanibako workset set ws1 workset.boxes=
 Error: the launch refuses this value at the box store key, so this set is refused too:
   workset.boxes
-the box root 'meta.box.path' derives from '@workset.boxes', so a settings file that sets workset.boxes to null / "" — or removes it — leaves every key rooted at the box root pointing somewhere at the filesystem root. Nothing was written: to use workset.boxes's default, run 'reset workset.boxes', or set the path you mean.
+the box root 'meta.box.path' derives from '{workset.boxes}', so a settings file that sets workset.boxes to null / "" — or removes it — leaves every key rooted at the box root pointing somewhere at the filesystem root. Nothing was written: to use workset.boxes's default, run 'reset workset.boxes', or set the path you mean.
 ```
 
 **What to do.** Run `reset workset.boxes` to take the default, or set the path you mean. `set --null
@@ -6920,39 +6923,39 @@ empty, now fails where it used to succeed** — check the value before you pass 
 
 ### A system path value referencing outside its tier is refused at `set`
 
-**Read this if you `set` a `system.*` path key to an `@`-reference.**
+**Read this if you `set` a `system.*` path key to a reference.**
 
-**What changed.** The system path keys resolve only against `@config.*` keys and the other system
+**What changed.** The system path keys resolve only against `{config.*}` keys and the other system
 path keys. In v1.8.0-rc2 `set` stored a reference outside them — `system set
-system.template=@box.image/x`, or `@system.agent/x` — and every later command that reads the path
+system.template={box.image}/x`, or `{system.agent}/x` — and every later command that reads the path
 tier then failed `Unknown @-reference`. `set` now exits 1 and writes nothing.
 
 **What you see.**
 
 ```
-$ kanibako system set system.template=@box.image/x
-Error: system.template is set to '@box.image/x', which points at '@box.image' — outside the system path tier. A system path value may reference only @config.* keys and the system path keys, so it cannot be read back at that stage — it is resolved before every other key. Reference one of those keys instead, or set the path you mean.
+$ kanibako system set system.template={box.image}/x
+Error: system.template is set to '{box.image}/x', which points at '{box.image}' — outside the system path tier. A system path value may reference only {config.*} keys and the system path keys, so it cannot be read back at that stage — it is resolved before every other key. Reference one of those keys instead, or set the path you mean.
 ```
 
-**What to do.** Reference a `@config.*` key or a system path key, or set the literal path. A value
-already stored by hand is read as before, and still fails `Unknown @-reference` until you change it.
+**What to do.** Reference a `{config.*}` key or a system path key, or set the literal path. A value
+already stored by hand is read as before, and still fails `Unknown reference` until you change it.
 
-### A `set` whose `@`-reference names a later key set is refused
+### A `set` whose reference names a later key set is refused
 
 **Read this if a scripted `set` now fails citing system-design "Ordering rule", or a working set
 directory key's `set` fails with "this value could not be read back".**
 
 **What changed.** A value may reference only keys of its own set or of a set resolved earlier, so
-`@box.*` and `@meta.box.*` are refused inside `workset.*`, and `@workset.*` inside `agent.*` or
+`{box.*}` and `{meta.box.*}` are refused inside `workset.*`, and `{workset.*}` inside `agent.*` or
 `system.*`. At `workset set` and `system set`, a working set directory key takes an absolute path,
-`~`, `$XDG_*`, `@meta.workset.path`, `@meta.workset.name`, a system path key, or another working set
+`~`, `{$XDG_*}`, `{meta.workset.path}`, `{meta.workset.name}`, a system path key, or another working set
 directory key.
 
 **What you see.**
 
 ```
-$ kanibako system set workset.template=@meta.box.path/t2
-Error: workset.template is set to '@meta.box.path/t2', which points at '@meta.box.path' — a meta.box key, which resolves after the workset keys this one belongs to. A key may reference only keys of its own set or of a set resolved before it (system-design "Ordering rule"). Reference one of those keys instead, or set the value you mean.
+$ kanibako system set workset.template={meta.box.path}/t2
+Error: workset.template is set to '{meta.box.path}/t2', which points at '{meta.box.path}' — a meta.box key, which resolves after the workset keys this one belongs to. A key may reference only keys of its own set or of a set resolved before it (system-design "Ordering rule"). Reference one of those keys instead, or set the value you mean.
 ```
 
 **What to do.** Reference an earlier set, or set the literal path. A value already stored is read as
@@ -6965,7 +6968,7 @@ you pass `--force` to a scope's `set`.**
 
 **What changed.** `set` at the `system`, `workset`, `box`, and `agent` scopes reads every settings
 file the command resolves, and a bad entry in any of them refuses the write unless `--force`. An
-entry the edited value's own `@`-chain depends on is refused even with `--force`. `get` warns on the
+entry the edited value's own reference chain depends on is refused even with `--force`. `get` warns on the
 same entries and reads on. `show` may print one extra `(dropped — …)` line per noun; it is new
 output, not a new fault, and names a table the launch already ignored. `--force` after `set` now
 means the rule above; it previously meant nothing on that verb, so no working script changes
@@ -6979,11 +6982,11 @@ Error: /home/you/ws1/workset.yaml stores entries that are not keys (spec §0):
   workset.bogus = /tmp
 Nothing was written. Remove those entries by editing the file, or rerun with --force to set anyway.
 
-$ kanibako workset set --force ws1 workset.canon=@workset.bogus/x
-Error: the edited value's own upstream chain reaches workset.bogus, which is not a key, so this set is refused too (spec §2a):
+$ kanibako workset set --force ws1 workset.canon={workset.bogus}/x
+Error: the edited value's own upstream chain reaches workset.bogus, a bad entry, so this set is refused too (spec §2a):
   /home/you/ws1/workset.yaml stores:
     workset.bogus = /tmp
-Name an upstream that is a key, or remove that entry by editing the file. --force does not set a value whose own chain is broken.
+Name another upstream, or fix that entry by editing the file. --force does not set a value whose own chain is broken.
 ```
 
 **What to do.**
@@ -6991,7 +6994,7 @@ Name an upstream that is a key, or remove that entry by editing the file. --forc
 - That file really does hold a line the keyspace does not declare. Read the file, delete the named
   line by hand, and rerun; `set` will not remove it for you and there is no flag that does. To write
   anyway, pass `--force`: it warns, writes, and leaves the entry in place.
-- If the entry the message names is one your new value points at through an `@`-reference,
+- If the entry the message names is one your new value points at through a reference,
   `--force` will not help — the chain would resolve through a name that is not a key. Repoint the
   value at a real key first.
 
@@ -7131,9 +7134,9 @@ key such as `workset.boxes`.**
 **What changed.** Only the launch used to read these keys from the system settings file; `create`,
 `workset connect`, `workset create`, `box list`, and box detection used the default directory. Now
 every reader uses the system value, and a working set's own `<workset root>/workset.yaml` still
-wins, a `null` there included. A directory key may reference another one (`@workset.boxes/logs`); a
+wins, a `null` there included. A directory key may reference another one (`{workset.boxes}/logs`); a
 cycle is refused, naming the chain. A standalone box's `workset.logs` default is now
-`@workset.boxes`, which is the same directory as before, `<root>/box_data/`. A value the system file
+`{workset.boxes}`, which is the same directory as before, `<root>/box_data/`. A value the system file
 holds must also name its working set: see *A working set directory value in the system settings
 file must name its working set*.
 
@@ -7409,7 +7412,7 @@ See *Packaging* in [docs/writing-targets.md](docs/writing-targets.md).
 
 **Read this if two working sets write their box logs into one directory**, through their own
 `workset.logs` values or through one value in the system settings file such as
-`@meta.workset.path/../logs`.
+`{meta.workset.path}/../logs`.
 
 **What changed.** `workset set`, `system set`, `workset reset`, `system reset`, and `workset create`
 refuse (exit 1) a change that would land two working sets, the default one included, on one logs
@@ -7848,7 +7851,7 @@ it in the settings engine's wording, which also names the key and the file. A re
 `transform_settings` (`items`, `get`, `update`, …) is still refused, now naming the file.
 
 The file's values are read as written. A `run_args` written as a string, such as `run_args: --a --b`, shows as
-written in `box show --effective`, and an `@agent.<agent>.run_args` reference in a value you set (for example with
+written in `box show --effective`, and an `{agent.<agent>.run_args}` reference in a value you set (for example with
 `kanibako system set`) yields that string, not a list of words. A bare `run_args:` is no longer shown as an empty
 value. The read-back `meta.box.agent.run_args` follows the same rule: the string as written, and `null` for a bare
 `run_args:`, where it read `[]`. The agent's command line is unchanged in every case.
@@ -7910,6 +7913,50 @@ flags*).
 
 **What you must do.** Nothing, unless you passed a `-e` for a variable that a secret also set and
 relied on the secret winning. Drop that `-e`.
+
+### 2.117 References are braced: `{a.b.c}` names a key and `{$NAME}` a variable
+
+**Read this if a value you wrote in a config or settings file holds `@`, `$`, `{`, `}`, or `\`.**
+
+**What changed.** A reference is written in braces. `{a.b.c}` is the value of the key `a.b.c`, and
+`{$NAME}` is the value of the variable `NAME` (`AGENT`, `WORKSET`, `TERM`, `COLORTERM`, or an
+`XDG_*` name). The braces end the name, so text can follow it: `{meta.box.name}.jsonl`.
+
+- **An old spelling stops the command, for this release only.** A bare `@a.b.c` that names a
+  declared key or starts with one (`@meta.box.name.jsonl`), and a bare `$NAME` that names a known
+  variable, are refused by name, and the message gives the braced spelling. So are `@{a.b.c}` and
+  `${NAME}`: `@{a.b.c}x` used to mean the value of `a.b.c` followed by `x`, and after this release
+  it means a literal `@` followed by that value. Once the guard is gone, all four are plain text.
+- **`@` and `$` are ordinary characters.** Any other text holding them is kept as written:
+  `user@host`, `https://user:key@host/v1`, `$HOME/bin`. `HOME` is not a kanibako variable, so the
+  box gets those characters and its own shell may expand them.
+- **A literal brace is doubled.** `{{` is a literal `{` and `}}` a literal `}`. If `a.b` is `x_x`,
+  `{{ {a.b} }}` resolves to `{ x_x }`. A lone `{` or `}` is refused by name, and the message gives the
+  doubled spelling. An empty or malformed reference, such as `{}` or `{bad name}`, is refused by name.
+- **Only `\\` and `\~` escape.** `\\` is a literal `\` and `\~` a literal `~`; a `\` before any other
+  character is refused by name, and a `\` that ends the value stays as written. The old escapes
+  change: `\@` becomes `@`, `\$` becomes `$`, `\{` becomes `{{`, and `\/` becomes `/`. A backslash
+  meant for another program is doubled: the shell prompt `\u@\h:\w` is written `\\u@\\h:\\w`.
+
+**What you see.** A refusal prints the braced spelling of what it names:
+
+| Before | Now |
+|---|---|
+| `Unknown variable: $HOME` | `Unknown variable: {$HOME}` |
+| `Unknown @-reference: box.image` | `Unknown reference: {box.image}` |
+| `Unknown @config-reference: config.nope` | `Unknown config reference: {config.nope}` |
+| `dangling @-reference '@box.nope' (…)` | `dangling reference '{box.nope}' (…)` |
+
+**What you must do.** Find each `@`, `$`, `{`, `}`, and `\` in the files you wrote:
+
+```bash
+grep -nE '[@${}\\]' ~/.config/kanibako.cfg /etc/kanibako/base.cfg <data>/global/settings.yaml \
+  <data>/agents/*/agent.yaml <workset-root>/workset.yaml <box-dir>/box.yaml
+```
+
+Put each reference in braces (`@config.data/x` → `{config.data}/x`, `$XDG_DATA_HOME/x` →
+`{$XDG_DATA_HOME}/x`, `@{meta.box.name}.jsonl` → `{meta.box.name}.jsonl`), double each literal
+brace, and respell each escape as above.
 
 ---
 
@@ -8100,7 +8147,7 @@ package moves the set together. That makes ordering load-bearing:
    def default_category_binds(self) -> dict[str, BindDefault]:
        return {
            f"agent.{self.name}.bindings.ro.launcher":
-               ("@system.cache/launcher", "~/.local/bin/launcher", "ro"),
+               ("{system.cache}/launcher", "~/.local/bin/launcher", "ro"),
        }
    ```
 
@@ -8116,7 +8163,7 @@ package moves the set together. That makes ordering load-bearing:
        return {
            f"agent.{self.name}.bindings.ro": {
                normalize_bind_dest("~/.local/bin/launcher"):
-                   ("@system.cache/launcher", "ro"),
+                   ("{system.cache}/launcher", "ro"),
            },
        }
    ```
@@ -8159,7 +8206,7 @@ package moves the set together. That makes ordering load-bearing:
    and the destination. It is refused rather than dropped on purpose: ignoring it would let a plugin
    written against the retired contract keep loading while producing a different key than it
    declared. ⚑ A `common:` row's `host_src` keeps its old meaning — the store leaf that gets rooted
-   under `@meta.agent.<agent>.path/common/` — and it is now also what tells kanibako which store dir
+   under `{meta.agent.<agent>.path}/common/` — and it is now also what tells kanibako which store dir
    a persona shares with its harness, a job the retired `key:` used to do.
 
 8. **BREAKING: `container_env:` moves out of `descriptor:` and becomes the file's top-level `env:`
@@ -8190,7 +8237,7 @@ package moves the set together. That makes ordering load-bearing:
 
    **Values must be STRINGS** — quote `"1"` and `"true"`. An unquoted `1` or `true` is refused
    rather than coerced, because YAML would hand you an int or a bool whose `str()` is not what you
-   wrote (`True`). `$GUEST_HOME` is expanded by the loader exactly as it is in a `box_dest`.
+   wrote (`True`). `{$GUEST_HOME}` is expanded by the loader exactly as it is in a `box_dest`.
 
    **If you build your descriptor by hand** rather than from a defaults file, implement the new
    `Target.default_envs()` — it returns `{"agent.<agent>.env.<VAR>": "value"}`, DISCRIMINATED under
@@ -8316,7 +8363,7 @@ import you break here is one that reached past it.
 - **`StandardPaths.share_ro` / `.share_rw` no longer exist as attributes.** In v1.7.2 they were
   properties that raised `NotImplementedError` naming their replacement; now they raise a plain
   `AttributeError`, so the cure is no longer in the traceback. It is unchanged: the vault
-  (`@workset.vault_ro` / `@workset.vault_rw`) and the `common` category — the latter being what the
+  (`{workset.vault_ro}` / `{workset.vault_rw}`) and the `common` category — the latter being what the
   `shared` → `common` rename in *Settings keys renamed or retired* produced.
 
 #### This bites USERS, not just plugin authors
@@ -8553,6 +8600,27 @@ credential-sync engine refreshes them before a launch and writes them back after
 a content transform in `transform_cred`, and a write-back beyond `cred_files` in
 `writeback_extra`. Delete the overrides and any import of `cp_if_newer`; a plugin that still
 needs it copies its few lines.
+
+### 3.6 Plugin values spell references in braces: `{$GUEST_HOME}` and `{meta.agent.<agent>.path}`
+
+**Read this if your defaults file or Python declarations hold `$GUEST_HOME` or an `@` reference.**
+
+**What changed.** A plugin's values follow the grammar in *References are braced: `{a.b.c}` names a key and `{$NAME}` a variable*. In a
+defaults file, a `box_dest` or an `env:` value starts with `{$GUEST_HOME}`, and a `category_binds:`
+row's `meta_ref` is a braced key reference:
+
+```yaml
+category_binds:
+  - category: caches
+    box_dest: "~/.kanibako/cache/tweakcc"
+    owner: agent
+    meta_ref: "{meta.agent.claude.path}/caches/tweakcc"
+```
+
+A source declared in Python takes the same spelling, such as `("{system.cache}/launcher", "ro")`.
+
+**What you must do.** Respell `$GUEST_HOME` and each `@` reference in your defaults file and your
+Python declarations. The shipped plugins already use the braced spellings.
 
 ---
 

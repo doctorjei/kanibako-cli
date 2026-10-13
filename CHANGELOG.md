@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **References are braced: `{a.b.c}` names a key and `{$NAME}` a variable.** For this release, a bare `@a.b.c`
+  naming a declared key, a bare `$NAME` naming a known variable, `@{a.b.c}`, and `${NAME}` stop the command, naming
+  the braced spelling; otherwise `@` and `$` are ordinary characters. A literal brace is doubled (`{{`, `}}`). Only
+  `\\` and `\~` escape, so `\@`, `\$`, `\{`, and `\/` become `@`, `$`, `{{`, and `/`. Plugin defaults files spell
+  `{$GUEST_HOME}` and braced `meta_ref` sources. See `MIGRATION.md`, "References are braced: `{a.b.c}` names a key
+  and `{$NAME}` a variable".
 - **The persona probe tests the credential without a model before it tests the model.** The claude and codex
   probes ask for the endpoint's model list with the token and, if accepted, without it, then send the model request.
   A launch is refused on the model request as before, except that a credential verified without a model now warns
@@ -29,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference; and `config reset` names an agent-file value as the one now in effect. A value an agent launch refuses
   now stops `kanibako shell` and `box info`, naming the key and the file; `config reset` reports only the clear,
   `agent info` warns and shows the built-in label, and `stop` warns and skips the credential writeback. A
-  `run_args` written as a string shows as written in `box show --effective`, and an `@agent.<agent>.run_args`
+  `run_args` written as a string shows as written in `box show --effective`, and an `{agent.<agent>.run_args}`
   reference in a value you set yields that string, not a list of words; a bare `run_args:` is no longer shown as an
   empty value. `meta.box.agent.run_args` reads back the same way: the string as written, and `null` for a bare
   `run_args:` (it read `[]`). The agent's command line is unchanged. See `MIGRATION.md`, "Every command reads an agent settings
@@ -587,7 +593,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a plain-shell launch resolves a real node rather than an undeclared one. Clean break,
   documentation-only migration: nothing renames the directory for you, and there is no fallback
   read of the old one — see MIGRATION.md ("The plain-shell store is `<data>/agents/shell/`, and
-  `$AGENT` in a plain-shell box is `shell`") for the hand move.
+  `{$AGENT}` in a plain-shell box is `shell`") for the hand move.
 
 - **The built-in plain-shell target is named `shell`, not `no_agent`.** `--agent no_agent`
   is now `--agent shell`, and the `kanibako.agents` entry point is gone — the target is
@@ -610,7 +616,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@config.agents/shell/template` with `kanibako system set`; or move them to the system
   template (`<data>/global/template/box/home`, which seeds every new box) or a workset's
   `template/box/home` — see MIGRATION.md ("The plain-shell store is `<data>/agents/shell/`, and
-  `$AGENT` in a plain-shell box is `shell`") for the commands. Boxes that already exist are
+  `{$AGENT}` in a plain-shell box is `shell`") for the commands. Boxes that already exist are
   unaffected: seeding happens once, at create.
 
 - **A plain-shell box takes its multiplexer from `agent.shell.bootstrap`, not
@@ -624,7 +630,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent.shell.transform` are now supplied as `<None>` as well. That changes no launch: the
   plain-shell target declares no plugin descriptor, so a plain-shell launch passes no agent
   arguments and patches no binary, and uses neither key. See MIGRATION.md ("The
-  plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
+  plain-shell store is `<data>/agents/shell/`, and `{$AGENT}` in a plain-shell box is `shell`").
 
 - **A `bootstrap` of `null` or `""` now means no bootstrap program, for every agent.** In 1.7.2
   either one fell back to `tmux`, as if the key were not set. Both are now values (spec §2h keeps
@@ -653,14 +659,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent.shell.canon` is `@config.agents/default/canon` (set `agent.shell.canon` to move it). The shell tier supplies `model`, `endpoint`
   and `continue_mode` itself, as `<None>`, and its own `env.TERM`, the host's `$TERM` as for every
   agent. `agent.default` values still reach every true agent. See MIGRATION.md ("The plain-shell
-  store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
+  store is `<data>/agents/shell/`, and `{$AGENT}` in a plain-shell box is `shell`").
 
 - **`kanibako shell --persistent` and `kanibako start --entrypoint` use the bootstrap of the
   box's own agent.** In 1.7.2 these launches, which run no agent program, read the plain-shell
   slot's settings and then `agent.default.bootstrap`, so a value set for the box's agent
   (`agent.claude.bootstrap`, say) did not apply to them. They now read the same value
   `kanibako start` uses to decide whether a launch is persistent. See MIGRATION.md ("The
-  plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
+  plain-shell store is `<data>/agents/shell/`, and `{$AGENT}` in a plain-shell box is `shell`").
 
 - **The shipped charter and handbook read more cleanly.** The charter no longer repeats the session-handoff note or
   the mailbox paths its channels table already gives, and several handbook typos and a broken bold heading are fixed.
@@ -3167,7 +3173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or `@meta.workset.path`. A value such as `@workset.channelroot/chat` or `/x/$AGENT/c` used to be
   stored and then broke that working set's later commands. A dangling reference to a declared key
   (other than an `agent.<persona>.*` key) now says it is declared but outside this command's
-  cascade, instead of "no such config key in the keyspace". See *A `set` whose `@`-reference names a
+  cascade, instead of "no such config key in the keyspace". See *A `set` whose reference names a
   later key set is refused* in [MIGRATION.md](MIGRATION.md).
 
 - **Vault data kanibako keeps is now always named, including a plain file.** A loose file left
