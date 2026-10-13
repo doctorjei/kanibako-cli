@@ -503,8 +503,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Set a project configuration value",
         description=(
             "Set a project setting (key=value).\n\n"
-            "  box set model=sonnet            set 'model' for cwd project\n"
-            "  box set myproj model=sonnet     set 'model' for named project\n"
+            "  box set pref.agent.claude.model=sonnet\n"
+            "                                  set claude's 'model' for cwd project\n"
+            "  box set myproj pref.agent.claude.model=sonnet\n"
+            "                                  set claude's 'model' for named project\n"
             "  box set box.env.MY_VAR=hello    set env var\n"
             "  box set --null pref.agent.claude.common\n"
             "                                  request that the agent's common\n"
@@ -524,8 +526,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Reset (remove) a project configuration override",
         description=(
             "Remove a project override, reverting to the inherited value.\n\n"
-            "  box reset model                 reset one key for cwd project\n"
-            "  box reset myproj model          reset one key for named project\n"
+            "  box reset pref.agent.claude.model\n"
+            "                                  reset one key for cwd project\n"
+            "  box reset myproj pref.agent.claude.model\n"
+            "                                  reset one key for named project\n"
             "  box reset --all                 reset all overrides\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -546,8 +550,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Get a project configuration value",
         description=(
             "Read one project setting.\n\n"
-            "  box get model                   get 'model' for cwd project\n"
-            "  box get myproj model            get 'model' for named project\n"
+            "  box get pref.agent.claude.model\n"
+            "                                  get claude's 'model' for cwd project\n"
+            "  box get myproj pref.agent.claude.model\n"
+            "                                  get claude's 'model' for named project\n"
             "  box get box.env.MY_VAR          read an env var\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

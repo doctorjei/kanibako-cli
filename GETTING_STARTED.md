@@ -162,11 +162,11 @@ that work at every scope: `box`, `workset`, `agent`, and `system`:
 ```bash
 kanibako box show                    # box overrides
 kanibako box show --effective        # resolved values (inherited + overrides)
-kanibako box get model               # read one key
-kanibako box set model=sonnet        # set one key on this box
-kanibako box reset model             # remove the override
+kanibako box get pref.agent.claude.model          # read one key
+kanibako box set pref.agent.claude.model=sonnet   # set one key on this box
+kanibako box reset pref.agent.claude.model        # remove the override
 
-kanibako workset set default model=opus   # default for primary-workset boxes
+kanibako workset set default pref.agent.claude.model=opus  # default for primary-workset boxes
 kanibako agent set claude model=opus      # default for all boxes using this agent
 kanibako system set model=opus            # global settings default
 ```

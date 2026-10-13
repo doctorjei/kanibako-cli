@@ -205,7 +205,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Set a working set configuration value",
         description=(
             "Set a working set setting (key=value).\n\n"
-            "  workset set myws model=sonnet      set 'model'\n"
+            "  workset set myws pref.agent.claude.model=sonnet  set claude's 'model'\n"
             "  workset set myws workset.auth.share_allowed=false  set sharing\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -222,7 +222,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Reset (remove) a working set configuration override",
         description=(
             "Remove a working set override, reverting to the inherited value.\n\n"
-            "  workset reset myws model           reset one key\n"
+            "  workset reset myws pref.agent.claude.model  reset one key\n"
             "  workset reset myws --all           reset all overrides\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -246,7 +246,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Get a working set configuration value",
         description=(
             "Read one working set setting.\n\n"
-            "  workset get myws model             get 'model'\n"
+            "  workset get myws pref.agent.claude.model  get claude's 'model'\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

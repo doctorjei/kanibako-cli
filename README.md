@@ -746,7 +746,7 @@ container:
 ```bash
 # Persistent (stored in the scope's settings file)
 kanibako box set box.env.EDITOR=vim             # box-level
-kanibako workset set workset.env.EDITOR=vim     # workset-level
+kanibako workset set default workset.env.EDITOR=vim  # workset-level
 kanibako system set system.env.EDITOR=nano      # global (all boxes)
 kanibako box get box.env.EDITOR                 # show one value
 
@@ -1033,7 +1033,7 @@ All settings levels share the same four verbs -- `set` / `get` / `show` /
 # Box level
 kanibako box show                       # show box overrides
 kanibako box show --effective           # show resolved values (inherited + overrides)
-kanibako box get model                  # get one key
+kanibako box get pref.agent.claude.model         # get one key
 kanibako box set pref.agent.claude.model=sonnet  # set one key (this box's claude)
 kanibako box reset pref.agent.claude.model       # remove override, back to default
 
