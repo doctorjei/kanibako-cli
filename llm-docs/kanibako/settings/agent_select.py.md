@@ -5,9 +5,9 @@ resolves the settings side of the question with a narrow pre-pass, applies `--ag
 hands the winner to `kanibako.settings.config.resolve_agent`, which owns everything that is NOT a
 key: name validation against the installed set and persona-ref canonicalization.
 
-🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES** (his ruling, 2026-09-19; keyspec §2b). The
-installed-agent COUNT decides nothing — not even one installed plugin is picked for the user — and
-the two no-name states get two DIFFERENT refusals, which is the whole of the ruling:
+🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES** (keyspec §2b). The installed-agent COUNT decides
+nothing — not even one installed plugin is picked for the user — and the two no-name states get two
+DIFFERENT refusals:
 
 | `system.agent` | means | raised |
 |---|---|---|
@@ -19,8 +19,9 @@ STRINGS, so those spellings request an agent by that name and fail as `AgentNotI
 ⚑ The null state is reachable BY TYPO — `null`, `Null`, `NULL`, `~` and a key left blank after its
 colon all read as Python `None`.
 
-The module is deliberately thin. It contains one dataclass, one context builder, and one resolve
-function; the interesting content is the set of rules below, all of which are spec rules
+The module is deliberately thin. It contains one dataclass, two context builders
+(`launch_resolve_ctx` and its box-less body `host_resolve_ctx`), and one resolve function; the
+interesting content is the set of rules below, all of which are spec rules
 (`specs/settings-keyspace-1.8.0.md` §1A / §2b / §2g / §2h) rather than local choices.
 
 ## The selection order, and where each tier is settled
@@ -53,21 +54,18 @@ spec-named `system.agent` (§2g) living in the `system:` table of the system set
 ## The selection LEVEL, and why the resolved answer is installed unconditionally
 
 Whatever wins, `select_agent` reports it and the launch installs it at `system.agent` as the §1A
-top-most level (`build_launch_snapshot(cli_level=…)`). That is not tidiness — three separate
-readers now dereference `@system.agent` (both re-pointed §2c anchors today, the handbook's agent
-chapter tomorrow), so the snapshot MUST agree with the process that runs.
+top-most level (`build_launch_snapshot(cli_level=…)`). That is not tidiness — keys dereference
+`@system.agent` (e.g. the §2c anchors `meta.box.auth.workset_path` and
+`meta.box.agent.auth.share_support`), so the snapshot MUST agree with the process that runs.
 
-Without the install there are three ways to disagree:
+Without the install there are two ways to disagree:
 
 * `--agent claude` with `pref.system.agent: goose` — the snapshot says goose while claude runs;
-* the INSTALLED-COUNT rule — the commonest host has one agent installed and nothing stored, so the
-  box runs claude while `system.agent` is ABSENT and every dereference of it resolves to `""`;
 * a persona ref stored as `nav+claude` — the running node is the canonical `nav℘claude`.
 
-Suppressing the pref when `--agent` is given (the alternative considered) fixes none of these: it
-only changes WHICH wrong value the snapshot reports. One rule — *the resolved selection is
-installed at the top* — covers all three, is a no-op when the cascade already said it, and is
-exactly the mechanism P8 generalized to every key-shadowing flag.
+Suppressing the pref when `--agent` is given fixes neither: it only changes WHICH wrong value the
+snapshot reports. One rule — *the resolved selection is installed at the top* — covers both, is a
+no-op when the cascade already said it, and is the mechanism every key-shadowing flag uses.
 
 ## P8 (v1.8.0) landed that generalization
 
@@ -103,10 +101,8 @@ harness). `select_agent` never returns `""` (see `has_agent`); a plain-shell box
 | `"cli"` | `--agent` |
 | `"settings"` | the stored key, or a pref |
 
-🛑 **TWO SOURCES ARE RETIRED AND NEITHER IS PRODUCED ANY MORE.** `"autopick"` was the
-installed-count rule; `"suppressed"` was `pref.system.agent: null` yielding the plain-shell box,
-which is a REFUSAL now. A returning `select_agent` call therefore always carries a name somebody
-wrote.
+🛑 **Those are the only two.** Nothing auto-picks an agent, and `pref.system.agent: null` is a
+REFUSAL, so a returning `select_agent` call always carries a name somebody wrote.
 
 ## `has_agent` — `""` means OPPOSITE things on the two sides of the target seam
 
@@ -121,8 +117,7 @@ Does this box run an agent AT ALL? (spec §2b D-M6.)
 
 Handing the first to the second LAUNDERS a no-agent box into auto-detection: bifrost measured one
 launching claude, with claude's binary, commons and CREDENTIALS delivered. 🛑 **`pref.system.agent:
-null` no longer produces a node-less selection** — it refuses — so no production path reaches this
-guard today.
+null` produces no node-less selection** — it refuses — so no production path reaches this guard.
 
 ⚑ **It is KEPT, and NOT because `shell` will arrive through it.** Keyspec §2b expresses the
 plain-shell box as an effective `@system.agent` of `shell`, and §2d gives that pseudo-agent a name
@@ -136,9 +131,7 @@ Route every selection→target conversion through the idiom below. ⚑ **There i
 that does it for you** — the `has_agent` guard IS the translation, spelled at each seam, so look for
 the guard and not for a function.
 
-⚑ The predicate is `bool(self.node)` and nothing else. It briefly read `self.source != "suppressed"
-and bool(self.node)`; `"suppressed"` is a retired source no production path emits, so that conjunct
-was dead in front of the only question being asked (P4).
+⚑ The predicate is `bool(self.node)` and nothing else.
 
 **The idiom, at every seam that needs a target:**
 
@@ -178,21 +171,12 @@ folded into the snapshot floor so `@system.*` resolves from it.
 The xdg map is the canonical FULL host map — a data-home-only partial map raised on stored
 `$XDG_CACHE_HOME/...` values — anchored on the resolved `std.data_home`.
 
-⚑⚑ **BOTH HALVES OF THE CTX ARE DERIVED BUILDERS NOW, AND THE `config=` HALF WAS THE LAST HAND LIST.**
-`config=` is `settings/paths.host_config_map(std)`, the Layer-1 twin of `system_path_floor` and the
-`config=` twin of `host_xdg_map`. Until 2026-08-28 it was five string literals written out here and
-again in `commands/workset_cmd._print_effective_shares`, while `CONFIG_PATH_DEFAULTS` has declared
-SIX since `config.journal` was added the day after those literals were first written (`bf97bd20`
-2026-06-29 → `ee11299a` 2026-06-30; the wiring commit `256f7eba` widened `paths.py` and
-`config_keys.py` and never reached this map). The key is fully declared — manifest `layer: 1`, a
-real default, `set: file`, and in `config_keys` — so `config set config.journal=…` was ACCEPTED and
-`@config.journal` resolved at set time, then reached `_ABSENT` at launch and the referring key was
-dropped with no message and rc 0. That is the `system.channels.broadcast` shape one layer down.
-
-⚑ Nothing had ever compared the two carriers; the omission carried **no** `⚑` justification anywhere,
-which in this file set is the tell that it was an oversight rather than a decision — `system_path_floor`
-states ITS three-key omission by name. `tests/test_settings/test_path_tier_parity.py` is now the
-comparison, and it is EFFECT-based on both sides.
+⚑⚑ **BOTH HALVES OF THE CTX ARE DERIVED BUILDERS, NEVER HAND LISTS.** `config=` is
+`settings/paths.host_config_map(std)`, the Layer-1 twin of `system_path_floor` and the `config=`
+twin of `host_xdg_map`. A hand list misses a key `CONFIG_PATH_DEFAULTS` declares: `config set` then
+accepts the key and `@config.<key>` resolves at set time, but it reaches `_ABSENT` at launch and the
+referring key is dropped with no message and rc 0. `tests/test_settings/test_path_tier_parity.py`
+compares the carriers, and it is EFFECT-based on both sides.
 
 *agent_name* is `None` for the SELECTION pass: no agent is known yet, so a `$AGENT` anywhere
 resolves to a refusal rather than to a silent `""`. That refusal is recorded (never raised) because
@@ -215,9 +199,10 @@ quiet, deliberately.
 
 ### The retired-key sweep, tier by tier
 
-RETIRED spellings are refused by name BEFORE anything is resolved (P7 / M-4). The check sits here
-rather than inside `assemble_levels` because a raise there would also break `config set` — the very
-command the message prescribes.
+RETIRED spellings are refused by name BEFORE anything is resolved (P7 / M-4). `select_agent` runs
+the check as the `SELECT` purpose of `settings_assemble.read_settings_files`, not inside
+`assemble_levels` (the `NARROW` read), because a raise there would also break `config set` — the
+very command the message prescribes.
 
 ⚑ EVERY tier the cascade reads is checked, BASE included (M-4's sweep names
 `/etc/kanibako/settings_base.yaml`): a site admin's stale `box.agent_name` would default DOWN into
@@ -227,11 +212,12 @@ exempt one.
 The cure is LEVEL-APPROPRIATE — a pref is not writable at base/system, so those levels are told to
 REMOVE the key rather than to run a `box set` that cannot fix them.
 
-⚑ The BOX-level cure names the box explicitly (Jei: the bare form only works from a resolvable cwd,
-and is required otherwise) — `proj.name` is threaded only for `level == "box"`. A NAMELESS box
-(`proj.name` falsy — spec: the short-hash fallback `settings/paths.py` uses for display is NOT an
-addressable `box set` positional) degrades to today's bare cure line rather than emit an argument
-that would not resolve.
+⚑ The BOX-level cure names the box explicitly, because the bare form only works from a resolvable
+cwd: `select_agent` passes `box_ref=project_cure_ref(proj) if proj.name else None` to
+`read_settings_files(..., purpose=ReadPurpose.SELECT)`, which hands it to the box level only. A
+NAMELESS box (`proj.name` falsy — the short-hash fallback `settings/paths.py` uses for display is
+NOT an addressable `box set` positional) gets the bare cure line rather than an argument that would
+not resolve.
 
 ### PRESENT-`None` is not `__MISSING__`
 
@@ -250,33 +236,10 @@ must be kept distinct from `__MISSING__` — never collapse them with a falsines
 `__MISSING__` means *setup has never run* and gets the OTHER refusal. Collapsing the two spellings
 loses the only distinction that decides which sentence the user reads.
 
-🛑 **This arm used to produce the NO-AGENT plain-shell box (D-M6) instead; his ruling of 2026-09-19
-took that route away.** ⚑ **No released version ever had it.** `pref.*` does not exist in v1.7.2 —
-`git grep -c "pref\.system\.agent" v1.7.2` is zero over the whole tree — so the `null` spelling was
-born and retired inside the 1.8.0 rc series, and the retirement breaks nothing a user can do today.
-
-⚑ **The plain-shell box is still reachable through settings, by NAME:** `shell` is the built-in
+⚑ **The plain-shell box is reachable through settings, by NAME:** `shell` is the built-in
 target seeded by `kanibako-cli` itself (no entry point — `pyproject.toml` carries none for it), so
 `discover_targets()` always contains it and `resolve_agent(explicit_agent=None, requested="shell")`
-returns `"shell"`. `ShellTarget.default_entrypoint` is `None`, so `commands/start.py` computes
-`shell_launch = True` and runs the resolved `box.shell`. `--agent shell` and `pref.system.agent:
+returns `"shell"`. `ShellTarget` has no `descriptor`, so `targets.base.has_plugin` is false for it
+and `commands/start.py` computes `shell_launch = not entrypoint and not has_plugin(target)` — true
+without `--entrypoint` — and runs the resolved `box.shell`. `--agent shell` and `pref.system.agent:
 shell` both work. The retired `no_agent` spelling is refused, never translated ([R174]).
-
----
-
-## Completeness sweep
-
-This document was created by the llm-docs 60% pass (`[R135]`). Everything above was MOVED out of
-`src/kanibako/settings/agent_select.py`; nothing was dropped as false, and nothing was dropped as
-duplication.
-
-What stayed in the source, under the keep test:
-
-* the `⚑⚑` on `has_agent` — the warning plus the idiom line, because the launder-a-suppression bug
-  happens at the call site and a pointer alone would not stop it;
-* the `⚑` at the PRESENT-`None` arm — collapsing it with `__MISSING__` looks like a simplification
-  and silently merges two refusals the ruling exists to keep apart;
-* the `⚑` on the retired-key loop — it reads as over-broad until you know the base tier is the
-  worst case;
-* the `⚑` on `launch_resolve_ctx`'s `agent_name=None` — the argument looks optional;
-* a one-line docstring on every symbol.
