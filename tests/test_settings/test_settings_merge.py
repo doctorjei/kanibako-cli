@@ -288,7 +288,7 @@ def test_higher_scope_overrides_one_agent_by_name() -> None:
 
 
 def test_present_none_scalar_kept() -> None:
-    # box resets a scalar to None → KEEP None (consumer applies default), and the
+    # box sets a scalar to None → KEEP None (the consumer reads None), and the
     # lower workset value is CLEARED.
     box = KeyStore({"box": {"image": None}})
     ws = KeyStore({"box": {"image": "ws-img"}})

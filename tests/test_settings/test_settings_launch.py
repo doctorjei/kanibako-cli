@@ -1294,8 +1294,8 @@ def test_effective_behavior_allow_helpers_per_agent_override_wins():
 
 
 def test_effective_behavior_omits_present_none():
-    # A present-None reset in the WINNING (active) slot SETS + shadows default →
-    # omitted (the consumer applies its own default, §3).
+    # A present-None in the WINNING (active) slot SETS + shadows default →
+    # omitted; the consumer reads None, never the key's default (keyspec §2h).
     snap = KeyStore({"agent": {
         "default": {"model": "sonnet"},
         "claude": {"model": None},

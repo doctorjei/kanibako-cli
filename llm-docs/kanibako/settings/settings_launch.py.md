@@ -1480,13 +1480,16 @@ scope. That is the one place this differs from the old per-file-active-over-defa
 reader, a Jei-NOTED spec-CORRECTION covered by a behavior-equivalence test, NOT silent.
 
 *keys*: when given, read exactly those keys; when `None` (the live default), DISCOVER every scalar
-behavior leaf present under `agent.<active>` ∪ `agent.default`, so any undeclared agent-scope scalar
-keys survive as pass-through, matching the old reader's key union. Category subtrees (`bindings` /
+behavior leaf present under `agent.<active>` ∪ `agent.default`. Discovery exists because the
+agent-leaf set is PLUGIN-declared (spec §0): a leaf a shipped plugin declares still surfaces. It is
+NOT a pass-through for undeclared keys — the keyspace is closed, and a name that reaches this node
+was already judged at the boundary that admitted it. Category subtrees (`bindings` /
 `meta` / `common` / …) and `Bind` leaves are NOT behavior and are skipped.
 
-A key absent from BOTH slots is omitted. A present-`None` scalar (reset-to-default) in the WINNING
-slot is omitted — the consumer applies its own default (§3) — and, since present-`None` SETS the
-name, it shadows the `agent.default` value below it (the active slot reset it). Values are
+A key absent from BOTH slots is omitted. A present-`None` scalar in the WINNING slot is omitted too,
+but it SETS the name and shadows the `agent.default` value below it: the consumer reads the omission
+as `None`, never the key's default (keyspec §2h). Where absent and present-`None` must be told apart,
+read `behavior_pick`. Values are
 stringified, since behavior settings are scalars. Reads go via the UNBOUND `dict` probe (S3).
 
 ⚑ **NO `box.agent.*` OVERLAY (P7).** The settable box-scoped agent mirror is RETIRED (spec §2b — it

@@ -104,7 +104,7 @@ empty snapshot.
 
 | category of the leaf | result |
 |---|---|
-| scalar leaf | KEEP `None` — the consumer applies its default |
+| scalar leaf | KEEP `None` — the consumer reads `None`, never the key's default (keyspec §2h) |
 | bind / category leaf | OMIT — no mount (tier-2 honesty — `settings_views` § The three tiers) |
 | `masks` leaf | OMIT — unmask that path (spec §2a "masks is a KEYED category") |
 | anything under the top-level `pref` table | KEEP verbatim, with NO classification at all |

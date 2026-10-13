@@ -3442,6 +3442,25 @@ class TestAllowHelpersGate:
                 )
             m_shell.assert_not_called()
 
+    def test_present_none_turns_helpers_off_not_the_declared_default(
+        self, start_mocks,
+    ):
+        # keyspec §2h: a KEPT ``None`` scalar is read as None, never the key's
+        # default.  The active slot's present-None shadows the default-false floor,
+        # so ``effective_behavior`` omits the key — the shape an ABSENT key has,
+        # which applies the DECLARED ``agent.default.allow_helpers`` (true).  The
+        # launch tells them apart with ``behavior_pick``: present-None ⇒ helpers
+        # OFF, so a real-agent launch never reaches resolve_box_shell.
+        with start_mocks() as m:
+            m.agent_cfg.state["allow_helpers"] = None
+            with patch("kanibako.launch.shells.resolve_box_shell") as m_shell:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], no_helpers=False,
+                )
+            m_shell.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # E2b — always-on box supervisor as PID-1 on a detached AGENT launch.

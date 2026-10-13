@@ -424,8 +424,8 @@ def test_higher_scope_present_none_suppresses_floor(tmp_path):
     """A higher-scope present-None (the KeyStore suppression idiom, spec §2h
     "Values are installed VERBATIM" — successor to the old terminal-``""``)
     over a declared-default floor value
-    SUPPRESSES it: the behavior read OMITs the key (the consumer applies its own
-    default), and the floor is NOT consulted. A sibling floor default with no
+    SUPPRESSES it: the behavior read OMITs the key (the consumer reads None, never
+    the key's default — keyspec §2h), and the floor is NOT consulted. A sibling floor default with no
     suppression still shows through.
 
     This is the STEP-4 (7c) replacement coverage for the retired
