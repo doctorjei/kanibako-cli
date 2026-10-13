@@ -229,9 +229,9 @@ def render_class(node: ast.ClassDef) -> list[str]:
 # ---------------------------------------------------------------------------
 
 # Which headings are followed by a blank line before the fence.  This is ASYMMETRIC on purpose,
-# and the asymmetry is inherited rather than designed: ``## Variables`` has the blank line in Jei's
+# and the asymmetry is inherited rather than designed: ``## Variables`` has the blank line in the
 # hand-edited exemplar (api-doc-format-exemplars/jei-box_supervisor.py.md) and ``## Types`` /
-# ``## Functions`` do not.  ``## Classes`` was added later and ruled to follow ``## Variables``.
+# ``## Functions`` do not.  ``## Classes`` was added later and follows ``## Variables``.
 # Reproducing the exemplar byte-for-byte outranks internal tidiness here; making all four uniform
 # is a one-line change to this set if that is ever ruled the other way.
 BLANK_AFTER_HEADING = frozenset({"Variables", "Classes"})

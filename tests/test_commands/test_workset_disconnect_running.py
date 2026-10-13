@@ -5,8 +5,8 @@ R7, measured on the base: with ``kb-<ws>-<box>`` running, ``disconnect <ws> <box
 deleted the vaults and box dir under a live container, and the first orphaned the container
 (no ref reaches it after).  The fix is the ONE running-box pre-flight every destructive verb
 uses (``abort_if_box_running``), before the confirmation.  ``--force`` never overrides
-it for a plain disconnect or a ``workset rm`` — both deregister a running box (his 171-RM Q1,
-172-RF) — and still overrides it for ``--remove-files``, the purge.
+it for a plain disconnect or a ``workset rm`` — both deregister a running box (171-RM Q1,
+172-RF [Jei:2026-10-11]) — and still overrides it for ``--remove-files``, the purge.
 
 The runtime is a real stub binary through ``KANIBAKO_DOCKER_CMD``, so the production
 ``_check_container_running`` asks it, as it would ask podman.  Every case goes through the

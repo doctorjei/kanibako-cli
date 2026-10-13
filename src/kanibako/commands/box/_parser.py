@@ -2353,10 +2353,10 @@ def box_channel_keeps(std: StandardPaths, mode: BoxMode, ws_root: Path, name: st
     """The box's inbox and share dirs, in the *retained* shape of :func:`_confirm_purge`.
 
     system-design § "Box lifecycle": a destructive verb keeps any path outside the box's
-    root and reports it; the channel dirs are outside every mode's root (HIS 171-RM Q2).
-    Read through the box's own channel keys, as a launch mounts them; *workset* names a
-    named box's workset.  A key that does
-    not resolve is warned about and names nothing: these dirs are never deleted anyway.
+    root and reports it; the channel dirs are outside every mode's root (171-RM Q2
+    [Jei:2026-10-11]). Read through the box's own channel keys, as a launch mounts them;
+    *workset* names a named box's workset.  A key that does not resolve is warned about and
+    names nothing: these dirs are never deleted anyway.
     """
     from kanibako.channels.channels import (
         own_partition_dirs, workset_channels_at, workset_token)
@@ -2913,8 +2913,8 @@ def _refuse_purge_while_live(std, config, standalone_root: str | None, metadata_
     """The move/convert/duplicate running-box pre-flight, reused for a PURGE.
 
     A plain ``box rm`` asks it too, passing *consequence* (it deletes nothing) and
-    ``forceable=False``: a running box is never deregistered, --force or not (HIS
-    171-RM Q1, 172-RF).
+    ``forceable=False``: a running box is never deregistered, --force or not
+    (171-RM Q1, 172-RF [Jei:2026-10-11]).
 
     ⚑ ONE PROBE — the same :func:`abort_if_box_running` every destructive verb uses, so
     one question never gets two answers; a purge under a live container takes its vaults
@@ -3026,9 +3026,9 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace, *,
     if args.purge and root_path is not None:
         refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
     # ⚑ S6r: a purge under a live container takes its vaults and canon mid-write, and a
-    # plain rm never deregisters a running box (HIS 171-RM Q1).  Same pre-flight
+    # plain rm never deregisters a running box (171-RM Q1 [Jei:2026-10-11]).  Same pre-flight
     # move/convert/duplicate use, before any question; --force overrides it for a purge
-    # only (HIS 172-RF: forcing a plain rm breaks things).  A plain rm of
+    # only (172-RF [Jei:2026-10-11]: forcing a plain rm breaks things).  A plain rm of
     # another spelling's row leaves the box registered under its holder: nothing to ask.
     if (root_path is not None and metadata_dir is not None
             and (args.purge or registry_store.standalone_identity_holder(
@@ -3243,8 +3243,8 @@ def run_rm(args: argparse.Namespace) -> int:
     if args.purge:
         refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
     # ⚑ S6r: the same running-box pre-flight move/convert/duplicate use, for a purge and
-    # a plain rm alike (HIS 171-RM Q1: a running box is never deregistered; --force
-    # overrides it for a purge only, HIS 172-RF).  Probed by
+    # a plain rm alike (171-RM Q1: a running box is never deregistered; --force
+    # overrides it for a purge only, 172-RF; [Jei:2026-10-11]).  Probed by
     # the NAME resolved above, never re-resolved: a cwd ``name/`` is another box.
     if _refuse_purge_while_live(
             std, config, None, metadata_dir, args.force, "Purging this box",

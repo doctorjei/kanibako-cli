@@ -1584,7 +1584,7 @@ path = ["project", "requires-python"]
 
 # ---------------------------------------------------------------------------
 # FACT: every distribution under `packages/` declares a byte-identical
-# `kanibako-cli` requirement (`Q14`, his answer: assert identity).
+# `kanibako-cli` requirement (`Q14` [Jei:2026-09-19]: assert identity).
 # AUTHORITY: the meta package's `dependencies` is the declared side: meta must
 # pin the plugins it installs (`Q14`), and it is what `pip install kanibako`
 # installs. Each `packages/agent-*/pyproject.toml` is the code side. Nothing

@@ -128,7 +128,7 @@ class TestSocketPathBoundary:
 
 class TestBoundedHubDirName:
     """``bounded_hub_dir_name`` keeps ``<run_dir>/<name>/helper.sock`` under the AF_UNIX
-    limit; the DIRECTORY is the bind source (his 184-S2 (a))."""
+    limit; the DIRECTORY is the bind source (184-S2 (a) [Jei:2026-10-13])."""
 
     SOCK = "/helper.sock"
 

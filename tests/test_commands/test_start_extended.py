@@ -402,7 +402,7 @@ class TestFirstBootImagePersistence:
 
     def test_share_images_flag_reaches_the_gate(self, start_mocks):
         """`--share-images` on a materializing launch persists too (ALL shadowing
-        flags act uniformly — the 4a ruling)."""
+        flags act uniformly [Jei:2026-08-02])."""
         with start_mocks() as m:
             m.proj.is_new = True
             with patch("kanibako.commands.start.persist_creation_level") as m_gate:
@@ -882,7 +882,7 @@ class TestPersistentMode:
             )
             m.fcntl.flock.assert_not_called()
 
-    # --- his 184-S2 (a): a persistent box has helpers, and its hub outlives start ---
+    # --- 184-S2 (a) [Jei:2026-10-13]: a persistent box has helpers, and its hub outlives start ---
 
     def _launch(self, m, tmp_path, *, persistent, no_helpers=False, allow="true",
                 box_up=True):

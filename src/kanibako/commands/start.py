@@ -1515,10 +1515,11 @@ def _resolve_existing_box(
 ) -> ProjectPaths | None:
     """Non-materializing probe: the :class:`ProjectPaths` of an EXISTING registered box.
 
-    ``None`` when no box exists at *project_dir*.  Explicit-create gate [Jei:2026-07-11g]: a launch (``start`` / bare
-    ``kanibako`` / ``code`` / ``shell``) NEVER auto-creates a box — the box must
-    already have been made by ``kanibako create``.  We resolve through the SAME
-    ``resolve_box_target`` the launch uses, but:
+    ``None`` when no box exists at *project_dir*.  Explicit-create gate
+    [Jei:2026-07-11g]: a launch (``start`` / bare ``kanibako`` / ``code`` /
+    ``shell``) NEVER auto-creates a box — the box must already have been made by
+    ``kanibako create``.  We resolve through the SAME ``resolve_box_target`` the
+    launch uses, but:
 
     * ``initialize=False`` — a NON-materializing resolve (no mkdir / no name
       assignment / no seed): probing must never leave a box dir behind.
@@ -2750,7 +2751,7 @@ def _start_helper_hub(
     """Start the helper hub + append its mounts; return its :class:`HubProcess`.
 
     The hub runs in its own detached process, which outlives this command and serves
-    until the box is gone (:mod:`kanibako.channels.hub_daemon`; his 184-S2 (a)).
+    until the box is gone (:mod:`kanibako.channels.hub_daemon`; 184-S2 (a) [Jei:2026-10-13]).
     SIDE EFFECT: extends the caller's ``extra_mounts`` list IN PLACE.  The spawn-budget
     bind is NOT this hub's: every start delivers it (:func:`_deliver_spawn_budget`).
     """
@@ -4678,7 +4679,7 @@ def _run_container(
             # so a stored map or a display must not carry one.
             realize=_realizer,
         )
-        # §1A CREATE EXCEPTION for ``-e`` (HIS 181-CX1 (a)): the collapse above is the
+        # §1A CREATE EXCEPTION for ``-e`` (181-CX1 (a) [Jei:2026-10-13]): the collapse above is the
         # first point that knows which key owns each variable — its env slots, and the
         # entry list's ``secret_path`` names — and nothing has run in the box yet.  The
         # box is already seeded and registered, which a refusal says.  A non-creating
@@ -10998,7 +10999,7 @@ def bounded_hub_dir_name(identity: str, run_dir: Path) -> str:
     the hashed name.
 
     The hub's socket is ``<run_dir>/<this>/helper.sock``, and that whole path is what
-    must fit ``sun_path``; the DIRECTORY is what the box binds (his 184-S2 (a)).
+    must fit ``sun_path``; the DIRECTORY is what the box binds (184-S2 (a) [Jei:2026-10-13]).
     """
     if len(os.fsencode(run_dir / identity / core_defaults.HELPER_SOCKET_NAME)) < _UNIX_SOCKET_PATH_LIMIT:
         return identity

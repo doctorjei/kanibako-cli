@@ -60,7 +60,7 @@ read — so a real `system recover` is a **re-source + re-write**, not a
 copy-paste of this file. This is the pattern to port, not live code to import.
 
 ### `deprecation.py` + `test_deprecations.py`
-*(dormant complete machinery — sequestered 2026-08-01, Phase 0, Jei ruling)*
+*(dormant complete machinery — sequestered 2026-08-01, Phase 0 [Jei:2026-08-01])*
 
 The post-public **deprecation policy** machinery: an in-process registry of
 deprecation records, a `@deprecated` decorator and declarative `register(...)`
@@ -75,7 +75,7 @@ candidate on the numbers. It is **not** residue, though: it is infrastructure
 whose entire value is being in place *before* the first deprecation is
 declared, and `docs/architecture.md` documents the policy it implements.
 
-**Jei's ruling (2026-08-01):** *"if it's all one file, sequester it in a source
+**[Jei:2026-08-01]:** *"if it's all one file, sequester it in a source
 folder for this purpose; we might run into more like this."* Hence this folder's
 generalized charter above.
 

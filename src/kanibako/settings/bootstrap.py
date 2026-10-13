@@ -1,8 +1,8 @@
 """Bootstrap path literals — THE single home for hardcoded path values.
 
-⚑⚑ EVERY path literal in the tree belongs here and NOWHERE ELSE (`[R157]`, his rule
-2026-09-02): all paths except the config file and the ``/etc`` files are key-derived, and
-whatever literal survives is stored ONCE, in one constant, in the appropriate area.
+⚑⚑ EVERY path literal in the tree belongs here and NOWHERE ELSE (`[R157]`): all paths except
+the config file and the ``/etc`` files are key-derived, and whatever literal survives is
+stored ONCE, in one constant, in the appropriate area.
 
 🛑 STRUCTURAL EXCEPTIONS THAT CANNOT IMPORT THIS FILE, and are guarded by a drift test that
 reads the shipped bytes instead: the bundled ``Containerfile.template-*`` and seeded in-box

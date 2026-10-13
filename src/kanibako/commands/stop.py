@@ -293,7 +293,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
             cleared = True
             print(f"\n{stale_lock_cure(lock_file)}")
 
-    # The box's helper hub outlives ``start`` (his 184-S2 (a)); a stop ends it and its
+    # The box's helper hub outlives ``start`` (184-S2 (a) [Jei:2026-10-13]); a stop ends it and its
     # helpers now, rather than at the hub's next liveness poll.
     stop_box_helper_hub(std, proj)
 

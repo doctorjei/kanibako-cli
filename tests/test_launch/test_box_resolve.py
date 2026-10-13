@@ -119,9 +119,9 @@ class TestDetectBoxMode:
         assert result.project_root == box
 
     def test_other_space_connection_beats_a_leftover_marker(self, std, config, tmp_home):
-        """A box is in one workset only (his 180-DF2): a marked root CONNECTED into a named
-        workset from outside its tree is that workset's NAMED box.  Connect drops the
-        marker last, so this state is a connect killed between the two writes.
+        """A box is in one workset only (180-DF2 [Jei:2026-10-13]): a marked root CONNECTED into a
+        named workset from outside its tree is that workset's NAMED box.  Connect drops the marker
+        last, so this state is a connect killed between the two writes.
         """
         box = tmp_home / "declares_standalone"
         box.mkdir()

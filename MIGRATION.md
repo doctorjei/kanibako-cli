@@ -866,7 +866,7 @@ What a v1.7.2 user needs to know:
   The first three rows leave the box entirely — a handbook chapter is host content,
   contributed by a scope, not stored in the box. Triaging is yours to do: one box's playbook
   cannot be promoted wholesale into the shared handbook without imposing it on every other
-  box. The ruling on record: existing-box migration stays deferred; new boxes only.
+  box. Existing-box migration stays deferred; new boxes only.
 - ⚑ **A box older than the three-part handbook keeps everything under `home/playbook/box/`,
   and the mapped rows do not reach it.** Those rows assume a box that already had
   `home/notebook/` and `home/workbook/` split out as their own trees. On an older box you

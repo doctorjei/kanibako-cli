@@ -5068,7 +5068,7 @@ def abort_if_box_running(
     """Warn when :func:`box_running_reason` answers; True ⇒ the caller aborts (no *force*).
 
     A door that would DEREGISTER a running box passes ``forceable=False``: *force* is
-    ignored and the refusal does not offer it (HIS 172-RF: forcing breaks things).
+    ignored and the refusal does not offer it (172-RF [Jei:2026-10-11]: forcing breaks things).
 
     The stop cure names *proj* by :func:`project_cure_ref`, so it reaches that box from
     any cwd.  With no *proj* it names *cure_ref*, an already-quoted ref the caller holds

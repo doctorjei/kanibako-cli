@@ -1338,7 +1338,7 @@ class TestRemap:
             self, env, capsys, monkeypatch, force):
         """A standalone remapped onto *dest* records ``dest/workspace``; when that is ANOTHER
         standalone's root, the remap is refused whatever the flag, as a primary onto that
-        root is (his 179-SR (a)): the target, not the box's mode."""
+        root is (179-SR (a) [Jei:2026-10-12]): the target, not the box's mode."""
         from kanibako.project import registry_store
 
         self._confirms(monkeypatch)

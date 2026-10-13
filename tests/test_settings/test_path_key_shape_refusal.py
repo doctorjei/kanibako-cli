@@ -5,8 +5,8 @@ error. A PATH key is typed ``path``, so a list or a map at one is a type mismatc
 whereas at the two SCALAR families ``env``/``secret_path`` an unquoted ``8080`` is
 legal, because those are SCALAR and §2a refuses only *"a non-scalar (list, map, etc)"*.
 
-A hand-edited file bypasses the ``set`` door entirely, so the ruling that the refusal
-reaches EVERY path-typed key lands on the READ-time sweep over the levels a user
+A hand-edited file bypasses the ``set`` door entirely, so making the refusal reach
+EVERY path-typed key falls to the READ-time sweep over the levels a user
 writes. Two shapes reach it, and they arrive by different roads:
 
 * a **list** stays a LEAF (``_parse_node`` stores it verbatim), so the sweep saw it and

@@ -977,7 +977,7 @@ class TestStopWithMalformedBoxSettings:
     def test_the_stop_is_still_reported(self, std, config, tmp_home, live_runtime, capsys):
         """The action is complete: rc 0 AND the box is named as stopped.
 
-        The ruling is "proceeds and WARNS", so a warning that arrives with a
+        The contract is "proceeds and WARNS", so a warning that arrives with a
         refusal — or a stop that happens without being reported — is the defect
         this pins shut.
         """
@@ -1629,7 +1629,8 @@ class TestStopAllIsolatesARegistryRefusal:
 
 
 class TestStopEndsTheHelperHub:
-    """His 184-S2 (a): the hub outlives ``start``, so ``stop`` ends it, and its helpers."""
+    """184-S2 (a) [Jei:2026-10-13]: the hub outlives ``start``, so ``stop`` ends it, and its
+    helpers."""
 
     def test_stop_stops_the_boxs_hub(self, mock_runtime, tmp_path):
         """(Mutation: drop the ``stop_box_helper_hub`` call -> RED.)"""

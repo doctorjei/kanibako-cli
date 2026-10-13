@@ -2679,7 +2679,7 @@ class TestMetaAgentNameIsTheStoreDirname:
         """⚑ THE RULE, not an inventory (P13): §2d says ``path`` IS
         ``{config.agents}/%tolower({meta.agent.<a>.name})%`` (``[R176]``).  Asserting
         the COMPOSITION reds if EITHER half drifts, which a literal on one half
-        alone would not.  ⚑ The ``tolower`` is HIS adjustment and belongs in the
+        alone would not.  ⚑ The ``tolower`` is part of the rule and belongs in the
         assertion: leave it out and a case-carrying name reads as a drift.
         """
         for node, real in (

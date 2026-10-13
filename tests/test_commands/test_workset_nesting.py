@@ -142,7 +142,7 @@ class TestConnectInsideAMember:
         assert "m" not in _members(std, "wn")
 
     def test_force_connects_inside_a_member(self, env, capsys):
-        """His Q4Jei 176-4B (C) answer, "yes", to "Newly allowed with --force: `workset
+        """The 176-4B (C) answer [Jei:2026-10-12], "yes", to "Newly allowed with --force: `workset
         connect` / `convert --workset --move` inside a member": no file is overwritten,
         so --force shares the member's tree."""
         std, area = env

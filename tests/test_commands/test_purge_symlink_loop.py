@@ -6,7 +6,7 @@ path under it -- ``vault/.versions/<box>``, ``vault/rw`` -- resolves through the
 :func:`Path.resolve` raises ``RuntimeError`` on 3.11 and returns the literal path on 3.13.
 The two doors took the crash differently; both are pinned here under the 3.11 shape.
 
-⚑ The cure is the ruling's (a) + (b): the in-tree predicates answer the RETAIN direction
+⚑ The cure has two parts: the in-tree predicates answer the RETAIN direction
 for anything they cannot resolve, and every site that REPORTS a keep names the loop with
 ``SYMLINK_LOOP_WHY`` instead of a location phrase the user cannot act on.
 """

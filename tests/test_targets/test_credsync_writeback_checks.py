@@ -1,4 +1,4 @@
-"""Credential writeback checks what it copies (his 172-CW answer (a)).
+"""Credential writeback checks what it copies (172-CW (a) [Jei:2026-10-11]).
 
 For each harness's synced credential file, a box copy reaches the store only when
 it parses as that harness's format, never through a symlink, and a replaced store

@@ -131,7 +131,7 @@ which is the only way a user creates one short of hand-editing.
 imports it rather than keeping a second carrier): `*` matches exactly ONE segment, `**`
 matches the remaining tail at ANY depth. `**` is one-or-more *by construction*, not by rule — the
 separator is part of the pattern, so a zero-length tail on `agent.*.**` would yield the malformed
-`agent.foo.` with a trailing dot (a ruling).
+`agent.foo.` with a trailing dot.
 
 The empty-segment guard in the matcher is where that argument bites: without it, `agent.*.**` would
 MATCH the malformed `agent.claude.` — the very zero-length tail the convention says cannot arise.

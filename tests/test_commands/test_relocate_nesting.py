@@ -152,7 +152,7 @@ def _tree_digest(tree: Path) -> dict[str, str]:
 
 
 class TestInsideAMemberWithForce:
-    """His Q4Jei 176-4B (C) answer, "yes": `convert --workset --move` inside a member is
+    """176-4B (C) [Jei:2026-10-12], "yes": `convert --workset --move` inside a member is
     newly allowed with --force.  No file of the member is overwritten."""
 
     def test_convert_workset_move_inside_a_member(self, env, capsys):
@@ -225,7 +225,7 @@ class TestInPlaceConvertIntoAWorkset:
 
 
 class TestStandaloneRootWhoseWorkspaceIsARoot:
-    """His 179-SR (a), the relocation door: `convert --standalone --move D` records
+    """179-SR (a) [Jei:2026-10-12], the relocation door: `convert --standalone --move D` records
     ``D/workspace``; when that is another standalone's registered root (its marker and
     directory gone, its row kept), the move is refused whatever the flag, as remap and create
     are."""

@@ -872,10 +872,10 @@ class TestDetectBoxMode:
     def test_connected_external_marker_is_dropped_no_dual_registration(
         self, config_file, tmp_home
     ):
-        """A box is in one workset only (his 181-DF3): ``workset connect --force`` of a
-        standalone box MOVES its registration and drops its marker, so it resolves as its
-        NAMED workset box and is never re-imported into ``standalone:``.  Only the
-        ``workset.registry`` key goes; the file, its kuid, and ``box_data/`` stay.
+        """A box is in one workset only (181-DF3 [Jei:2026-10-13]): ``workset connect --force`` of
+        a standalone box MOVES its registration and drops its marker, so it resolves as its NAMED
+        workset box and is never re-imported into ``standalone:``.  Only the ``workset.registry``
+        key goes; the file, its kuid, and ``box_data/`` stay.
         """
         from kanibako.launch import box_resolve
         from kanibako.project import registry_store

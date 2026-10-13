@@ -319,7 +319,7 @@ def gfm_anchor(text: str) -> str:
 def home_relative(path: Path) -> str:
     """*path* spelled from HOME -- ``~/canon/...`` -- instead of as a host path.
 
-    🛑 SECURITY, NOT COSMETICS -- his classification. The flattened artifact is SHIPPED
+    🛑 SECURITY, NOT COSMETICS. The flattened artifact is SHIPPED
     TEXT in the agent's instruction slot and travels wherever it is read or pasted, so a
     host-absolute target in it hands every reader the host's layout and account name.
     Canon authors no HOST-absolute target -- the two shipped ``__LINKSECTION__`` sites
@@ -960,7 +960,7 @@ class Flattener:
         to hold only comments must simply not produce a row.
 
         *old_title* is the file's FIRST LINE OF REAL TEXT. 🛑 A COMMENT IS NOT
-        REAL TEXT (his ruling), and the comment blocks in shipped canon run to
+        REAL TEXT, and the comment blocks in shipped canon run to
         sixteen lines and CONTAIN HEADING-SHAPED DECOYS -- ``COLLECTION.md`` has
         ``# Entrypoint to Canon`` inside the block that its real title precedes.
         So the search runs through :func:`strip_comments` with its carried state,

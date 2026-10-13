@@ -1,4 +1,4 @@
-"""A purge keeps the box's inbox and share dirs, and names them (his 171-RM Q2 = (b)).
+"""A purge keeps the box's inbox and share dirs, and names them (171-RM Q2 = (b) [Jei:2026-10-11]).
 
 system-design § "Box lifecycle": a destructive verb keeps any path outside the box's
 root and reports it.  The channel dirs are outside every mode's root.  Each door lists

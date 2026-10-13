@@ -686,7 +686,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only what a departing element itself owed — nothing told the reader to fix the documents that restate
   its information. A record that had been archived correctly could therefore leave a false restatement
   behind as the surviving copy, which is exactly how a ratified decision was lost here for three days.
-  The wording is Jei's.
 
 - **`box duplicate --to` takes the mode names: `default` is now `primary` and `workset` is now
   `named`.** `--to standalone` is unchanged. `default` and `workset` were never modes — the modes

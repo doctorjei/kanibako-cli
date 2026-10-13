@@ -3,7 +3,7 @@
 system-design § *What a flag does*: "at box CREATION only, a shadowing flag's value
 PERSISTS — it INITIALIZES the box's stored config … ALL shadowing flags act UNIFORMLY".
 The helper (``config_interface.persist_creation_level``) saves exactly what
-``build_cli_level`` installs; ``-e`` follows HIS 181-CX1 (a)
+``build_cli_level`` installs; ``-e`` follows 181-CX1 (a) [Jei:2026-10-13]
 (``config_interface.persist_creation_env``). Real box files under a temp std; the launch
 wiring is driven through ``start_mocks`` with the helper observed.
 """
@@ -159,7 +159,8 @@ def _persist_env(env, cli_env, slots, secret_names=None):
 
 
 class TestEnvAtCreation:
-    """HIS 181-CX1 (a): unowned VAR → ``box.env.VAR``; another scope's VAR → refused."""
+    """181-CX1 (a) [Jei:2026-10-13]: unowned VAR → ``box.env.VAR``; another scope's
+    VAR → refused."""
 
     def test_a_var_no_key_owns_is_saved_as_box_env(self, project_env):
         cli_env = {"FOO": "1"}

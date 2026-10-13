@@ -2279,7 +2279,7 @@ def persist_creation_env(
     std: Any,
     proj: Any,
 ) -> None:
-    """Save a creating launch's ``-e VAR=value`` as ``box.env.VAR`` (HIS 181-CX1 (a)).
+    """Save a creating launch's ``-e VAR=value`` as ``box.env.VAR`` (181-CX1 (a) [Jei:2026-10-13]).
 
     *slots* is the launch's collapsed env map (``meta.assembly.env``) and
     *secret_names* the ``secret_path.<VAR>`` keys off the same entry list

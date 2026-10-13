@@ -4500,9 +4500,9 @@ class TestSpawnBudgetReachesTheDirector:
     def test_a_persistent_start_without_the_hub_writes_and_binds_it_too(
         self, start_mocks, tmp_path,
     ):
-        """Spec: "Each start writes the box's resolved budget".  A ``--detach`` start with
-        helpers off (``--no-helpers``; persistence no longer turns them off, his 184-S2)
-        runs no hub, yet still writes 1/1 and binds it ro once.
+        """Spec: "Each start writes the box's resolved budget".  A ``--detach`` start with helpers
+        off (``--no-helpers``; persistence no longer turns them off, 184-S2 [Jei:2026-10-13]) runs
+        no hub, yet still writes 1/1 and binds it ro once.
         (Bifrost 168 Step 5 C1: no document and no bind on ``--detach``.)"""
         from kanibako.channels.helpers import SpawnBudget
 
@@ -7566,7 +7566,7 @@ class TestAPerRunEBeatsASecretPath:
         assert SECRET_MOUNT_DIR not in argv
 
     def test_a_creating_launch_still_refuses_to_save_the_e(self, start_mocks, tok):
-        """HIS 181-CX1 (a), unchanged: a creating launch saves ``-e`` as
+        """181-CX1 (a) [Jei:2026-10-13], unchanged: a creating launch saves ``-e`` as
         ``box.env.VAR``, which beside a ``secret_path.VAR`` would refuse every later
         launch, so it stops before the box runs."""
         from kanibako.errors import KanibakoError
@@ -9939,7 +9939,7 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         assert table["system.channels.common"] == {"/b": ("/host/b",)}
 
     def test_masks_hold_whole(self):
-        """⚑⚑ MASKS HOLD WHOLE — a settled ruling, pinned here.
+        """⚑⚑ MASKS HOLD WHOLE — settled, pinned here.
 
         ``<scope>.masks`` IS a terminal category key, so the predicate answers True
         for it; what keeps it off the entry-merge branch is the VALUE test, because

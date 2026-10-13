@@ -1347,7 +1347,7 @@ def helper_default_categories(
         # symbolic source name -> probed host source (the DEST is in the file).
         # ⚑ The socket's DIRECTORY is bound, never the socket: ``bind(2)`` makes a new
         # inode, so a file bind would pin a running box to a socket a restarted hub no
-        # longer listens on (his 184-S2 (a)).
+        # longer listens on (184-S2 (a) [Jei:2026-10-13]).
         "helper_sock": None if socket_path is None else socket_path.parent,
         "helper_log": log_path,
         "helper_budget": budget_path,

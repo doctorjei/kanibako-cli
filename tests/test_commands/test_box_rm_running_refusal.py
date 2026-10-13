@@ -1,9 +1,9 @@
-"""A plain ``box rm`` never deregisters a running box (his 171-RM Q1 = (d)).
+"""A plain ``box rm`` never deregisters a running box (171-RM Q1 = (d) [Jei:2026-10-11]).
 
-The refusal is the one pre-flight every destructive verb uses (``abort_if_box_running``
-via ``_refuse_purge_while_live``); it fires before anything is printed or changed, names
-``kanibako stop <box>``, and ``--force`` does NOT override it (his 172-RF: "forcing breaks
-things"); it still overrides the same refusal for ``--purge``.
+The refusal is the one pre-flight every destructive verb uses (``abort_if_box_running`` via
+``_refuse_purge_while_live``); it fires before anything is printed or changed, names
+``kanibako stop <box>``, and ``--force`` does NOT override it (172-RF [Jei:2026-10-11]:
+"forcing breaks things"); it still overrides the same refusal for ``--purge``.
 """
 
 from __future__ import annotations

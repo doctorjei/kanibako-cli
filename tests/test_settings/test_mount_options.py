@@ -120,7 +120,7 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
     )
   }
   assert by_dest[sock_dest].options == "", sorted(by_dest)
-  # The socket's DIRECTORY is the source (his 184-S2 (a)).
+  # The socket's DIRECTORY is the source (184-S2 (a) [Jei:2026-10-13]).
   assert by_dest[sock_dest].to_volume_arg() == f"{sock.parent}:{sock_dest}"
 
 

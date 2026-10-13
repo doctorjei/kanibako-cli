@@ -1,4 +1,4 @@
-"""The helper hub process that outlives ``kanibako start`` (his 184-S2 (a)).
+"""The helper hub process that outlives ``kanibako start`` (184-S2 (a) [Jei:2026-10-13]).
 
 The real process tests spawn ``python -m kanibako.channels.hub_daemon`` against a fake
 container runtime: a shell script that answers ``inspect`` and ``ps`` from a state file,

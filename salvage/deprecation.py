@@ -1,4 +1,4 @@
-"""SEQUESTERED 2026-08-01 (Phase 0, Jei ruling) — deprecation-tracking mechanism (W7).
+"""SEQUESTERED 2026-08-01 (Phase 0, [Jei:2026-08-01]) — deprecation-tracking mechanism (W7).
 
 ⚑ **DORMANT SOURCE, kept for a designed future purpose — NOT live code.** This
 module is post-public deprecation-policy infrastructure: correct, complete, and
@@ -6,7 +6,7 @@ deliberately unused until the project reaches the post-public era it was built
 for. It is **not shipped in the wheel** (outside ``src/``), **not imported** by
 anything, **not linted, not type-checked, and not collected** by pytest. It was
 moved here from ``src/kanibako/deprecation.py`` in the Phase-0 retirement sweep,
-which found zero production consumers; Jei ruled SEQUESTER rather than delete.
+which found zero production consumers; it was SEQUESTERED rather than deleted.
 
 **Reactivation** (when the first real deprecation is declared): move this module
 back to ``src/kanibako/deprecation.py``, move ``salvage/test_deprecations.py``

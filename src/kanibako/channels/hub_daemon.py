@@ -1,4 +1,5 @@
-"""The per-box HOST helper hub process, which outlives ``kanibako start`` (his 184-S2 (a)).
+"""The per-box HOST helper hub process, which outlives ``kanibako start``
+(184-S2 (a) [Jei:2026-10-13]).
 
 A persistent box keeps running after ``start`` returns, so its hub cannot live in the
 ``start`` process.  :class:`HubProcess` runs the hub as a DETACHED child, the way

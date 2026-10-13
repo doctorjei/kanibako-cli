@@ -1484,7 +1484,7 @@ class TestHelperDefaultCategories:
         sock_val = cats["box.bindings.rw"][
             "/home/agent/.kanibako/state/hub"
         ]
-        # The socket's DIRECTORY is the source (his 184-S2 (a)).
+        # The socket's DIRECTORY is the source (184-S2 (a) [Jei:2026-10-13]).
         assert sock_val == (str(sock.parent), "")
         assert len(sock_val) == 2 and sock_val[1] == ""
 

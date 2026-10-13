@@ -424,7 +424,7 @@ partition is read at PLANNING time (`_SourceTeardown.partition`), through its ro
 two tokens that happen to repoint to one directory are still two partitions, and the box's own
 subdir is what moves.
 
-**BEST-EFFORT, by ruling.** Any failure — missing source, destination already present, permission,
+**BEST-EFFORT.** Any failure — missing source, destination already present, permission,
 an unresolvable channel key — is WARNED and swallowed; the lifecycle continues. It is deliberately
 NOT on the unwind stack: a partial move is not catastrophic and re-running reconciles. No forwarding
 marker is left for stale cross-box references to the old address.

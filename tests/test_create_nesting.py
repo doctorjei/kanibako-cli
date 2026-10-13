@@ -179,8 +179,8 @@ class TestCreateUnforceable:
 
     @pytest.mark.parametrize("force", [False, True])
     def test_standalone_whose_workspace_is_a_standalone_root(self, area, capsys, force):
-        """His 179-SR (a): another standalone's root is refused whatever the flag, also as
-        the workspace a new standalone would record."""
+        """179-SR (a) [Jei:2026-10-12]: another standalone's root is refused whatever the flag,
+        also as the workspace a new standalone would record."""
         held = area / "G" / "workspace"
         assert _create("--standalone", str(held)) == 0
         capsys.readouterr()

@@ -293,7 +293,7 @@ class TestRetiredKeyRefusal:
         assert str(f) in msg                  # names the FILE
 
     def test_box_level_cure_interpolates_the_box_argument(self, tmp_path):
-        """Jei's own ruling: ``box set`` needs the box positional to be copy-pasteable
+        """``box set`` needs the box positional to be copy-pasteable
         from outside the box's own cwd — the caller supplies it via *box_ref*."""
         f = _yaml(tmp_path / "box.yaml", {"box": {"agent_name": "goose"}})
         with pytest.raises(SettingsError) as ei:

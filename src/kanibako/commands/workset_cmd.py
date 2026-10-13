@@ -979,7 +979,7 @@ def _refuse_disconnect_while_live(std, ws, member: str, *, force: bool,
 
     ⚑ ONE PROBE — :func:`abort_if_box_running`, as ``box purge`` uses.  A plain disconnect
     orphans a live container (no ref reaches it after), so --force never overrides it
-    (HIS 171-RM Q1, 172-RF); ``--remove-files`` deletes its vaults under it, a purge
+    (171-RM Q1, 172-RF [Jei:2026-10-11]); ``--remove-files`` deletes its vaults under it, a purge
     --force may override.  A name that is not a member is left to ``remove_project``.
     """
     if all(p.name != member for p in ws.projects):
@@ -1051,8 +1051,8 @@ def _refuse_rm_while_members_live(std, stored: str, root: Path, ws, names: list[
                                   *, purge: bool) -> bool:
     """``workset rm``'s running-member pre-flight; True ⇒ the caller aborts.
 
-    Every member is asked, and --force never overrides a running one: removing the
-    workset deregisters its members (HIS 171-RM Q1, 172-RF).  *ws* is ``None`` when its
+    Every member is asked, and --force never overrides a running one: removing the workset
+    deregisters its members (171-RM Q1, 172-RF [Jei:2026-10-11]).  *ws* is ``None`` when its
     file cannot be read; its members' trees are then in the DEFAULT store, as
     ``delete_workset`` finds them.
     """

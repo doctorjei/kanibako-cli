@@ -733,7 +733,7 @@ unrecoverable by re-running. Clearing each box tree through `runtime.container.r
 Symlinked entries under `boxes/` are skipped so the escalation never follows a link out of the tree.
 
 ```python
-def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None = None, force: bool = False, *, restoring: bool = False, noun: str | None = None, outer: _Unwind | None = None, outer_row: tuple[str, str] | None = None, rollback: _Unwind | None = None, leftover_cure: str = REMOVE_LEFTOVER) -> WorksetProject
+def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None = None, force: bool = False, *, restoring: bool = False, noun: str | None = None, outer: _Unwind | None = None, outer_row: tuple[str, str] | None = None, rollback: _Unwind | None = None, leftover_cure: str = REMOVE_LEFTOVER, drop_marker: bool = False) -> WorksetProject
 ```
 Add a project to a workset; creates the per-project subdirectories.
 

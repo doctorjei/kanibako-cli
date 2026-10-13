@@ -730,7 +730,7 @@ class TestPluginChapterBind:
         self, tmp_path,
     ):
         """⚑ THE UNMIGRATED PLUGIN — the shape a real author actually ships, and the
-        case his flattening ruling turned from working into refused.
+        case the flattening turned from working into refused.
 
         ``data/rom/directives/ROM_AGENT.md`` WAS the marker. It is now one level below
         what the charter's index imports, so binding it would deliver a chapter whose

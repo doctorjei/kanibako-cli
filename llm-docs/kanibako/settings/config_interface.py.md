@@ -773,15 +773,15 @@ writer for (any prefix but `box.image`/`box.share_images`, `agent.*`, and `syste
 refused by name, never dropped.
 
 ```persist_creation_env(cli_env, slots, *, secret_names, box_settings_path, workset_settings_path, std, proj) -> None```
-`-e` at creation (his 181-CX1 (a)). The owners of a VAR are the launch's collapsed env map
-(*slots*, `meta.assembly.env`) and the `secret_path` keys off the same entry list (*secret_names*,
-`LaunchDeliveries.secret_names`), which the collapse cannot see. A VAR `-e` filled as a vacancy
-(`CLI_PROVENANCE_SCOPE`), or one a `box.env` key owns, is saved as `box.env.VAR`. A VAR another
-scope's `env` key owns, or any `secret_path` key names, is refused before anything is written: a
-`box.env.VAR` beside it would refuse every later launch. The caller runs after the box is seeded
-and registered, so the refusal says the box exists with its other flags saved, no `-e` was saved,
-and the cure: per-run on the next launch, or set the owning `env` key; for a `secret_path` owner (a
-PATH key), change the file it points at, or remove it and set `box.env.VAR`.
+`-e` at creation (181-CX1 (a) [Jei:2026-10-13]). The owners of a VAR are the launch's collapsed env
+map (*slots*, `meta.assembly.env`) and the `secret_path` keys off the same entry list
+(*secret_names*, `LaunchDeliveries.secret_names`), which the collapse cannot see. A VAR `-e` filled
+as a vacancy (`CLI_PROVENANCE_SCOPE`), or one a `box.env` key owns, is saved as `box.env.VAR`. A
+VAR another scope's `env` key owns, or any `secret_path` key names, is refused before anything is
+written: a `box.env.VAR` beside it would refuse every later launch. The caller runs after the box
+is seeded and registered, so the refusal says the box exists with its other flags saved, no `-e`
+was saved, and the cure: per-run on the next launch, or set the owning `env` key; for a
+`secret_path` owner (a PATH key), change the file it points at, or remove it and set `box.env.VAR`.
 
 ```reset_config_value(key, *, config_path, env_path=None, system_settings_path=None, command_scope=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", agents_root=None, node_store=True) -> str```
 Remove an override for a single key; returns a confirmation or an error, NEVER raises.

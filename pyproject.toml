@@ -63,7 +63,7 @@ where = ["src"]
 [tool.ruff]
 target-version = "py311"
 line-length = 99
-# Two-space indent is the house style (Jei, 2026-08-08). Pinned here rather than
+# Two-space indent is the house style [Jei:2026-08-08]. Pinned here rather than
 # left to convention: ruff's own default is 4, so a `ruff format` run would
 # silently undo the style everywhere. Nothing formats Python in CI today; this
 # makes the preference hold by construction if that ever changes.

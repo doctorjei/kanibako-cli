@@ -4,13 +4,13 @@ The "grand unification": four per-scope `StoreShape`s plus the home bind, merged
 bindings map and TWO scope-ordered copy LISTS. Scope order — `system`, `agent`, `workset`, `box` — IS
 the precedence; a later scope beats an earlier one.
 
-**Authority:** `~/canon/workbook/designs/grand-unification-collapse-DESIGN.md` §2 (the algorithm, verbatim) and
-**§2a, which supersedes §2's head** · its §0 ruling 1 (parent-first per scope) · the SUBSUMPTION
-RULES, verbatim at `~/canon/workbook/designs/collapse-implementation-DESIGN.md` **§7**, with the worked refusability
-table and the operations at **§8** · **§9, which rules that copies apply to the HOME bind ALONE** ·
-`~/canon/workbook/designs/store-shape-producer-DESIGN.md` §7 (the input arms) · the spec's
-`meta.assembly.*` rows, which split the copy output in two and put `synced` at the far end of the
-fold.
+**Authority:** `~/canon/workbook/designs/grand-unification-collapse-DESIGN.md` §2 (the algorithm,
+verbatim) and **§2a, which supersedes §2's head** · its §0 ruling 1 (parent-first per scope) · the
+SUBSUMPTION RULES, verbatim at `~/canon/workbook/designs/collapse-implementation-DESIGN.md` **§7**,
+with the worked refusability table and the operations at **§8** · **§9, which rules that copies
+apply to the HOME bind ALONE** · `~/canon/workbook/designs/store-shape-producer-DESIGN.md` §7 (the
+input arms) · the spec's `meta.assembly.*` rows, which split the copy output in two and put
+`synced` at the far end of the fold.
 
 ## This IS the delivery path, and it is PURE
 
