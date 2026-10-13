@@ -1296,7 +1296,10 @@ codex names its model in `config.toml` and sends it verbatim, so it accepts *env
 ⚑ ***token* is the `-e` value of the token var.** `-e` outranks a `secret_path` file (spec §1A),
 so the box gets that value and the launch mounts no file for it; the pre-flight therefore accepts
 the token var from `-e` alone and sends that value, not the file's (`probe_token`). The launch
-passes *token* only when `-e` sets it, so a plugin whose signature lacks it is called as before.
+passes *token* only when `-e` sets it, and only to an override that accepts it (a `token` parameter
+or `**kwargs`). An override without it is called as before when `-e` gives no token; when `-e` does,
+it is NOT called, since its file probe would test a token the box does not get. The launch prints
+a note that the endpoint is not verified and proceeds.
 
 ⚑ **Resolving a mapping the USER wrote is not the substitution the rule above forbids; inventing
 one is.** A model with no such var goes out AS GIVEN, and `None` stays `None`.

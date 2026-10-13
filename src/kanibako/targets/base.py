@@ -1382,7 +1382,8 @@ class Target(ABC):
         substitute a placeholder credential.
         ⚑ *token* is the token VALUE when the launch's `-e` gives the token var; it wins
         over *token_path* because the box gets the `-e` value (`probe_token`).  The
-        launch passes it only when set, so a plugin without it keeps working.
+        launch passes it only when set, and only to an override that accepts it; with
+        `-e` an override without it is not called and the launch notes it is unverified.
         ⚑ *model* MAY be `None`: probe with the field OMITTED, never a placeholder id.
         ⚑ *env* is the box's env.  At LAUNCH it is the collapsed `env` family (every rung,
         the store, `-e`), folded off the pre-flight snapshot; at CREATE, which resolves no

@@ -6655,8 +6655,11 @@ def _persona_probe_error(
     own words, and let the user read them.
 
     ⚑ *token* is the ``-e`` value of the token var (:func:`_persona_cli_token`); when
-    set it is sent instead of the file at *token_ptr*.  It is passed only when set,
-    so a plugin whose ``verify_persona`` predates it is still called as before.
+    set it is sent instead of the file at *token_ptr*.  It is passed only when set, and
+    only to a ``verify_persona`` that accepts it (a ``token`` parameter or ``**kwargs``).
+    Without ``-e`` an older plugin is called as before.  With ``-e`` an older plugin is
+    NOT called: probing the file would test a token the box does not get, so the launch
+    prints a note that the endpoint is not verified and proceeds (``NOT_APPLICABLE``).
 
     The probe contract is NEVER-RAISE; a third-party plugin can still break it,
     so a raise is caught and treated as INCONCLUSIVE (a plugin bug IS an anomaly
@@ -6669,19 +6672,29 @@ def _persona_probe_error(
 
     if target is None:
         return None
-    try:
-        if token is not None:
-            outcome = target.verify_persona(endpoint, None, model, env=env, token=token)
-        else:
-            outcome = target.verify_persona(
-                endpoint, Path(token_ptr) if token_ptr is not None else None, model,
-                env=env,
-            )
-    except Exception:
-        if logger is not None:
-            logger.debug("persona '%s': verify probe raised; inconclusive",
-                         display, exc_info=True)
-        outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
+    if token is not None and not _verify_takes_token(target.verify_persona):
+        print(
+            f"Note: persona '{display}': its harness plugin cannot take a token from -e, "
+            f"so the endpoint ({_scrub_endpoint_userinfo(endpoint)}) is not verified; "
+            f"launching unverified.",
+            file=sys.stderr,
+        )
+        outcome = PersonaProbeOutcome.not_applicable(
+            "the harness plugin cannot take a token from -e")
+    else:
+        try:
+            if token is not None:
+                outcome = target.verify_persona(endpoint, None, model, env=env, token=token)
+            else:
+                outcome = target.verify_persona(
+                    endpoint, Path(token_ptr) if token_ptr is not None else None, model,
+                    env=env,
+                )
+        except Exception:
+            if logger is not None:
+                logger.debug("persona '%s': verify probe raised; inconclusive",
+                             display, exc_info=True)
+            outcome = PersonaProbeOutcome.inconclusive("the probe itself failed")
     # ⚑ On THIS path endpoint and model are read off the COLLAPSED launch snapshot,
     # and `settings_merge.merge` drops the level a value won at — so name the
     # MECHANISM, never a rung, and name EVERY slot the readers actually consult.
@@ -6724,6 +6737,25 @@ def _persona_probe_error(
             "request accepted; launching", display, outcome.access.general.evidence.status,
         )
     return None
+
+
+def _verify_takes_token(verify) -> bool:
+    """Whether a plugin's *verify* accepts ``token=`` (a ``token`` parameter or ``**kwargs``).
+
+    ``token=`` postdates the ``verify_persona`` contract, so a third-party override may
+    lack it.  A signature that cannot be read counts as lacking it.
+    """
+    import inspect
+
+    try:
+        params = inspect.signature(verify).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        p.kind is inspect.Parameter.VAR_KEYWORD
+        or (p.name == "token" and p.kind is not inspect.Parameter.POSITIONAL_ONLY)
+        for p in params
+    )
 
 
 def _resolve_codex_persona_env_key(secret_paths, wiring) -> "str | None":

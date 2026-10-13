@@ -134,6 +134,7 @@ def _persona_token_pointer(secret_paths: 'Mapping[str, object]', var: str) -> ob
 def _persona_secret_path_keys(secret_paths: 'Mapping[str, object]') -> 'list[str]'
 def _persona_probe_env(secret_paths, bundle) -> 'Mapping[str, str] | None'
 def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 'str | None', display: str, logger, env: 'Mapping[str, str] | None'=None, token: 'str | None'=None) -> 'str | None'
+def _verify_takes_token(verify) -> bool
 def _resolve_codex_persona_env_key(secret_paths, wiring) -> 'str | None'
 def _resolve_codex_persona_provider(agent_id: str, endpoint: str, env_key: str, model: str, wiring) -> 'CodexModelProvider'
 def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: object=__MISSING__, bundle=None, probe: bool=False, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'

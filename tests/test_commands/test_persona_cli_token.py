@@ -231,6 +231,57 @@ class TestAPluginWithoutTheTokenParameter:
         assert (ep, err) == ("https://e.example", None)
         assert [str(p) for p in calls] == [str(file_token)]
 
+    def test_with_e_it_is_not_probed_and_the_launch_says_so(self, file_token, capsys):
+        """With ``-e`` an older plugin is skipped, not handed ``token=`` and failed."""
+        from kanibako.targets.base import PersonaProbeOutcome
+
+        calls = []
+
+        class _Old:
+            descriptor = ClaudeTarget().descriptor
+
+            def verify_persona(self, endpoint, token_path, model, *, env=None,
+                               timeout=5.0):
+                calls.append(token_path)
+                return PersonaProbeOutcome.passed()
+
+        logger = MagicMock()
+        ep, err, _ = _preflight(NODE_ID, {VAR: str(file_token)}, "https://e.example",
+                                _Old(), cli_env={VAR: E_TOKEN}, logger=logger)
+        assert (ep, err) == ("https://e.example", None)
+        assert calls == []
+        stderr = capsys.readouterr().err
+        assert "cannot take a token from -e" in stderr
+        assert "is not verified" in stderr
+        assert "the probe itself failed" not in stderr
+        assert E_TOKEN not in stderr and FILE_TOKEN not in stderr
+        assert not any(c.kwargs.get("exc_info") for c in logger.debug.call_args_list)
+
+    @pytest.mark.parametrize("sig", ["token", "kwargs"])
+    def test_a_plugin_that_accepts_token_gets_the_e_value(self, file_token, sig):
+        from kanibako.targets.base import PersonaProbeOutcome
+
+        got = []
+
+        class _New:
+            descriptor = ClaudeTarget().descriptor
+
+        if sig == "token":
+            def verify_persona(self, endpoint, token_path, model, *, env=None,
+                               timeout=5.0, token=None):
+                got.append((token_path, token))
+                return PersonaProbeOutcome.passed()
+        else:
+            def verify_persona(self, endpoint, token_path, model, **kwargs):
+                got.append((token_path, kwargs.get("token")))
+                return PersonaProbeOutcome.passed()
+        _New.verify_persona = verify_persona
+
+        ep, err, _ = _preflight(NODE_ID, {VAR: str(file_token)}, "https://e.example",
+                                _New(), cli_env={VAR: E_TOKEN})
+        assert (ep, err) == ("https://e.example", None)
+        assert got == [(None, E_TOKEN)]
+
 
 # ---------------------------------------------------------------------------
 # The token VALUE never leaves the request.
