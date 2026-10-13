@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 
 def packaged_data_dir(*parts: str) -> Traversable:
-    """Resolve a path inside the packaged ``kanibako.data`` tree; the ONE ``files()`` join."""
+    """Resolve a path inside the packaged ``kanibako.data`` tree; the ONE join into it."""
     return importlib.resources.files("kanibako.data").joinpath(*parts)
 
 

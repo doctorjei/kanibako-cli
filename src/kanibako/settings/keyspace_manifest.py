@@ -3,8 +3,8 @@
 It is the machine-readable projection of ``specs/settings-keyspace-1.8.0.md``, ships in
 the wheel as RELEASE AUTHORITY, and this module is the ONE way to read it.
 
-⚑ IT DECLARES NOTHING AT RUNTIME; nothing on the launch or resolve path consults the
-manifest.  The keyspace's live carriers are the ``DECLARED_*`` frozensets and
+⚑ IT DECLARES NO KEY AT RUNTIME; the launch reads only an unset ``@workset.<referent>``'s
+declared default from it.  The keyspace's live carriers are the ``DECLARED_*`` frozensets and
 ``core-defaults.yaml``; the manifest is asserted AGAINST them
 (``tests/test_settings/test_manifest_conformance.py``), never generated FROM.
 

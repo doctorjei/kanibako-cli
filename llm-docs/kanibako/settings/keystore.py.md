@@ -3,7 +3,8 @@
 `KeyStore` is the recursive attribute-dict every resolved keyspace lives in: a `dict` subclass whose
 keys are also attributes, whose nested plain `dict` literals are wrapped on write, and whose
 leaves are whatever value space the caller instantiates it over. It defines the container, the
-reserved-key refusal (`ReservedKeyError`) and the one segment-wise walk — **NOT** resolution, merge,
+reserved-key refusal (`ReservedKeyError`), the one segment-wise walk and the deep copy
+(`clone_store`) — **NOT** resolution, merge,
 cascade, `@`-ref / `$VAR` / `~` expansion, typed views, or any consumer of them, and **not** the
 `__MISSING__` sentinel, which is value-space and lives in `kb_store`.
 
@@ -20,8 +21,8 @@ WRONG and the spec wins. Cite it for the storage model only, never for tier stru
 ## This module + `keystore_strings` are the LIFTABLE UNIT
 
 The container knows nothing about kanibako. That is the point of its split from `kb_store`, which
-holds kanibako's value space (`StoreValue`, `Bind`, `BindEntry`, `BindMap`, `SCOPE_CONTAINMENT`,
-`BINDING_DERIVATIONS_NODE`) and stays behind.
+holds kanibako's value space (`StoreValue`, `Bind`, `BindEntry`, `BindMap` and the store-shape
+constants) and stays behind.
 
 ⚑ **`keystore` imports `keystore_strings` RELATIVELY, and it is the ONE deliberate exception** to
 this package's absolute-in-package-import rule (`settings/__init__.py`). A unit's user-facing
@@ -34,11 +35,9 @@ The five message constants live in `keystore_strings` as `%`-format templates:
 `ERR_TYPE_KEYSTORE_ARGS`, `ERR_ATTRIBUTE_NO_KEY`. The reserved-key message names the offending key
 AND renders the sorted reserved set, so it is actionable rather than merely correct.
 
-⚑ `ERR_RESERVEDKEY_SHADOW` was `ERR_RESERVEDKEY_METHOD` until the store's own public members joined
-the set. What it reports is no longer `dict` method names alone — `RESERVED_KEY_NAMES` is a constant
-and `insert_segments` is not a `dict` method — so `_METHOD` had become false OF ITS OWN CONTENTS, and `_SHADOW` states the actual reason both it and its `_DUNDER` sibling
-refuse a key. **These constant names are the join key across future per-language strings files**, so
-a rename is cheap only while this is the only such file; it was made at that moment deliberately.
+⚑ `_SHADOW` names the reason a listed key is refused: it would shadow a real member of the store,
+which is not always a `dict` method (`RESERVED_KEY_NAMES` is a constant). **These constant names are
+the join key across future per-language strings files.**
 
 ## Generic over its value space
 
@@ -74,8 +73,8 @@ normally.
   exception and stay real.
 * `__delattr__` deletes the key and re-raises a miss as `AttributeError`, never `KeyError`.
 
-⚑ Three places deliberately use the UNBOUND spelling — `dict.items(source)` in `__init__`,
-`dict.get(node, seg, None)` in `insert_segments`, `dict.items(self)` in `__repr__`. A source store
+⚑ The container's own reads deliberately use the UNBOUND spelling — e.g. `dict.items(source)` in
+`__init__`, `dict.items(self)` in `__repr__`, `dict.keys(store)` in `clone_store`. A source store
 holding a key named `items` must not shadow the protocol the container is built on. The reserved set
 below makes this belt-and-braces, and it stays.
 
@@ -108,21 +107,23 @@ Reserved means either of:
   attribute space); or
 * a **name that would shadow a real attribute on the store** — `KeyStore.RESERVED_KEY_NAMES`,
   exactly `dir(dict)`'s non-dunder names PLUS this class's own PUBLIC members
-  (`RESERVED_KEY_NAMES`, `insert_segments`) (verified equal: 0 unguarded, 0 extras).
+  (`RESERVED_KEY_NAMES`, `insert_segments`).
 
 Spec keys do not use these (env vars are UPPER_SNAKE; category and scope names are fixed words such
 as `bindings` / `box`), so the reservation costs nothing and makes the bound `store.get` safe. A
 `_`-prefixed key such as `_wrap` is NOT reserved and stores normally.
 
-The refusal is `ReservedKeyError`, a `KeyError` subclass (a bad-KEY error, not a bad-value one),
-raised from `KeyStore.__setitem__` — which construction, `[]`-set and attribute-set all funnel
+The refusal is `ReservedKeyError(KanibakoError, KeyError)` — `KanibakoError` so a reserved name in
+a settings file is a clean refusal (`cli.py` catches `KanibakoError`), `KeyError` for existing
+callers (a bad-KEY error, not a bad-value one). Its `__str__` prints the message verbatim, where
+`KeyError` would repr-wrap it. It is raised from `KeyStore.__setitem__` — which construction,
+`[]`-set and attribute-set all funnel
 through. The match is **CASE-SENSITIVE** (the box is Linux, so env variable names are).
 *Windows future note:* a Windows HOST folds env-name case; if Windows env support is ever added the
 reservation must widen — either case-insensitive in Windows mode, or Windows-only key mangling.
 Neither is implemented.
 
-⚑ **`RESERVED_KEY_NAMES` is PUBLIC** (it was module-private `_RESERVED_KEY_NAMES` before the split)
-because it has a second reader: `settings_keyspace.RESERVED_LEAF_NAMES` **IS this object** — the
+⚑ **`RESERVED_KEY_NAMES` is PUBLIC** because it has a second reader: `settings_keyspace.RESERVED_LEAF_NAMES` **IS this object** — the
 closed-keyspace floor binds a local name to it (an alias, never a copy), so the validator and the
 write-time floor are one set and cannot disagree. They must not be two: a name accepted by the
 validator and refused by the store fails deep in the store with no reference to the key the user
@@ -138,10 +139,6 @@ class member **ALWAYS wins**. A key spelled like a member does NOT break the mem
 silently **UNREADABLE** through attribute access — `store[name]` still returns it, `store.name` hands
 back the member. The failure is a wrong answer with no error, which is why it needs a pin at all.
 
-This was not hypothetical. With the members spelled as ordinary public names,
-`store["insert_segments"] = "X"` was ACCEPTED and `store.insert_segments` handed back the bound
-METHOD.
-
 **THE INVARIANT: every class member is a DUNDER, or NAME-MANGLED (`_KeyStore__*`), or LISTED in
 `RESERVED_KEY_NAMES`.** Each route makes the member unreachable by a declared key — a dunder key is
 refused at write time, no key is spelled `_KeyStore__*`, and a listed name is refused too.
@@ -149,7 +146,7 @@ refused at write time, no key is spelled `_KeyStore__*`, and a listed name is re
 | member | what it is | why a key cannot reach it |
 |---|---|---|
 | `RESERVED_KEY_NAMES` | the public reserved set (above) | **self-LISTED** in the set |
-| `insert_segments` | the walk, promoted from module function to method | **self-LISTED** in the set |
+| `insert_segments` | the walk | **self-LISTED** in the set |
 | `_KeyStore__check_key_name` | static validator | name-mangled (private) |
 | `_KeyStore__wrap` | static wrapper | name-mangled (private) |
 
@@ -173,7 +170,7 @@ The two validators are private static methods, not module functions:
   `None` — is stored verbatim. A `list` is NOT descended into: the value space admits only scalar
   lists, never nested stores inside a list.
 
-## `insert_segments` — THE walk, now a METHOD
+## `insert_segments` — THE walk, a METHOD
 
 ```python
 store.insert_segments(segments: Sequence[str], value: Any) -> None
@@ -195,7 +192,6 @@ leaves. **A destination is DATA and routinely contains `.`** (`~/.cache/uv`,
 shatters into extra tree levels, and two dests whose shattered paths nest (`~/.claude` under
 `~/.claude.json`) silently overwrite one another.
 
-⚑ **It was a module-level function `insert_segments(store, segments, value)` and is now a method.**
 The call is `store.insert_segments(...)`; there is no free function of that name. Being PUBLIC, the
 name is self-listed in `RESERVED_KEY_NAMES`, so `insert_segments` is NOT a storable key.
 
@@ -208,6 +204,18 @@ there — a `pref` target is a validated keyspace KEY, so every segment is dot-f
 total and lossless. **A path whose terminal is DATA must never be split this way.**
 
 ⚑ Do not confuse the retired function with `settings_assemble._insert_dotted`, which is alive and
-does a DIFFERENT job: it PARSES the terminal through `_parse_node`, so a floor entry under a
-bind-shaped category becomes a `Bind`. Two spellings of one walk would be a rule-0 trap; two walks
-with different jobs are not, provided the difference is stated — which is what this paragraph is for.
+does a DIFFERENT job: it PARSES the terminal, so a floor bindings arm is parsed through
+`parse_bind_map` into a `BindMap`, and a floor key that names a bind entry by NAME (deeper than
+the terminal key) is refused. Two spellings of one walk would be a rule-0 trap; two walks with
+different jobs are not, provided the difference is stated — which is what this paragraph is for.
+
+## `clone_store` — the deep copy
+
+```python
+clone_store(store: KeyStore[V]) -> KeyStore[V]
+```
+
+A deep copy that aliases no mutable part: every node is rebuilt and every list copied; other
+leaves are shared. It iterates storage unbound, so no key can shadow it. ⚑ **A MODULE FUNCTION, NOT
+A METHOD:** a public method would have to join `RESERVED_KEY_NAMES` and so refuse a stored key of
+the same name. Callers include `config_interface`, `settings_expand` and `settings_launch`.

@@ -1,9 +1,10 @@
 # Kanibako's Store Shape — the values a `KeyStore` holds
 
 `kb_store` is kanibako's instantiation of the container's value space: the `StoreValue` union, the
-two binding value types (`Bind`, `BindEntry`), the `BindMap` alias, and the two constants that are
+two binding value types (`Bind`, `BindEntry`), the `BindMap` alias, and the constants that are
 facts about the SHAPE of a store rather than about any one key (`SCOPE_CONTAINMENT`,
-`BINDING_DERIVATIONS_NODE`). It defines shape only — **NOT** resolution, merge, cascade, `@`-ref /
+`RESOLUTION_ORDER`, `BINDING_DERIVATIONS_NODE`, `IDENTITY_ANCHORS`, `IDENTITY_PAIRED`,
+`IDENTITY_IMPLIED`). It defines shape only — **NOT** resolution, merge, cascade, `@`-ref /
 `$VAR` / `~` expansion, typed views, or consumers.
 
 It imports nothing from the settings stack beyond the container itself, `keystore`, which makes it
@@ -64,9 +65,9 @@ referenced it.
 can never be a stored key. Neither is name-mangled (two trailing underscores), so importers spell
 them verbatim. **`__MISSING__` is module-OWNED, not module-private** — `agent_select`,
 `settings_launch`, `settings_merge`, `config_interface`, `config_display`, `workset_cmd` and the
-tests all import it deliberately; it is the canonical probe value, and prose calling it
-"module-private" is describing a rule that never held. `_Missing._instance` is deliberately NOT
-renamed: `__Missing__` is not a `KeyStore`, so it has no key/attribute collision to close.
+tests all import it deliberately; it is the canonical probe value. `__Missing__._instance` is
+deliberately NOT a dunder: `__Missing__` is not a `KeyStore`, so it has no key/attribute collision
+to close.
 
 ## `Bind` — the binding value
 
@@ -89,19 +90,15 @@ class BindEntry(NamedTuple):
     opts: str | None = None
 ```
 
-The disk-store rework (R-3/R-6) makes a bindings arm `dict[dest -> (src, opts)]` rather than
-`dict[name -> (src, dest, opts)]`. **The destination is no longer part of the VALUE; it is the
-mapping KEY**, and the entry name is dropped entirely (R-10: the name has no function, bindings are
-strictly act-once, and a name never distinguishes two entries at one dest).
+A bindings arm is `dict[dest -> (src, opts)]`. **The destination is not part of the VALUE; it is the
+mapping KEY**, and an entry has no name: bindings are strictly act-once, and a name never
+distinguishes two entries at one dest.
 
 `opts` carries exactly the meaning it has on `Bind`: `None` means "fall back to the category's
 default options".
 
 ⚑ **THIS NAME IS TEMPORARY.** Two types cannot both be `Bind` at once, so this one carries a
-placeholder and will become `Bind` eventually, once the conflict is gone. R-6's final name for this
-type is `Bind`; that rename, and the deletion of the legacy 3-tuple `Bind`, happen in P8 of the
-bindings arc. Two bind names coexisting P5→P8 is a deliberate, bounded cost of the bridge — **do NOT
-rename early.**
+placeholder; it becomes `Bind` when the legacy 3-tuple `Bind` is deleted — **do NOT rename early.**
 
 ### ⚑⚑ THE ARITY TRAP — how the two differ
 
@@ -147,7 +144,7 @@ onward is the set it may write DOWN into.
 
 This is the **single source** for every directional derivation, and it lives here — in a stack leaf
 that imports nothing from the stack — so every consumer can import it without cycling
-(`config_interface` → `config` → … would cycle back). The consumers today:
+(`config_interface` → `config` → … would cycle back). Consumers include:
 
 * `settings_drops` — `writable_scopes` (read by `config_keys._SCOPE_WRITE_ALLOWED`, the `config set`
   write-allow sets) and `upward_scope_drop_set` (read by `settings_assemble._drop_upward_scopes`,
@@ -160,6 +157,22 @@ that imports nothing from the stack — so every consumer can import it without 
 ⚑ **Four scopes, deliberately not the six cascade levels.** Containment and the cascade are
 different orderings and conflating them manufactures contradictions that are not in the spec.
 
+## `RESOLUTION_ORDER` — the order key sets resolve in
+
+```python
+RESOLUTION_ORDER: tuple[str, ...] = (
+    "config", "meta.runtime", "meta.agent", "meta.workset", "base",
+    "system", "agent", "workset", "meta.box", "box",
+)
+```
+
+System-design "Bootstrap order", **EARLIEST first**; each `meta.<scope>` set is its own rung. It is
+a third ordering, distinct from containment: `meta.workset` precedes `agent`, and `box` follows
+`meta.box`. System-design's "Ordering rule" reads it: a key may depend only on key sets preceding
+it or on its own set. `config.ref_order_error` is the set-door refusal of an `@`-ref to a later
+set, and `settings_prefs` refuses a pref whose target does not resolve strictly earlier than the
+level setting it.
+
 ## `BINDING_DERIVATIONS_NODE`
 
 ```python
@@ -171,3 +184,17 @@ Declared here to reserve the internal derivation nodes at the store root (R-8 ma
 node is not made a key by living in the tree. Declared ONCE, so the producer
 (`settings_categories.derive_binding_keys`) and the assembly drop
 (`settings_assemble._drop_upward_scopes`) spell the same token by construction and cannot drift.
+
+## `IDENTITY_ANCHORS`, `IDENTITY_PAIRED`, `IDENTITY_IMPLIED` — per-owner identity
+
+Keyspec §0 "Per-owner resources": a per-owner value must reach its owner's `meta.*` identity.
+`config.reaches_identity` and `config.identity_gap` read the three tables; they hold data only.
+
+* `IDENTITY_ANCHORS[level][mode]` — the `meta.*` keys that identify owner *level* (`workset`,
+  `partition`, `box`, `agent`) in box *mode*. `shared` has no entry: it names no owner. A
+  per-owner key is itself an anchor of its level; `reaches_identity` adds those from
+  `config_keys.KEY_OWNERS`, so the table does not list them.
+* `IDENTITY_PAIRED` — per mode, a level whose anchors count only together with another level's
+  anchor: a primary or named box name identifies a box only beside its workset.
+* `IDENTITY_IMPLIED` — per mode, a level any of whose anchors alone reaches this one: a standalone
+  workset holds one box, so a workset anchor identifies the box.
