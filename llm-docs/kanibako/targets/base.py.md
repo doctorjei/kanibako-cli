@@ -15,8 +15,9 @@ The module holds four kinds of thing:
   and the `PluginDescriptor` that collects them;
 * the **persona read-back and probe machinery** — `http_probe` / `ProbeResponse`,
   `PersonaSettings`, `PersonaReadOutcome`, `PersonaProbeVerdict`, `PersonaProbeOutcome`,
-  `ProbeEvidence`, `probe_outcome`, `probe_outcome_no_model`, and the host-binary validator
-  `_validate_agent_binary`;
+  `ProbeEvidence`, `probe_outcome`, `probe_outcome_no_model`, the two-axis access model
+  (`GeneralAccess` / `ModelAccess`, `AxisResult`, `AccessReport`, `probe_general_access`,
+  `probe_model_access`, `access_outcome`), and the host-binary validator `_validate_agent_binary`;
 * the **`Target` ABC** itself, whose default method bodies ARE the contract for a plugin that does
   not override.
 
@@ -31,8 +32,8 @@ BindArm = dict[str, tuple[str, ...]]
 CategoryBindDefaults = dict[str, BindArm]
 ```
 
-`BindArm` is the map stored at ANY terminal bind-shaped key — `<scope>.bindings.{ro,rw}` and, since
-2026-08-08c, `<scope>.{caches,seeded,common,synced}`. The KEY is the box DESTINATION, normalized by
+`BindArm` is the map stored at ANY terminal bind-shaped key — `<scope>.bindings.{ro,rw}` and
+`<scope>.{caches,seeded,common,synced}`. The KEY is the box DESTINATION, normalized by
 `settings_resolve.normalize_bind_dest`; the value is `(host_src[, options])`.
 
 It is **not** `core_defaults.BindArmTable`, which maps the terminal key **to** the map.
@@ -60,17 +61,21 @@ class TargetSetting:
     default: str | None | _Unset = ""
     choices: tuple[str, ...] = ()
 
-def descriptor_floor(descriptors: Iterable[TargetSetting]) -> dict[str, str | None]
+def descriptor_floor(descriptors: Iterable[TargetSetting], *,
+                     plugin: str = "") -> dict[str, str | None]
 ```
 A runtime setting a target advertises through `setting_descriptors`. *key* is the setting key in
 the agent state dict (`"model"`); empty *choices* means freeform. *default* is the floor the launch
 places at `agent.<active>.<key>`; `None` is a present `<None>`, which beats a user's
 `agent.default.<key>` exactly as a string floor does. `UNSET`
-(`settings_resolve.UNSET`, Q105) is NO floor: the key inherits `agent.default.<key>`.
+(`settings_resolve.UNSET`) is NO floor: the key inherits `agent.default.<key>`.
 
 `descriptor_floor` is the ONE reader of *default* for a floor — every launch, display and label
 floor goes through it — and it leaves the `UNSET` rows out. A comprehension over `d.default` would
-put the sentinel itself into the snapshot.
+put the sentinel itself into the snapshot. It applies the YAML loader's two rules to the same rows
+(`settings.agent_defaults`): an `UNSET` row for a key `agent.default` does not declare is REFUSED
+BY NAME (`refuse_floorless_default`), and a `None` that repeats `agent.default`'s own `<None>` is
+REFUSED as a shadow (`refuse_shadowing_null`). *plugin* names the origin in a refusal.
 
 ```python
 @dataclass(frozen=True)
@@ -249,7 +254,7 @@ here, and the persona preflight in `start.py` consults it.
   the fixed `ANTHROPIC_AUTH_TOKEN`. A config-file harness (codex) leaves this EMPTY, which is
   DYNAMIC: the single configured `secret_path` key is the token var, and it doubles as the
   model-provider `env_key`.
-  ⚑ That key's VALUE is **THREE-STATE** (2026-08-17 ruling): a configured path, ABSENT (never
+  ⚑ That key's VALUE is **THREE-STATE**: a configured path, ABSENT (never
   configured — the launch refuses), or an explicit `null` — this endpoint is deliberately KEYLESS,
   and the launch proceeds with no token mounted and no `Authorization` header on the verify probe.
   Whether an endpoint needs a token is a property of that SERVER, so it is declared per persona ON
@@ -275,11 +280,10 @@ here, and the persona preflight in `start.py` consults it.
   OpenAI-compatible endpoint has no meaningful default, and a config-file harness cannot express
   "no model" at all.
 
-### ⚑ `model_required` was NARROWED, not superseded
+### ⚑ `model_required` beside a three-state `model`
 
-The 2026-08-17 ruling made `agent.<node>.model` itself three-state, so a persona-level explicit
-`null` now lets a user declare "THIS endpoint needs no model" directly on the key, distinct from
-simply never configuring one.
+`agent.<node>.model` is itself three-state, so a persona-level explicit `null` lets a user declare
+"THIS endpoint needs no model" directly on the key, distinct from simply never configuring one.
 
 `model_required` still answers a DIFFERENT, HARNESS-CAPABILITY question — *"can this DELIVERY
 MECHANISM express no model at all"* — not a per-server one, and the two can conflict:
@@ -309,9 +313,12 @@ class ProbeResponse(NamedTuple):
     status: int | None
     body: str = ""
 
-def http_probe(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> ProbeResponse
+def http_probe(url: str, *, headers: dict[str, str], body: dict | None = None,
+               timeout: float) -> ProbeResponse
 ```
-POST *body* as JSON to *url*; return the HTTP status and the provider's error text.
+POST *body* as JSON to *url* — or GET *url* when *body* is `None` — and return the HTTP status and
+the provider's error text. A GET carries no body and no `Content-Type`; everything below holds for
+both methods.
 
 The shared transport for `Target.verify_persona` probes. ANY HTTP response yields its integer
 status — an error status like 401 is a real ANSWER from the endpoint, not a transport failure — and
@@ -552,18 +559,21 @@ class ProbeEvidence:
     token_path: Path | None = None
     status: int | None = None
     provider_text: str = ""
+    request: str = ""
 
 class PersonaProbeOutcome(NamedTuple):
     verdict: PersonaProbeVerdict
     reason: str | None = None
     evidence: ProbeEvidence | None = None
+    access: AccessReport | None = None
 
     @classmethod
     def passed(cls) -> "PersonaProbeOutcome"
     @classmethod
     def rejected(cls, evidence: ProbeEvidence) -> "PersonaProbeOutcome"
     @classmethod
-    def inconclusive(cls, reason: str, evidence=None) -> "PersonaProbeOutcome"
+    def inconclusive(cls, reason: str,
+                     evidence: "ProbeEvidence | None" = None) -> "PersonaProbeOutcome"
     @classmethod
     def not_applicable(cls, reason: str) -> "PersonaProbeOutcome"
 ```
@@ -590,13 +600,14 @@ perfectly valid and that no user can act on.**
 
 *reason* is a human-readable clause naming the specific cause, set for the two non-answer arms and
 `None` for `PASS`/`REJECTED`, which name themselves. It is written to interpolate into a sentence,
-e.g. `f"could not verify … ({outcome.reason})"`.
+e.g. `f"could not verify … ({outcome.reason})"`. *access* carries both axes when the verdict came
+from `access_outcome` (below), and is `None` for a one-request probe.
 
 ### `ProbeEvidence` — what was sent, and what came back
 
 🛑 **A REFUSAL MESSAGE NAMES THE REFUSAL, NEVER A CULPRIT.** The message this type exists to fix
 asserted *"the endpoint rejected the token"* and told the user to replace it; the measured cause
-(2026-08-30) was a model the account had no entitlement to, on a token that was perfectly valid.
+was a model the account had no entitlement to, on a token that was perfectly valid.
 **A 401/403 does not say which input was at fault**, and the probe has no way to find out — so it
 states the status, the inputs and the provider's own words, and the reading is the user's.
 
@@ -607,7 +618,9 @@ value, so it carries no secret by construction. *provider_text* is different: `h
 and scrubbed it of every header value the request carried, and it is also **re-serialized** when the
 body was JSON — the provider's meaning, not its bytes. 🛑 **Scrubbed is not proven clean.** The
 record inherits `ProbeResponse.body`'s documented residue verbatim; read this block as an error
-message fit for a human, not as a record proven free of secrets.
+message fit for a human, not as a record proven free of secrets. *request* is the method and path
+of the request that decided the record (`GET /v1/models`), never the host or query
+(`_request_line`); `""` when not recorded.
 
 It is filled in TWO halves — a plugin builds the request half before the call, `probe_outcome`
 fills *status* / *provider_text* from the answer, **so no plugin can forget to.** `rejected` takes
@@ -621,14 +634,21 @@ launch hard error in `commands/start.py::_persona_probe_error` and the create wa
   has no facts to lay out, and four lines restating the caller's own inputs is noise. The closing
   "which input was at fault" sentence is emitted for a REFUSAL status ONLY — for any other status
   the caller's own *reason* already says what was seen, and a second reading would be a guess.
-* `refusal_phrase(endpoint)` — the sentence that INTRODUCES the block. ⚑ It exists because
-  single-sourcing the block alone was not enough: both consumers kept their own copy of the
-  sentence, and the copies DIVERGED in the very commit that shared the block (`c2f6ee91`). 🛑 Read
-  that as a DIVERGENCE, not a regression: measured against that commit's pre-image, the create path
-  has NEVER named the endpoint on the status-less arm, and the launch path always has — before and
-  after — so sharing the block left the gap exactly where it already was. The endpoint is
-  interpolated only when there is no status — precisely when `evidence_block()` is `""` and nothing
-  else would name it.
+  ⚑ With *access* set (a two-axis probe) the block renders BOTH requests: on a `REJECTED`, first
+  one sentence saying what each request showed, then the model request's block, then the
+  model-free request's own `request` line with its status and, when sent, the status of the
+  request without the credential. 🛑 That sentence says what the endpoint REFUSED, never that the
+  token is bad.
+* `refusal_phrase(endpoint)` — the sentence that INTRODUCES the block, single-sourced so both
+  consumers render it alike. The endpoint is interpolated only when there is no status — precisely
+  when `evidence_block()` is `""` and nothing else would name it — and is userinfo-scrubbed
+  (`_scrub_endpoint_userinfo`), like the block's own endpoint line.
+
+`_scrub_endpoint_userinfo` replaces a URL userinfo (`user[:password]@`) with `_REDACTED`. 🛑 ONE
+rule: the span runs to the LAST `@`, and no `/`, `?` or `#` bounds it, because a credential need
+not be delimiter-free (a base64 token carries `/`). It starts past the scheme and its `/` run when
+a `://` ends an RFC 3986 scheme at index 0, else at index 0. The cost is over-redaction in printed
+text only; the check runs on the raw string, so no working box is refused.
 
 `evidence_block()` takes a `resolved_from` the CALLER supplies (and passes it down to
 `ProbeEvidence.lines` / `.block`, which declare it the same way); `refusal_phrase` takes the
@@ -699,6 +719,70 @@ field was left out:
 ⚑ The status set is an **INFERENCE** — the wire does not say "you omitted the model" — so it is
 deliberately NARROW and applies ONLY when the caller omitted the field. It never widens
 `probe_outcome`'s own mapping.
+
+### The two-axis access model
+
+Both first-party `verify_persona` implementations ask TWO questions and let one function rule on
+the pair.
+
+```python
+class GeneralAccess(Enum):   # VERIFIED, OPEN, UNTESTED, DENIED, NO_ANSWER
+class ModelAccess(Enum):     # OK, DENIED, MODEL_REQUIRED, AMBIGUOUS, UNREACHABLE
+
+@dataclass(frozen=True)
+class AxisResult:
+    state: GeneralAccess | ModelAccess
+    evidence: ProbeEvidence
+    control_status: int | None = None
+
+@dataclass(frozen=True)
+class AccessReport:
+    general: AxisResult
+    model: AxisResult
+    @property
+    def control_status(self) -> int | None
+
+def probe_general_access(list_url: str, *, headers: dict[str, str],
+                         credential: tuple[str, str] | None, sent: ProbeEvidence,
+                         timeout: float) -> AxisResult
+def probe_model_access(url: str, *, headers: dict[str, str], body: dict, sent: ProbeEvidence,
+                       timeout: float) -> AxisResult
+def access_outcome(report: AccessReport, *, model_exact: bool) -> PersonaProbeOutcome
+```
+
+**The general axis** (`probe_general_access`) GETs *list_url*, the model list, a request that names
+no model. With a *credential* (header name, value) it sends a GET carrying it and then — only if
+that answered 2xx — a CONTROL GET without it; the two share one *timeout* budget, and any header
+named like the credential is dropped from the control. Without a credential it sends one bare GET.
+The states:
+
+* `VERIFIED` — 2xx with the credential, 401/403 without it: the one proof of a key;
+* `OPEN` — 2xx with no credential: the list is public, so it tests no key;
+* `UNTESTED` — 2xx with the credential; the request without it did not decide;
+* `DENIED` — 401/403 on the first request;
+* `NO_ANSWER` — the first request was unreachable, or answered any other status.
+
+The evidence describes the FIRST GET, with no model; the control's status rides as
+`control_status`. No reply body decides anything; only statuses do.
+
+**The model axis** (`probe_model_access`) POSTs *body* to *url*: the completion probe. `OK` (2xx),
+`DENIED` (401/403), `MODEL_REQUIRED` (400/422, only when *sent* names no model), `AMBIGUOUS` (any
+other status), `UNREACHABLE` (no status). Both probes never raise (`http_probe`).
+
+**`access_outcome`** is the one carrier of the verdict table. Outside the cells below, the verdict
+is `probe_outcome` / `probe_outcome_no_model` on the MODEL response, exactly; an `UNTESTED`
+general axis is read as `OPEN`. ⚑ **A refusal of the model-free request alone never refuses a box.**
+
+* model `DENIED`, credential `VERIFIED`: *model_exact* — True when the model request carried the id
+  the box itself sends — keeps the refusal; False makes it `INCONCLUSIVE` (warn), because the probe
+  could not send the box's model id.
+* model `MODEL_REQUIRED`, credential `VERIFIED`: `PASS` — authorization was verified without a
+  model.
+* model `MODEL_REQUIRED`, general `DENIED`: `INCONCLUSIVE`, naming both statuses.
+* model `AMBIGUOUS` or `UNREACHABLE` with a general axis that answered: the model verdict, its
+  reason extended with what the general axis showed.
+
+Every outcome carries *report* as `access`.
 
 ## Launch shape and credential lifecycle
 
@@ -1026,12 +1110,14 @@ def setup_args(self) -> list[str]               # default []
 @property
 def config_dir_name(self) -> str                # default ".{name}"
 
-def credential_check_path(self, home: Path) -> Path | None    # default None
+def credential_check_path(self, home: Path) -> Path | None    # default: the first cred file
 ```
 
 `default_entrypoint` is the binary name for the container entrypoint. `config_dir_name` is the
-agent config dir relative to home (`'.claude'`). `credential_check_path` is the path to check for
-credential existence.
+agent config dir relative to home (`'.claude'`). `credential_check_path` is the credential file
+whose presence means "logged in": DERIVED, not declared a second time — the FIRST file entry of
+the descriptor's `cred_files` (a directory entry is skipped) — and `None` only with no descriptor
+(`ShellTarget`) or no such entry.
 
 #### `has_resumable_session` — the continue-vs-fresh guard
 
@@ -1169,13 +1255,14 @@ The default `PersonaReadOutcome(None, None)` means this harness has no persona r
 
 Probes *endpoint*, credential-authed with the token at *token_path* — a minimal real ack.
 
-The persona verify probe (DESIGN §3b): a FEW-token genuine completion round-trip against the
-persona's endpoint, specific to the harness API (anthropic messages vs OpenAI responses wire).
-Returns a `PersonaProbeOutcome`, whose four arms separate a probe that RAN and could not decide
-(`INCONCLUSIVE`) from one that learned nothing about the token and never will for this input
-(`NOT_APPLICABLE`, carrying the named cause).
+The persona verify probe (DESIGN §3b), specific to the harness API (anthropic messages vs OpenAI
+responses wire). Both first-party plugins run the two-axis model above — `probe_general_access` on
+the model list and `probe_model_access` with a few-token genuine completion — and return
+`access_outcome`. Returns a `PersonaProbeOutcome`, whose four arms separate a probe that RAN and
+could not decide (`INCONCLUSIVE`) from one that learned nothing about the token and never will for
+this input (`NOT_APPLICABLE`, carrying the named cause).
 
-⚑ ***token_path* MAY be `None`** (2026-08-17 ruling): a persona whose `secret_path` key is
+⚑ ***token_path* MAY be `None`**: a persona whose `secret_path` key is
 PRESENT-null declares itself deliberately KEYLESS, and an implementation must still PROBE it, with
 the `Authorization` header OMITTED rather than decline — the request is sent bare and the SERVER
 decides (a 2xx confirms the endpoint really is keyless; a 401/403 is a genuine, useful `REJECTED` —
@@ -1190,13 +1277,13 @@ it with the `model` field OMITTED rather than decline — never with a placehold
 ⚑ ***env* is the PERSONA-STORE passthrough env block** — the store entry's own `env:` map, less
 the two single-source vars (`PersonaBundle.env`). A harness whose RUNTIME rewrites the model from
 one of them MUST apply that rewrite here, or the probe asks the provider a question the box never
-asks. **MEASURED, 2026-08-30:** a persona resolving `model: sonnet` was probed with `sonnet` on the
+asks. **Measured:** a persona resolving `model: sonnet` was probed with `sonnet` on the
 wire, the endpoint answered 403 *"team not allowed to access model"*, and the launch was refused on
 a VALID token — in the box, Claude Code reads that alias through `ANTHROPIC_DEFAULT_SONNET_MODEL`
 and sends `gemma-4-31b-it`, which the same endpoint serves. Claude implements this in `_wire_model`;
 codex names its model in `config.toml` and sends it verbatim, so it accepts *env* and ignores it.
 
-🛑 **IT IS NOT THE COLLAPSED `env` FAMILY, AND THE DIFFERENCE IS AN OPEN DEFECT, NOT A NUANCE.** The
+🛑 **IT IS NOT THE COLLAPSED `env` FAMILY.** The
 variables a box actually receives are the arbitrated `meta.assembly.env` slots, folded by
 `store_collapse.collapse_env` inside `_install_assembly_collapse` — *below* its `if not whole_box`
 gate, so ONLY the whole-box resolve (`commands.start._resolve_launch_snapshot`) produces them, and
@@ -1205,9 +1292,11 @@ already resolved (`_resolve_box_launch_decisions`) is a `build_launch_snapshot` 
 per-scope cascade and the persona tier — no collapse, no base families, no realized env, no `-e`.
 So a mapping written at the agent-file rung (`kanibako agent set <a> env.<VAR>=…` — the DOCUMENTED
 route), at the workset or box rung, or on a keyspace-only persona that has no store block at all,
-**does not reach this argument**: the alias goes out raw, the endpoint answers 403, and the launch
-hard-errors on a box that would have run. Closing it needs the collapse before box materialization,
-which is a design change, not a wiring.
+**does not reach this argument**: the alias goes out raw and the endpoint answers 403. When the
+model-free request verified the credential, that refusal only warns; when it could not (a public
+model list, no answer, a refusal, or no credential), the launch hard-errors on a box that would
+have run. Closing it needs the collapse before box materialization, which is a design change, not a
+wiring.
 
 ⚑ **Resolving a mapping the USER wrote is not the substitution the rule above forbids; inventing
 one is.** A model with no such var goes out AS GIVEN, and `None` stays `None`.
@@ -1225,14 +1314,18 @@ The default `NOT_APPLICABLE` means this harness has no probe.
 ### The credential seams
 
 ```python
-def invalidate_credentials(self, home: Path) -> None
+def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
 
 def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
 
 def writeback_extra(self, *, project_home: Path, host_home: Path) -> None
 ```
 
-`invalidate_credentials` removes credential files when switching to distinct auth. Default: no-op.
+`cred_writeback_error` says why the box's *data* for *spec* must not replace the store copy, or
+`None` to allow it: the writeback engine asks before a box file reaches a store, and a reason
+keeps the store as it was. A harness checks its own credential format, read the way its own code
+reads it. Default: no check. codex refuses an `auth.json` that is not a non-empty JSON object;
+goose refuses a `secrets.yaml` that is not a non-empty YAML mapping.
 
 #### `transform_cred`
 
@@ -1244,8 +1337,9 @@ source file is available (distinct auth, or the host file absent at seed time) �
 whether to write a default *dst* or do nothing.
 
 The default is a plain copy when *src* exists, so a plugin that flags a file `filtered` but does
-not override still gets a sensible wholesale copy. Plugins override to filter/merge (claude
-`claudeAiOauth` merge + `.claude.json` allowlist; goose `config.yaml` allowlist).
+not override still gets a sensible wholesale copy. Plugins override to filter/merge (claude merges
+`claudeAiOauth`; goose filters `config.yaml` and preserves the host's `GOOSE_MODE` on writeback).
+Claude's `.claude.json` handling is `writeback_extra`, below, not `transform_cred`.
 
 #### `writeback_extra`
 
@@ -1260,3 +1354,13 @@ spec, because that would also IMPORT host→project and a wholesale copy would c
 
 ⚑ **MUST be defensive — never raise on a malformed or absent file;** core wraps it, but a clean
 teardown is the contract.
+
+## `has_plugin`
+
+```python
+def has_plugin(target: Target | None) -> bool
+```
+True when *target* is a harness plugin: it has a `PluginDescriptor` (keyspec §2d). Discovery
+refuses a plugin whose `descriptor` or `default_entrypoint` is `None`, so only the built-in
+`ShellTarget` lacks either; read "is there an agent" here, never from either attribute. A module
+function rather than a method, so a third-party subclass cannot override it.
