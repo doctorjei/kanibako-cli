@@ -29,7 +29,7 @@ exists to avoid.
 ⚑⚑ THE TERMINUS IS NOT A NAMED OBJECT.  It is ANY resolve the production path performs
 for a box THAT ALREADY EXISTS — and K answers if it reaches a terminal in ANY of them.
 [Jei:2026-08-29]: *"termini - for any box thst exists, def."*, and on the previous
-wording, *"'launch snapshot' sounds a little bit like a carve out…"*.  He is right:
+wording, *"'launch snapshot' sounds a little bit like a carve out…"*.  Rightly so:
 naming ONE builder as *the* terminus privileges one snapshot object for no principled
 reason, and a key that resolves at a different real resolve is answerable to a user
 even though that wording called it dangling.

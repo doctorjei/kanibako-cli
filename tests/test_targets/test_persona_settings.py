@@ -1240,8 +1240,8 @@ class TestProbeEvidence:
         assert outcome.evidence.provider_text.endswith("…")
 
     def test_the_evidence_says_WHERE_the_endpoint_and_model_CAME_FROM(self, token_file):
-        """[Jei:2026-08-30]: *"I am not getting that 403"* — and neither half of the
-        verdict said where its inputs had been resolved from.
+        """[Jei:2026-08-30]: *"I am not getting that 403"* — the 403 was swallowed, and neither
+        half of the verdict said where its inputs had been resolved from.
 
         The caller supplies the answer because the plugin was HANDED both values.
         """
