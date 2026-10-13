@@ -466,6 +466,23 @@ class TestBootstrapAndTransform:
             proj, sys_file, "claude", ClaudeTarget(), **_focused(),
         ) == "tweakcc"
 
+    def test_a_floor_none_under_a_pluginless_target_is_not_a_stored_null(self, tmp_path):
+        """No plugin row reaches the snapshot (``ShellTarget``), so its transform default
+        is core's ``<None>``: the ``None`` the pick lands on is that floor, never a
+        stored ``null``, and nothing refuses. Same for the early check."""
+        from kanibako.commands.start import _TRANSFORM_NULL, _effective_transform
+        from kanibako.targets.shell import ShellTarget
+
+        proj = _focused_box(tmp_path)
+        assert _effective_transform(
+            proj, None, "claude", ShellTarget(), **_focused(),
+        ) is None
+        level = build_cli_level(selection=None, active_agent="claude")
+        assert _null_behavior_refusal(
+            proj, None, "claude", ShellTarget(), std=_focused()["std"], level=level,
+            rules=[_TRANSFORM_NULL],
+        ) is None
+
     def test_the_effective_defaults(self):
         from kanibako.settings.config_interface import effective_behavior_default
 

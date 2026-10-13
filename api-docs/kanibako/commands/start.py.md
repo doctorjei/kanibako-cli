@@ -66,7 +66,7 @@ def _bootstrap_setting(choice: BootstrapChoice) -> str | None
 def _no_bootstrap_reason(choice: BootstrapChoice) -> str
 def _access_null(setting_key: str) -> _NullRefused
 def _declared_floor(key: str, agent_id: str) -> str | None
-def _refuse_null_behavior(snapshot, agent_id: str, rule: _NullRefused, *, written=(), prefs=()) -> str | None
+def _refuse_null_behavior(snapshot, agent_id: str, rule: _NullRefused, *, written=(), prefs=(), floors: 'tuple[str | None, Mapping[str, str | None] | None] | None'=None) -> str | None
 def _null_behavior_refusal(proj, system_settings_path: 'Path | None', agent_id: str, target, *, std, level: 'Mapping[str, object] | None', rules: 'list[_NullRefused]', agent_path: 'Path | None'=None) -> str | None
 def _plugin_floor(target, key: str) -> 'dict[str, str | None]'
 def _declared_behavior(key: str) -> str

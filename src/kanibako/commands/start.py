@@ -990,6 +990,7 @@ def _declared_floor(key: str, agent_id: str) -> str | None:
 
 def _refuse_null_behavior(
     snapshot, agent_id: str, rule: _NullRefused, *, written=(), prefs=(),
+    floors: "tuple[str | None, Mapping[str, str | None] | None] | None" = None,
 ) -> str | None:
     """The refusal when *rule*'s key resolves to a present ``None``, else ``None``.
 
@@ -1002,6 +1003,9 @@ def _refuse_null_behavior(
     refused: there a ``None`` is the default.
     *written* (the snapshot's ``written_out``) names the file; *prefs* the box and
     workset requests, so a ``pref.`` line is named as the user wrote it.
+    *floors* — ``(core floor, plugin floor)`` — are the floors a FOCUSED snapshot was
+    built over; its effective default is read off them, so a ``<None>`` floor the
+    snapshot itself carries is never taken for a stored ``null``.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.config import null_path_keys_error
@@ -1014,7 +1018,15 @@ def _refuse_null_behavior(
     )
     from kanibako.settings.settings_prefs import pref_request_for
 
-    if effective_behavior_default(agent_id, rule.key) is None:
+    if floors is not None:
+        core_floor, plugin_floor = floors
+        default = (
+            plugin_floor[rule.key] if plugin_floor and rule.key in plugin_floor
+            else core_floor
+        )
+    else:
+        default = effective_behavior_default(agent_id, rule.key)
+    if default is None:
         return None
     hit = settings_launch.null_behavior_setter(
         snapshot, written, active_agent=agent_id, key=rule.key,
@@ -1066,15 +1078,15 @@ def _null_behavior_refusal(
     refusals: list[str] = []
     for rule in rules:
         written: list = []
+        floors = (_declared_floor(rule.key, agent_id), _plugin_floor(target, rule.key))
         snapshot = _focused_agent_snapshot(
             proj, system_settings_path, agent_id, std=std,
             selection_level=level, key=rule.key,
-            floor=_declared_floor(rule.key, agent_id),
-            agent_floor=_plugin_floor(target, rule.key),
+            floor=floors[0], agent_floor=floors[1],
             agent_path=agent_path, written_out=written,
         )
         refusal = _refuse_null_behavior(
-            snapshot, agent_id, rule, written=written, prefs=prefs,
+            snapshot, agent_id, rule, written=written, prefs=prefs, floors=floors,
         )
         if refusal is not None:
             refusals.append(refusal)
@@ -1224,7 +1236,7 @@ def _agent_scalar_pick(
         box_path, workset_path = box_workset_settings_paths(proj)
         refusal = _refuse_null_behavior(
             snapshot, agent_id, refuse, written=written,
-            prefs=collect_prefs(workset_path, box_path),
+            prefs=collect_prefs(workset_path, box_path), floors=(floor, agent_floor),
         )
         if refusal is not None:
             raise ConfigError(refusal)
