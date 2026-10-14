@@ -46,7 +46,8 @@ def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None
 def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None) -> None
 def undeclared_listing(findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> tuple[str, str, str]
 def retired_cure(files: Iterable[SettingsFile]) -> None
-def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None, declared: bool=True, defer_shape: bool=False, pref_agent: str | None=None) -> KeyStore
+def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None, declared: bool=True, defer_shape: bool=False, pref_agent: str | None=None, defer_root: bool=False) -> KeyStore
+def root_default_tier_pref(value: KeyStore, category: str, active_agent: str | None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None, *, active_agent: str | None=None) -> KeyStore
 def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
 def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig

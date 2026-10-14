@@ -1242,12 +1242,21 @@ def _parse_node(
                 # ⚑ ``not in_binds`` keeps a user's entry literally NAMED ``common`` inside another
                 # category from being re-read as one — the guard ``at_bindings`` carries below.
                 if isinstance(sub, dict):
+                    # ⚑ A PREF at ``agent.default`` read before the agent is chosen
+                    # cannot know its root yet; :func:`root_default_tier_pref` roots it
+                    # once the agent is known (§2h installs it AT its target).
+                    defer_root = (
+                        for_pref_requests and active_agent is None
+                        and _pref_agent_segment(path) == _AGENT_DEFAULT_SUB
+                        and len(path) == 3 and key_s in ABSTRACT_CATEGORIES
+                    )
                     store[key_s] = parse_bind_map(
                         sub, category=key_s,
                         root_ref=_declaration_root_ref(path, key_s, active_agent),
                         declared=_at_declared_category((*path, key_s)),
                         defer_shape=for_pref_requests and _under_pref(path),
                         pref_agent=_pref_agent_segment(path),
+                        defer_root=defer_root,
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1305,7 +1314,7 @@ def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
 def parse_bind_map(
     raw: Any, *, category: str = "bindings", root_ref: str | None = None,
     declared: bool = True, defer_shape: bool = False,
-    pref_agent: str | None = None,
+    pref_agent: str | None = None, defer_root: bool = False,
 ) -> KeyStore:
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
@@ -1354,12 +1363,32 @@ def parse_bind_map(
             store[dest] = sub
             continue
         entry = _parse_node(sub, in_binds=True, dest_keyed=True)
-        if isinstance(entry, BindEntry):
+        if isinstance(entry, BindEntry) and not defer_root:
             entry = BindEntry(
                 _declared_source(entry.src, category, dest, root_ref), entry.opts,
             )
         store[dest] = entry
     return store
+
+
+def root_default_tier_pref(
+    value: KeyStore, category: str, active_agent: str | None,
+) -> KeyStore:
+    """Root a deferred ``pref.agent.default.<category>`` map at *active_agent*'s store.
+
+    The pref parse runs before the agent is chosen and leaves these sources as authored
+    (``defer_root``); this applies the same root a settings file's declaration gets.
+    """
+    root_ref = _declaration_root_ref(("agent", _AGENT_DEFAULT_SUB), category, active_agent)
+    out = KeyStore()
+    for dest in dict.keys(value):
+        entry = dict.__getitem__(value, dest)
+        if isinstance(entry, BindEntry):
+            entry = BindEntry(
+                _declared_source(entry.src, category, dest, root_ref), entry.opts,
+            )
+        out[dest] = entry
+    return out
 
 
 def _declared_source(

@@ -552,7 +552,7 @@ def _bare_relative_path_error(
         return None
     if is_unambiguous_path_value(value):
         return None
-    anchor_ref, anchor_label = path_key_anchor(canonical)
+    anchor_ref, anchor_label = path_key_anchor(canonical, active_agent=agent_name)
     # ⚑ The workset and box roots come from the COMMAND's target (spec §2a), never
     # from where its settings files sit; a root the target lacks is named, unresolved.
     anchor = _set_time_anchor(

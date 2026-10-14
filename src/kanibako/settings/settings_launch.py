@@ -1415,7 +1415,7 @@ def _refuse_ambiguous_path_values(
     lookup = _terminal_lookup(expanded)
     refusals = []
     for key, value, path in offenders:
-        anchor_ref, anchor_label = path_key_anchor(key)
+        anchor_ref, anchor_label = path_key_anchor(key, active_agent=ctx.agent_name)
         try:
             anchor: str | None = expand_expr(
                 anchor_ref, space="host", ctx=ctx, lookup=lookup,
@@ -2383,7 +2383,9 @@ def assemble_cascade(
             *(r.target for r in requests),
             *keys_needing_agent_names(cli_level, active_agent=agent_name),
         ])
-    ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
+    ws_prefs, box_prefs = apply_prefs(
+        requests, valid_agents=valid_agents, active_agent=agent_name,
+    )
 
     levels: list[KeyStore] = []
     if cli_level:

@@ -187,6 +187,8 @@ _DEFAULT_TIER = (
   ("system", 'agent:\n  default:\n    caches: {"~/d": ["leaf"]}\n', "caches"),
   ("system", 'agent:\n  default:\n    seeded: {"~/d": ["leaf"]}\n', "seeded"),
   ("agent", 'agent:\n  default:\n    caches: {"~/d": ["leaf"]}\n', "caches"),
+  ("box", 'pref:\n  agent:\n    default:\n      caches: {"~/d": ["leaf"]}\n', "caches"),
+  ("workset", 'pref:\n  agent:\n    default:\n      common: {"~/d": ["leaf"]}\n', "common"),
 )
 
 
@@ -202,6 +204,27 @@ def test_the_all_agents_tier_roots_at_the_active_agents_store(
   """
   sources = _sources(tmp_path, agent, **{level: text})
   assert sources["/home/agent/d"] == f"{AGENTS}/{agent}/{category}/leaf"
+
+
+def test_a_self_resolving_all_agents_pref_source_is_kept_verbatim(tmp_path: Path) -> None:
+  """The pref's root is supplied late, but only to a RELATIVE source (§2a)."""
+  sources = _sources(
+    tmp_path,
+    box='pref:\n  agent:\n    default:\n      caches: {"~/d": ["/abs/dir"], "~/e": ["leaf"]}\n',
+  )
+  assert sources["/home/agent/d"] == "/abs/dir"
+  assert sources["/home/agent/e"] == f"{AGENTS}/{AGENT}/caches/leaf"
+
+
+def test_a_bare_all_agents_path_key_names_the_active_agents_store(tmp_path: Path) -> None:
+  """The refusal's other reading for ``agent.default.canon`` is the active agent's store.
+
+  ``{config.agents}/default`` is a directory no agent reads (keyspec §2d).
+  """
+  with pytest.raises(SettingsError) as exc:
+    _sources(tmp_path, system='agent:\n  default:\n    canon: relcanon\n')
+  assert f"{AGENTS}/{AGENT}/relcanon" in str(exc.value)
+  assert f"{AGENTS}/default/relcanon" not in str(exc.value)
 
 
 # --------------------------------------------------------------------------- #

@@ -35,7 +35,7 @@ _SCOPE_SHOW_COMMAND = {'system': 'kanibako system show', 'workset': 'kanibako wo
 ## Functions
 ```
 def is_path_valued_key(canonical: str) -> bool
-def path_key_anchor(canonical: str) -> 'tuple[str, str]'
+def path_key_anchor(canonical: str, *, active_agent: str | None=None) -> 'tuple[str, str]'
 def agent_node_of(canonical: str) -> str
 def agent_key_node(raw: str) -> str
 def resolve_key(raw: str) -> str
@@ -68,6 +68,7 @@ def foreign_scope_read_error(canonical: str, key: str, command_scope: 'ConfigLev
 def scope_read_key_error(key: str, command_scope: 'ConfigLevel | None', *, active_agent: str | None=None) -> str | None
 def scope_key_refusal(key: str, reason: str, command_scope: 'ConfigLevel | None', *, verb: str, cure: str | None=None) -> str
 def _coerce_value(canonical: str, value: 'str | None') -> object | None
+def _tier_node(node: str, active_agent: str | None) -> str
 def _scope_direction_error(canonical: str, command_scope: 'ConfigLevel | None') -> str | None
 def _typed_key_node(node_raw: str, *, prefix: str) -> str
 def _resolve_agent_key(raw: str, *, prefix: str) -> str

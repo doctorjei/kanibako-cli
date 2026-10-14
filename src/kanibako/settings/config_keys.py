@@ -486,7 +486,9 @@ def is_path_valued_key(canonical: str) -> bool:
     return _is_scope_secret_key(canonical) or _is_agent_node_secret_key(canonical)
 
 
-def path_key_anchor(canonical: str) -> "tuple[str, str]":
+def path_key_anchor(
+    canonical: str, *, active_agent: str | None = None,
+) -> "tuple[str, str]":
     """``(anchor ref, label)`` for the OTHER reading of a bare relative at *canonical*
     (keyspec §2a "A path key's stored value").
 
@@ -506,13 +508,16 @@ def path_key_anchor(canonical: str) -> "tuple[str, str]":
     ⚑ THE LABEL IS PART OF THE ANSWER.  ``box.images_store`` is probed from podman at
     runtime and ``secret_path.<VAR>`` declares nothing at all, so for those two the
     anchor is a scope root and is introduced as one — see :data:`DECLARATION_ROOT_LABEL`.
+
+    ⚑ AN ``agent.default`` KEY TAKES *active_agent*'s store (keyspec §2d: the tier's root is
+    the active agent's own path); with no agent it keeps the reserved tier's root.
     """
     # ⚑ THE TWO ``secret_path`` SHAPES ARE TESTED FIRST, and the order is load-bearing:
     # ``workset.secret_path.TOKEN`` is a ``workset.*`` key that declares NO default, so
     # the prefix arms below would give it the right root under the wrong label.
     secret = _parse_agent_node_secret_key(canonical)
     if secret is not None:
-        return (agent_declaration_root_ref(secret[0]),
+        return (agent_declaration_root_ref(_tier_node(secret[0], active_agent)),
                 DECLARATION_ROOT_LABEL)
     if _is_scope_secret_key(canonical):
         return DECLARATION_ROOT_REF[canonical.split(".", 1)[0]], DECLARATION_ROOT_LABEL
@@ -529,7 +534,12 @@ def path_key_anchor(canonical: str) -> "tuple[str, str]":
     # CLI spelling writes the any-agent tier, whose node is the reserved ``default``.
     parsed = _parse_persona_agent_key(canonical)
     node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
-    return agent_declaration_root_ref(node), DEFAULT_ROOT_LABEL
+    return agent_declaration_root_ref(_tier_node(node, active_agent)), DEFAULT_ROOT_LABEL
+
+
+def _tier_node(node: str, active_agent: str | None) -> str:
+    """*node*, or *active_agent* for the all-agents tier when one is known."""
+    return active_agent if node == AGENT_DEFAULT_SUB and active_agent else node
 
 
 def agent_node_of(canonical: str) -> str:

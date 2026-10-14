@@ -562,13 +562,31 @@ def pref_overlay(requests: Iterable[PrefRequest]) -> KeyStore:
     return overlay
 
 
+def _root_default_tier(req: PrefRequest, active_agent: str | None) -> PrefRequest:
+    """*req* with a deferred ``agent.default`` abstract-category map rooted (spec §2a)."""
+    from dataclasses import replace
+
+    from kanibako.settings.settings_assemble import root_default_tier_pref
+    from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
+
+    parts = req.target.split(".")
+    if (len(parts) != 3 or parts[:2] != ["agent", "default"]
+            or parts[2] not in ABSTRACT_CATEGORIES or not isinstance(req.value, KeyStore)):
+        return req
+    return replace(req, value=root_default_tier_pref(req.value, parts[2], active_agent or None))
+
+
 def apply_prefs(
     requests: Sequence[PrefRequest],
     *,
     valid_agents: "Collection[str] | None" = None,
     allowlist: Sequence[str] = PREF_ALLOWLIST,
+    active_agent: str | None = None,
 ) -> tuple[KeyStore, KeyStore]:
     """Validate every request and build ``(workset_overlay, box_overlay)``.
+
+    *active_agent* roots a ``pref.agent.default.<abstract>`` bare source at that agent's
+    store (keyspec §2d); with none it takes the reserved tier's root.
 
     RAISES :class:`~kanibako.settings.settings_resolve.SettingsError` on the FIRST
     invalid request, naming the key, the LEVEL, the FILE and the REASON (spec §2h):
@@ -606,6 +624,7 @@ def apply_prefs(
         # ⚑ ORDER: the TARGET is judged first, so a request naming an unknown agent is
         # told THAT; only an accepted target reaches the deferred shape verdict.
         refuse_deferred_pref_shapes(req)
+        req = _root_default_tier(req, active_agent)
         if req.level == "box":
             box.append(req)
         else:
