@@ -5003,7 +5003,7 @@ without step 2 every new box is seeded with the stale `MY_CONTENTS.md` beside `L
 1. Host-side, add these two lines to the end of `<data>/global/canon/handbook/SYS_CONTENTS.md`.
    The import must be alone on its line, or it is copied through as text:
 
-   ```
+   ```markdown
    The Lower Canon:
    __IMPORTSECTION__("~/canon/notebook/LOCAL_CONTENTS.md")
    ```

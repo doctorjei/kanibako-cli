@@ -514,11 +514,13 @@ So the launch-time pass runs below the main resolve and below the emit, and cons
 
 ```
 _apply_synced_copies(
-    snapshot=_snapshot, bindings=launch_binds,
-    logger=logger, skip_if=_synced_uptodate,
-    declared_by=deliveries.declared_by,
-)
+    *, snapshot: "KeyStore", bindings, logger,
+    skip_if: "Callable[[Path, Path], bool] | None", declared_by: "Mapping[str, str]",
+) -> None
 ```
+
+The launch call passes `snapshot=_snapshot`, `bindings=launch_binds`, `logger=logger`,
+`skip_if=_synced_uptodate`, and `declared_by=deliveries.declared_by`.
 
 The second call site is the create-time write in `_sync_box_at_create`, which passes
 `bindings=_launch_bind_map(snapshot)` and `skip_if=None` (see below).

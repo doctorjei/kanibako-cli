@@ -8,11 +8,13 @@
 # its `[[gate]]` block here, or the inventory agrees with itself -- which is
 # exactly how `shape` ran nowhere.
 #
-# ⚑ THIS IS THE ONE CONFIG CI RUNS, and there is no baseline. Its last
-# records were settled 2026-10-11 and `.kinemata-baseline.json` (the default name)
-# was deleted, because kinemata fails `check` on a lapsed baseline even when it
-# is empty; a missing file reads as an empty one. Every command is run plainly --
-# `kinemata check`, `kinemata claims` -- with no `-c` and no custom baseline.
+# ⚑ THIS IS THE ONE CONFIG CI RUNS. Its baseline holds only the fenced-signature
+# findings that are example code or calls with real values (its `note` says
+# which); it locks no coverage. kinemata fails `check` once its `until` lapses.
+# `kinemata baseline --record` or `--prune` writes coverage and population locks
+# back in; strip them again.
+# Every command is run plainly -- `kinemata check`, `kinemata claims` -- with
+# no `-c` and no custom baseline.
 # One other config runs locally only; its header says why, and CI never reads
 # it: `kinemata-spec.toml` holds the views that read the keyspace spec, which
 # lives in the canon and so is absent in CI.
@@ -208,6 +210,10 @@ suffixes = [".md"]
 # clean (kinemata raises on a `resolve_in` directory that is absent). See
 # refusal 5 below for what it settles.
 resolve_in = [".claims-store"]
+
+# A def, class, or call in a Python fence must match our code: names, order,
+# and defaults. Hand-checked signatures drifted on the llm-docs pages.
+signatures = true
 
 historical = [
   # REASON OF KIND: a changelog is by definition a record of what was true at
@@ -434,7 +440,7 @@ declared_in = ["agent-cred-files", "retired-file-names", "channel-paths",
 # two places: the conceded plugin leaves, and the not_keys.renamed spellings, which the adapter
 # recognizes so they can be refused with their cure.
 #
-# NO STRAY OF THIS REGISTRY IS ACCEPTED; there is no baseline. Measured
+# NO STRAY OF THIS REGISTRY IS ACCEPTED; the baseline holds none. Measured
 # 2026-09-24 under kinemata `0.4.1`: `undeclared` is clean with no record behind
 # it. Two kinds were accepted there by date until then, and both are gone. The
 # `not_keys.code_residue` uses were renamed out of the key namespace. The

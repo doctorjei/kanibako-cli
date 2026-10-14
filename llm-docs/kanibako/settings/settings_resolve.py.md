@@ -488,8 +488,8 @@ A leading `~` is a `home` token; a TRAILING lone backslash is literal text; `@` 
 here.
 
 ```python
-bare_reference_at(expr: str, i: int) -> tuple[str, str] | None
-refuse_bare_reference(expr: str, i: int) -> None
+bare_reference_at(expr: str, i: int, *, is_var: Callable[[str], bool] = is_known_var) -> tuple[str, str] | None
+refuse_bare_reference(expr: str, i: int, *, is_var: Callable[[str], bool] = is_known_var) -> None
 starts_bare_reference(expr: str) -> bool
 KNOWN_VARS: frozenset[str]; KNOWN_VAR_PREFIX = "XDG_"; is_known_var(name: str) -> bool
 ```

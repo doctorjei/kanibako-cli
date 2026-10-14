@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "until": "2027-04-14",
+  "by": "Kirobo (189-w-sigs)",
+  "note": "Fenced-signature findings that are example code a target author writes (MyTarget, its tests) or calls passing real values (load_common, normalize_bind_dest); none is a drifted signature. Re-read at lapse; drop a record when kinemata gains a way for a fence to say it is an example.",
+  "findings": [
+    {
+      "registry": "claims",
+      "entry": "claim:signature",
+      "antipattern": "normalize_bind_dest() -- the code declares def normalize_bind_dest(dest)",
+      "path": "MIGRATION.md",
+      "text": "normalize_bind_dest(\"~/.local/bin/launcher\"):"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:signature",
+      "antipattern": "class MyTarget(Target)",
+      "path": "docs/writing-targets.md",
+      "text": "class MyTarget(Target):"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:signature",
+      "antipattern": "def test_descriptor_modes()",
+      "path": "docs/writing-targets.md",
+      "text": "def test_descriptor_modes():"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:signature",
+      "antipattern": "def test_detect_found(tmp_path)",
+      "path": "docs/writing-targets.md",
+      "text": "def test_detect_found(tmp_path):"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:signature",
+      "antipattern": "load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE) -- the code declares def load_common(package, filename, agent)",
+      "path": "docs/writing-targets.md",
+      "text": "return load_common(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)"
+    }
+  ]
+}

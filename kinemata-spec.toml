@@ -12,10 +12,10 @@
 #   kinemata -c kinemata-spec.toml parity
 #
 # kinemata has no include, so nothing here is shared with `kinemata.toml`: each
-# registry below exists only for the parity view that names it. A baseline would
-# be the shared `.kinemata-baseline.json` (none exists today); no view here may
-# have an accepted finding in it (`test_manifest_conformance.py` asserts it for
-# `spec-2g-*`).
+# registry below exists only for the parity view that names it. The baseline is
+# the shared `.kinemata-baseline.json`, which holds only `claims` records; no view
+# here may have an accepted finding in it (`test_manifest_conformance.py` asserts
+# it for `spec-2g-*`).
 
 [project]
 # Resolved against this file's own directory, as in `kinemata.toml`.

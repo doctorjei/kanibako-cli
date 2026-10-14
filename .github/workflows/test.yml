@@ -62,7 +62,7 @@ jobs:
   # one immutable artifact on PyPI; anything looser hands the job a tool nobody
   # chose. Bump this pin deliberately, as its own commit.
   #
-  # ONE config and no baseline, so every command below runs plainly. There were
+  # ONE config and its default baseline, so every command below runs plainly. There were
   # two until 2026-09-14, on the ground that `exclude` is global to a config and
   # the registry scan needed `api-docs/` and `llm-docs/` excluded where the
   # documentation gate must not. That premise was false -- a registry scan reads
