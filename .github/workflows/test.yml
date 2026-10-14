@@ -177,8 +177,9 @@ jobs:
       # shipped source with `only`. `0.6.0` makes `only` scope a `declared_in`
       # registry; below it the three unstored-path registries settle their names
       # in every `.md` file. `0.7.0` adds `[[boundary]]`; below it the whole
-      # config refuses to load.
-      - run: pip install "kinemata[yaml]==0.7.0"
+      # config refuses to load. `0.8.0` checks a `path:N` line citation instead
+      # of dropping it, and adds `under` and `[claims] signatures`.
+      - run: pip install "kinemata[yaml]==0.8.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
