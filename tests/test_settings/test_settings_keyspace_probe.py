@@ -192,9 +192,10 @@ def test_an_agent_this_machine_CAN_see_is_judged_exactly_as_before(claude_only):
 
 
 def test_a_PERSONA_is_known_by_its_HARNESS(claude_only):
-  """A persona of an INSTALLED harness is judged, not conceded (``[R150]``: *"or
-  harness"*). Asking about the node name instead would concede every persona on the
-  machine — and the persona set is open, which is why nothing enumerates it.
+  """A persona of an INSTALLED harness is judged, not conceded
+  (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": *"or harness"*). Asking about the
+  node name instead would concede every persona on the machine — and the persona set is
+  open, which is why nothing enumerates it.
 
   ⚑ THE SUPPLIER NO LONGER ANSWERS THIS; the map it hands over is keyed by plain
   harness name and ``settings_keyspace.agent_declared_leaves`` normalizes. Asserted

@@ -29,8 +29,9 @@ def _make_target(name: str, detects: bool = True):
     """A plugin class DECLARING *name* — its ``Target.name``, in the plugin's own case.
 
     ⚑ The declared name is not the registry KEY.  A registry is keyed by NODE — the
-    name in lowercase (``[R173]``) — so a fixture that wants to tell the two apart
-    files a MixedCase declaration under its own lowercase node; see
+    name in lowercase (keyspec §0 "An agent's canonical case is carried by its _name_") — so
+    a fixture that wants to tell the two apart files a MixedCase declaration under its own
+    lowercase node; see
     :data:`_MIXED_CASE`.  A fixture declaring a lowercase name cannot discriminate,
     because for it the two spellings are the same string.
     """
@@ -93,8 +94,10 @@ def test_agent_flag_is_case_blind_and_writes_the_DECLARED_NAME(
     is installed.
 
     🛑 What is WRITTEN is the plugin's DECLARED NAME, not the node it matched.
-    `system.agent` holds a NAME (keyspec §2g, `[R173]`), and for an agent the
-    canonical case is the plugin's own (`[R172]`) — so the capital survives the
+    `system.agent` holds a NAME (keyspec §2g,
+    §0 "An agent's canonical case is carried by its _name_"), and for an agent the
+    canonical case is the plugin's own
+    (keyspec §0 "CASE INSENSITIVE for collision purposes") — so the capital survives the
     round trip and `resolve_agent` folds it to the node at the launch. Writing the
     node here instead would be fold-to-store: the declared case would exist in no
     stored carrier at all.
@@ -166,8 +169,9 @@ def test_interactive_pick_writes_the_DECLARED_NAME(tmp_home, config_file, monkey
 
     Two doors, one identifier: a pick from the list stores the plugin's declared
     case exactly as `setup --agent` does, because both write `system.agent` and
-    that key holds a NAME (`[R173]`). The lowercase-``claude`` fixtures above
-    cannot see this — for them the node and the name are one string.
+    that key holds a NAME (keyspec §0 "An agent's canonical case is carried by its _name_"). The
+    lowercase-``claude`` fixtures above cannot see this — for them the node and the name are
+    one string.
     """
     _patch_targets(monkeypatch, _MIXED_CASE)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)

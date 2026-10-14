@@ -90,9 +90,9 @@ class TestResolveStandaloneProject:
         """A set ``workset: {workspaces: …}`` in the ROOT workset.yaml
         repoints the standalone workspace ([Jei:2026-08-02]: the spec's
         "changeable from workset level").  ⚑ The repoint is spelled
-        ``{meta.workset.path}/code`` because [R147] refuses a BARE relative; it
-        used to read ``"code"``, and the root-relative reading it meant is the
-        one this spelling states."""
+        ``{meta.workset.path}/code`` because keyspec §2a "A path key's stored value"
+        refuses a BARE relative; it used to read ``"code"``, and the root-relative reading
+        it meant is the one this spelling states."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
         resolve_standalone_project(
@@ -320,8 +320,9 @@ class TestStandaloneFixedPaths:
     def test_a_null_standalone_logs_names_no_log(
         self, std, config, project_dir, credentials_dir,
     ):
-        """A present ``<None>`` ``workset.logs`` is a value ([R177]): the standalone
-        default ``{meta.box.path}`` must NOT stand in for it — there is no log."""
+        """A present ``<None>`` ``workset.logs`` is a value
+        (keyspec §2h "the ordinary present-`None` rule"): the standalone default
+        ``{meta.box.path}`` must NOT stand in for it — there is no log."""
         from kanibako.settings.paths import standalone_logs_dir
 
         proj = resolve_standalone_project(

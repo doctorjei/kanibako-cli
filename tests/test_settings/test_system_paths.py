@@ -186,7 +186,7 @@ class TestAPresentNoneIsRefusedAsNoneNotAsTheWordNone:
 
     ``str(None)`` is the word ``"None"``, which is a bare relative, so a null used to
     reach the user as *"``config.data`` is set to ``'None'``"* — a refusal quoting a
-    string nobody wrote, over a value they did write.  [R177]/§2h: a present ``<None>``
+    string nobody wrote, over a value they did write.  §2h: a present ``<None>``
     is a value that does NOT fall back to the default, so the message names what it is
     and the cure that follows from that.
 
@@ -221,7 +221,8 @@ class TestAPresentNoneIsRefusedAsNoneNotAsTheWordNone:
 
 
 class TestBareRelativeIsRefusedNotAnchored:
-    """[R147] over the WHOLE of both path tables, not over a hand-picked key.
+    """keyspec §2a "A path key's stored value" over the WHOLE of both path tables, not over a
+    hand-picked key.
 
     ⚑ The corpus is derived from :data:`CONFIG_PATH_DEFAULTS` /
     :data:`SYSTEM_PATH_DEFAULTS` (P13), so a seventeenth path key added to either
@@ -1096,7 +1097,8 @@ class TestResolveDataPath:
     """``resolve_data_path`` — the PURE, TOTAL ``config.data`` DIRECTORY resolver.
 
     THE single source for a caller that holds no ``StandardPaths`` and must still land in the
-    store the user configured ([R155]): ``targets.discover_targets``.
+    store the user configured (CONVENTIONS P10 "derive from declared keys"):
+    ``targets.discover_targets``.
     """
 
     def _redirect_etc_base(self, monkeypatch, tmp_path: Path) -> None:
@@ -1153,8 +1155,9 @@ class TestResolveStatePath:
     """``resolve_state_path`` — the PURE, TOTAL ``system.state`` DIRECTORY resolver.
 
     THE single source for a caller that holds no ``StandardPaths`` and must still land in
-    the state root the user configured ([R166]: state derives from ``system.state`` and
-    from nothing else).  ``vscode_remote._vscode_remote_state_dir`` is that caller.
+    the state root the user configured (keyspec §2g system.state: state derives from
+    ``system.state`` and from nothing else).  ``vscode_remote._vscode_remote_state_dir`` is
+    that caller.
     """
 
     def _isolate(self, monkeypatch, tmp_path: Path) -> Path:
@@ -1193,8 +1196,9 @@ class TestResolveStatePath:
         assert path == tmp_path / "elsewhere" / "state"
 
     def test_never_tracks_config_datas_leaf(self, tmp_path, monkeypatch):
-        """[R166]: a repointed ``config.data`` moves no state.  The retired behavior put
-        this under ``$XDG_STATE_HOME/custom_store``; nothing may reach that spelling again."""
+        """keyspec §2g system.state: a repointed ``config.data`` moves no state.  The retired
+        behavior put this under ``$XDG_STATE_HOME/custom_store``; nothing may reach that
+        spelling again."""
         state_home = self._isolate(monkeypatch, tmp_path)
         config_home = tmp_path / "cfg"
         self._store(tmp_path, config_home)
@@ -1254,9 +1258,9 @@ class TestCacheRootIsTheKey:
     The key was declared, defaulted and ``set: cli+file``, and ``load_std_paths`` resolved
     it — into a field no consumer read.  All three took ``cache_path``, which joined
     ``config.data``'s leaf to ``$XDG_CACHE_HOME``, so ``system set system.cache=…``
-    succeeded and did nothing.  That is the defect [R166] removed from the STATE side, one
-    key over; these cases pin the repair from both directions — the key REACHES the root,
-    and a repointed ``config.data`` does NOT.
+    succeeded and did nothing.  That is the defect keyspec §2g system.state removed from the
+    STATE side, one key over; these cases pin the repair from both directions — the key
+    REACHES the root, and a repointed ``config.data`` does NOT.
 
     ⚑ The class this replaced pinned ``resolve_data_leaf``, whose only caller was the
     defect: the function went with it.

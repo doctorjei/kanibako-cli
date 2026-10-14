@@ -236,7 +236,8 @@ def test_a_CORE_ONLY_floor_with_no_descriptors_is_UNTOUCHED_by_the_split():
 @pytest.mark.parametrize("subject_name", ["BOX", "WORKSET", "SYSTEM"])
 def test_the_box_scalar_floor_is_folded_for_every_subject(subject_name):
     """Spec §0/§2b: every resolve carries each box scalar at its declared default (``box.shell``
-    a present ``None``, [R177]); a system or workset file may set them downward (design 1D-b)."""
+    a present ``None``, keyspec §0 "it must RESOLVE"); a system or workset file may set them
+    downward (design 1D-b)."""
     from kanibako.settings.config import box_scalar_defaults_floor
     from kanibako.settings.settings_launch import ResolveSubject, snapshot_leaf
 
@@ -739,8 +740,9 @@ def test_adapter_does_not_root_a_relative_host_src():
     was written: a source spelled ``@box.canon/handbook`` passed the declaration
     parse and only became relative once the key it dereferences was read, so it
     reached the mount as a bare relative — which podman takes for a NAMED VOLUME.
-    [R147] closed that on both sides (``settings_expand._refuse_relative_host_src``
-    post-expansion, and the path-value refusal at set time).  The pass-through this
+    keyspec §2a "A path key's stored value" closed that on both sides
+    (``settings_expand._refuse_relative_host_src`` post-expansion, and the path-value
+    refusal at set time).  The pass-through this
     case pins is unchanged; only its premise moved from hope to guarantee.
     """
     snap = KeyStore(
@@ -1914,7 +1916,8 @@ def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# [R147] at READ time — the generic sweep over every path key a file stores    #
+# keyspec §2a "A path key's stored value" at READ time —                      #
+# the generic sweep over every path key a file stores                         #
 # --------------------------------------------------------------------------- #
 #
 # ``workset.auth.path`` is consumed by credsync as a copy-route SOURCE ROOT, so
@@ -2093,8 +2096,9 @@ def test_R147_an_undeclared_path_shape_gets_the_closed_keyspace_refusal(
     When a parent and its child are both undeclared, only the parent is named (spec §0: an
     undeclared key is an ERROR that NAMES the offending key; naming the parent names the fix).
     """
-    # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the [R147]
-    # refusal fires first and names a key that does not exist).
+    # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the path-value
+    # refusal (keyspec §2a "A path key's stored value") fires first and names a key that does not
+    # exist).
     from kanibako.settings.settings_resolve import SettingsError
 
     with pytest.raises(SettingsError) as exc:
@@ -2677,7 +2681,7 @@ class TestMetaAgentNameIsTheStoreDirname:
 
     def test_the_spec_formula_composes(self):
         """⚑ THE RULE, not an inventory (P13): §2d says ``path`` IS
-        ``{config.agents}/%tolower({meta.agent.<a>.name})%`` (``[R176]``).  Asserting
+        ``{config.agents}/%tolower({meta.agent.<a>.name})%``.  Asserting
         the COMPOSITION reds if EITHER half drifts, which a literal on one half
         alone would not.  ⚑ The ``tolower`` is part of the rule and belongs in the
         assertion: leave it out and a case-carrying name reads as a drift.
@@ -2702,12 +2706,13 @@ class TestMetaAgentNameIsTheStoreDirname:
     def test_the_name_KEEPS_the_declared_case_while_the_key_is_the_node(self):
         """🛑 THE KEY IS THE FOLD OF THE VALUE, NOT A SECOND SPELLING OF IT.
 
-        ``[R173]``: an agent's canonical case lives in its NAME, and
+        keyspec §0 "An agent's canonical case is carried by its _name_": an agent's canonical case
+        lives in its NAME, and
         ``meta.agent.<a>.name`` is one of the two values named as carrying it.
         Materializing the already-folded node here instead would leave the plugin's
         declared spelling in NO stored carrier — and would satisfy §2d's
         ``%tolower(…)%``, written precisely to keep the name case-carrying, with a
-        no-op.  That is ``[R171]``'s retired fold-to-store cure re-spelled.
+        no-op.  That is the retired fold-to-store cure re-spelled.
         """
         floor = self._floor("kirobo", "Kirobo")
         assert floor["meta.agent.kirobo.name"] == "Kirobo"
@@ -4167,7 +4172,7 @@ def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
         if name == "":
             assert "trailing separator" in str(exc.value), name
         else:
-            # Spec §0 ([R186]): an embedded ref to a present None makes the root None.
+            # Spec §0: an embedded ref to a present None makes the root None.
             assert "got None" in str(exc.value), name
 
 
@@ -4565,8 +4570,9 @@ from kanibako.settings.settings_resolve import SettingsError  # noqa: E402
 
 #: ⚑ The leaf map is EXPLICIT: these three agents' vocabularies are READABLE and
 #: core-only, which is what these rows are about. A hand-built ``AgentNames`` concedes
-#: nothing it is not told to concede (``unreadable=``, ``[R150]``), so what an omission
-#: would cost here is the vocabulary, not the concession.
+#: nothing it is not told to concede (``unreadable=``,
+#: keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), so what an omission would cost
+#: here is the vocabulary, not the concession.
 _PREF_AGENTS = _AgentNames(
     {"claude", "goose", "codex"},
     leaf_map={"claude": frozenset(), "goose": frozenset(), "codex": frozenset()},
@@ -5226,7 +5232,8 @@ class TestPersonaRungOrdering:
     """
 
     # ⚑ A contender a SETTINGS FILE stores is spelled ABSOLUTE: the ``secret_path``
-    # class is a path key, and [R147] refuses a bare relative in any file at read time.
+    # class is a path key, and keyspec §2a "A path key's stored value" refuses a bare relative in
+    # any file at read time.
     # The persona and descriptor values are kanibako's own, which the sweep never judges.
 
     def test_persona_beats_the_descriptor_default_partial(self, tmp_path, key, path):
@@ -6673,12 +6680,14 @@ def test_every_command_a_retirement_cure_names_is_a_real_command():
 
 
 # --------------------------------------------------------------------------- #
-# [R147] — the secret_path family is path-typed too                            #
+# keyspec §2a "A path key's stored value" —                                   #
+# the secret_path family is path-typed too                                    #
 # --------------------------------------------------------------------------- #
 
 
 def test_a_bare_relative_secret_path_is_refused_at_the_emit_seam():
-    """⚑ ``secret_path`` is in [R147]'s corpus and a ``type: path`` GREP MISSES IT —
+    """⚑ ``secret_path`` is in the corpus of keyspec §2a "A path key's stored value" and a
+    ``type: path`` GREP MISSES IT —
     the manifest declares it ``value: path``, parametric on VAR, so the family's rows
     carry no ``type:`` line at all.
 
@@ -6709,7 +6718,8 @@ def test_an_absolute_secret_path_still_emits_its_mount():
 
 
 # --------------------------------------------------------------------------- #
-# `[R169]` — the run_args cascade, through the door a USER actually writes      #
+# keyspec §2d agent.default.run_args — the run_args cascade,                  #
+# through the door a USER actually writes                                     #
 # --------------------------------------------------------------------------- #
 
 
@@ -6735,7 +6745,8 @@ def _run_args_launch(tmp_path, *, system_doc, agent_doc):
 
 
 def test_an_any_agent_run_args_in_a_settings_file_reaches_the_launch(tmp_path):
-    """`[R169]`: ``agent.default.run_args`` is a real default, read at launch.
+    """keyspec §2d agent.default.run_args: ``agent.default.run_args`` is a real default,
+    read at launch.
 
     (Mutation: read the agent FILE at the seam instead of the snapshot → this stays
     green and the next two red, which is why all three are here.)
@@ -6780,7 +6791,8 @@ def test_an_agent_files_EMPTY_run_args_opts_that_agent_out_of_the_default(tmp_pa
 def test_a_hand_written_run_args_STRING_in_a_settings_file_is_split_not_rewritten(
     tmp_path,
 ):
-    """`[R169]`: the same parser coerces a string on READ, and nobody's file is rewritten.
+    """keyspec §2d agent.default.run_args: the same parser coerces a string on READ, and
+    nobody's file is rewritten.
 
     ⚑ ONE COERCION: the behavior table hands the argv over as the command-line string its
     owner joined, so a stored list and a hand-written string arrive identically.
@@ -6837,7 +6849,8 @@ class TestANamelessBoxGetsNoNameDerivedKey:
 
 
 # --------------------------------------------------------------------------- #
-# [R185] — a STANDARD bind with ONE of its entry & source ``<None>`` warns     #
+# keyspec §2a "PER-ENTRY CASCADE MERGE" —                                     #
+# a STANDARD bind with ONE of its entry & source ``<None>`` warns             #
 # --------------------------------------------------------------------------- #
 
 
@@ -7036,7 +7049,7 @@ class TestHalfNullCureOnlyWhereADoorAdmitsIt:
 
 class TestNullRefSecretPath:
     """[Q94] 3: a ``secret_path`` whose value references a present ``<None>`` is
-    ``<None>`` itself ([R186], spec §0), so the box starts WITHOUT that secret, and the
+    ``<None>`` itself (spec §0), so the box starts WITHOUT that secret, and the
     launch warns, naming the key and where the ``<None>`` was set (fail-soft).
     """
 

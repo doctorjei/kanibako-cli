@@ -50,9 +50,10 @@ _UNRESOLVABLE = (
     "{$WORKSET}/x",
 )
 
-# ⚑ Every value shape [R147] calls AMBIGUOUS: it resolves fine, but to two different
-# directories depending on an anchor nobody stated.  Distinct from ``_UNRESOLVABLE``
-# above — those refuse because the seam CANNOT answer, these because it MUST NOT.
+# ⚑ Every value shape keyspec §2a "A path key's stored value" calls AMBIGUOUS: it resolves
+# fine, but to two different directories depending on an anchor nobody stated.
+# Distinct from ``_UNRESOLVABLE`` above — those refuse because the seam CANNOT answer, these
+# because it MUST NOT.
 _AMBIGUOUS = ("comms", "sub/dir", "./here", "../sibling")
 
 
@@ -129,8 +130,9 @@ class TestNoResolverLeaksAToken:
             assert poison in message, f"{label}: refusal does not quote the value"
             assert "/ws/workset.yaml" in message, f"{label}: refusal names no file"
 
-    # ⚑ ``leaf`` USED TO BE IN THIS LIST and is now in ``_AMBIGUOUS`` below: [R147]
-    # made a bare relative a REFUSAL, so it cannot also be a value that resolves.
+    # ⚑ ``leaf`` USED TO BE IN THIS LIST and is now in ``_AMBIGUOUS`` below:
+    # keyspec §2a "A path key's stored value" made a bare relative a REFUSAL, so it cannot also
+    # be a value that resolves.
     @pytest.mark.parametrize(
         "value", ["{meta.workset.path}/leaf", "{$XDG_DATA_HOME}/leaf", "~/leaf"]
     )
@@ -150,7 +152,8 @@ class TestNoResolverLeaksAToken:
 
 
 class TestNoResolverAnchorsAnAmbiguousValue:
-    """[R147] over EVERY discovered resolver, not over a list of key names.
+    """keyspec §2a "A path key's stored value" over EVERY discovered resolver, not over a list of
+    key names.
 
     The twin of :class:`TestNoResolverLeaksAToken`: that one sweeps values this seam
     cannot resolve, this one sweeps values it MUST NOT resolve.  A tenth workset dir
@@ -170,7 +173,8 @@ class TestNoResolverAnchorsAnAmbiguousValue:
                 resolver(Path("/ws"), _poisoned(value), early=_scope(tmp_path, {}))
             message = str(excinfo.value)
             assert value in message, f"{label}: refusal does not quote the value"
-            # BOTH readings, spelled out — the whole point of the refusal ([R147]).
+            # BOTH readings, spelled out — the whole point of the refusal
+            # (keyspec §2a "A path key's stored value").
             assert str(Path("/ws") / value) in message, f"{label}: no workset reading"
             assert str(link / value) in message, f"{label}: no cwd reading"
             assert str(real.resolve() / value) not in message, f"{label}: the physical cwd"
@@ -222,8 +226,9 @@ class TestTheRouteItself:
         ) == Path("/elsewhere/boxes")
 
     def test_bare_relative_repoint_is_refused_naming_both_readings(self, tmp_path, monkeypatch):
-        # ⚑ INVERTED, NOT DELETED, by [R147] (2026-08-29).  It used to assert
-        # ``== Path("/ws/sub/dir")``.  The reason to set one of these keys at all is
+        # ⚑ INVERTED, NOT DELETED, by keyspec §2a "A path key's stored value" (2026-08-29).
+        # It used to assert ``== Path("/ws/sub/dir")``.  The reason to set one of these keys
+        # at all is
         # to move the directory OFF the workset root, so anchoring there assumes the
         # very intent the user is overriding — and a wrong guess is not a confusing
         # message, it is data written to the wrong directory.

@@ -35,9 +35,10 @@ from kanibako.settings.settings_resolve import SettingsError
 
 #: ⚑ THE LEAF MAP IS SUPPLIED EXPLICITLY, and it still has to be: an agent absent from
 #: a DISCOVERY result is one whose vocabulary this machine could not read, so its
-#: leaves are CONCEDED (``[R150]``). A hand-built ``AgentNames`` concedes nothing it is
-#: not told to concede — it fails closed — so an omission here would judge these agents
-#: against core's table alone rather than against the vocabulary these rows are about.
+#: leaves are CONCEDED (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). A
+#: hand-built ``AgentNames`` concedes nothing it is not told to concede — it fails
+#: closed — so an omission here would judge these agents against core's table alone rather
+#: than against the vocabulary these rows are about.
 #: Empty vocabularies = "readable, and core-only".
 AGENTS = AgentNames(
     {"claude", "codex", "goose"},
@@ -793,8 +794,8 @@ class TestPluginDeclaredAgentLeaves:
             leaf_map={"claude": frozenset(), "goose": frozenset({"provider"})},
         )
         # 🛑 ``provider`` IS GOOSE'S, SO IT IS A KEY ON GOOSE AND NOWHERE ELSE
-        # (``[R150]``). The union used to make it a key on claude too — this row
-        # asserted exactly that, and was green.
+        # (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). The union used to make it a
+        # key on claude too — this row asserted exactly that, and was green.
         assert key_reason("agent.goose.provider", valid_agents=agents) is None
         assert key_reason("agent.claude.provider", valid_agents=agents) is not None
         assert key_reason("agent.claude.notakey", valid_agents=agents) is not None
@@ -876,7 +877,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
         contributed no leaves and the name stayed valid. Under a map, swallowing the
         fault and keeping the key would leave the agent with an EMPTY vocabulary, which
         REFUSES every leaf it genuinely declares — the exact false positive the
-        concession exists to prevent (``[R150]``).
+        concession exists to prevent (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
 
         ⚑ The sibling supplier (``settings_keyspace_probe._discover``) already recorded
         the name only after its descriptors succeeded; this one swallowed and kept

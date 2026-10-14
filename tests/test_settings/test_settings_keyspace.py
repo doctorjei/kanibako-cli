@@ -105,8 +105,9 @@ def test_fabrication_is_still_rejected():
 
 def test_the_agent_file_alias_is_never_an_agent_segment():
     """``self`` is the per-agent file's alias for its own node, never a key segment — refused
-    even where the valid-agent set would CONCEDE an unheard-of name (``[R150]``), which is the
-    set every launch and ``settings_assemble.agent_record`` judge with."""
+    even where the valid-agent set would CONCEDE an unheard-of name
+    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), which is the set every launch and
+    ``settings_assemble.agent_record`` judge with."""
     from kanibako.settings.agent_file import file_spelling
 
     alias = file_spelling()
@@ -1616,7 +1617,8 @@ def _discovered(declared):
 #: claude's vocabulary is READABLE and EMPTY; goose's could not be read, hence conceded.
 _KNOWN_MAP = _discovered({"claude": frozenset()})
 
-#: goose declares ``provider`` and nobody else does — the shape ``[R150]`` turns on.
+#: goose declares ``provider`` and nobody else does — the shape
+#: keyspec §0 "The leaf VOCABULARY is partitioned by TIER" turns on.
 _GOOSE_MAP = {"goose": frozenset({"provider"})}
 
 
@@ -1659,8 +1661,9 @@ def test_a_map_that_does_not_SAY_it_concedes_concedes_NOTHING():
     """🛑 THE FAIL-OPEN, AND IT IS THE DEFAULT THAT MAKES IT ONE.
 
     The concession used to be spelled by a MISSING KEY, and two states wear that
-    spelling: *"this machine cannot read goose's vocabulary"*, which ``[R150]``
-    requires be conceded, and *"nobody supplied a vocabulary"*, which must not be.
+    spelling: *"this machine cannot read goose's vocabulary"*, which
+    keyspec §0 "The leaf VOCABULARY is partitioned by TIER" requires be conceded, and
+    *"nobody supplied a vocabulary"*, which must not be.
     They are the same ``{}``, and the second is what a hand-built ``AgentNames`` or a
     degraded discovery pass produces — so §0 was disarmed for EVERY named agent by an
     omission, which is the fail-open direction on a CLOSED keyspace.
@@ -1753,7 +1756,8 @@ def test_the_narrowing_does_not_touch_a_NAMED_agents_leaf():
     ``agent.goose.provider`` is a real goose ``setting_descriptor`` leaf and R-37 makes
     it a legal key ON GOOSE, so this row must survive every default-tier edit.
 
-    ⚑ **AND THE ``claude`` CASE ASSERTS THE OPPOSITE, WHICH IS THE WHOLE OF ``[R150]``.**
+    ⚑ **AND THE ``claude`` CASE ASSERTS THE OPPOSITE, WHICH IS THE WHOLE OF
+    keyspec §0 "The leaf VOCABULARY is partitioned by TIER".**
     ``provider`` is goose's declaration, so it is a key on goose and on nothing else —
     *"every other leaf is agent- or harness-specific, legal only on the agent (or
     harness) whose plugin declared it"*. Until 2026-08-30 the named tier judged against
@@ -1907,7 +1911,8 @@ def test_the_REFUSAL_message_still_names_the_whole_vocabulary():
 
     ⚑ THIS AGENT'S vocabulary, not every agent's. Under the flat union the message
     offered the user leaves that were keys on some OTHER agent — which after
-    ``[R150]`` would be naming a cure that does not work.
+    keyspec §0 "The leaf VOCABULARY is partitioned by TIER" would be naming a cure that does
+    not work.
     """
     judged = _class(
         "agent.claude.zippity",
@@ -2027,7 +2032,8 @@ def test_the_meta_agent_tier_is_not_conceded():
 
 
 def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
-    """A PERSONA is known iff its HARNESS is (``[R150]``: *"or harness"*).
+    """A PERSONA is known iff its HARNESS is
+    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": *"or harness"*).
 
     A persona takes its leaves from the harness right of the separator, so asking
     about the node name would concede every persona on the machine.
