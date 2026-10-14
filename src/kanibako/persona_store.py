@@ -78,7 +78,8 @@ def persona_store_root() -> Path:
 
     FIXED by design (DESIGN §5a — not configurable); the single builder for the
     store path, over the internal :func:`kanibako.settings.paths.user_config_home`
-    resolver ([R154] refuses a ``config_home`` key by name, so directory users
+    resolver (keyspec §1A declares the finished config file,
+    ``meta.runtime.user.config``, and no ``config_home`` key, so directory users
     route through here, not through a key).
     """
     return user_config_home() / "personas"
@@ -96,7 +97,8 @@ def locate_entry(ref: str) -> PersonaEntry | None:
     :class:`~kanibako.errors.ConfigError` from ``parse_agent_address``: a bad ref is
     a user error, not a store miss.
 
-    ⚑ THE HARNESS FOLDS, THE PERSONA DOES NOT (``[R173]``): the ``<hid>`` directory is
+    ⚑ THE HARNESS FOLDS, THE PERSONA DOES NOT (keyspec §0
+    "An agent's canonical case is carried by its _name_"): the ``<hid>`` directory is
     looked up by NODE, through :func:`~kanibako.agent_ref.agent_address_node`, so
     ``navigator+Claude`` finds ``<root>/navigator/claude/`` — the directory the launch
     looks up, since it builds its node from the lowercase ``target.name``.

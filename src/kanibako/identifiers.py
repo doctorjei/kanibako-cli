@@ -4,7 +4,7 @@ Box, workset and agent names are compared without regard to case, and STORED in
 the spelling their author typed (``specs/settings-keyspace-1.8.0.md`` §0, the
 ``⚑ NAMING RULES`` bullet).  Those are two rules, not one, and code that holds
 only the first drifts into folding on the way in — which is the retired
-``[R171]`` cure, not this one.
+fold-on-entry cure, not this one.
 
 🛑 **A FILESYSTEM PATH IS NEVER CASE-FOLDED.**  A site that preserves case
 because it is building a path is already conforming and must not be routed
@@ -12,7 +12,8 @@ through here.  Before calling :func:`find_identifier`, say which of the two you
 are looking at.
 
 Agents are the one kind with a second spelling: :func:`agent_node_case` derives
-the lowercase NODE from a declared NAME (``[R173]``).  That is a derivation, not
+the lowercase NODE from a declared NAME (keyspec §0
+"An agent's canonical case is carried by its _name_").  That is a derivation, not
 an entry fold, and its docstring draws the line.
 
 It is also the ONE carrier of the NAME RULE's charset (§0): every kind of name
@@ -132,7 +133,8 @@ def agent_node_case(name: str) -> str:
     """The NODE spelling of an agent *name* — lowercase, always (keyspec §0).
 
     🛑 **NOT the retired entry fold, and the difference is that an agent has TWO
-    spellings while a box or a workset has one** (``[R173]``).  The NAME keeps the
+    spellings while a box or a workset has one** (keyspec §0
+    "An agent's canonical case is carried by its _name_").  The NAME keeps the
     plugin's declared case and lives in VALUES (``system.agent``,
     ``meta.agent.<agent>.name``); the NODE is the KEY segment — ``agent.<agent>.*``
     and everything derived from it, the ``agents/<node>/`` store dir included — and
@@ -144,7 +146,7 @@ def agent_node_case(name: str) -> str:
     only reason ``_fold`` stayed private.
 
     🛑 **``lower()``, NOT the comparison fold, and the two are not interchangeable
-    here.**  The spec spells this ``%tolower(…)%`` (§2d, ``[R176]``) and §0 says a
+    here.**  The spec spells this ``%tolower(…)%`` (§2d) and §0 says a
     node is its name *in lowercase* — a CASE change.  ``casefold`` is a wider
     equivalence that changes LETTERS: ``"Straße".lower()`` is ``"straße"`` while
     ``"Straße".casefold()`` is ``"strasse"``, so a casefolded node would spell a

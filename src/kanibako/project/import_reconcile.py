@@ -16,7 +16,8 @@ mode is sequestered in ``salvage/primary_reconcile.py`` — do not revive it her
 box composes one from its stored ``workset.kuid`` plus the live dir leaf.  A workset
 records no name at all — its identity is the global registry's ``worksets:`` entry —
 so a workset being imported has none to read and takes the LEAF DIRECTORY BASENAME
-([R139]), which is what ``workset create`` already defaults an unnamed workset to.
+(system-design § "Detection & import"), which is what ``workset create`` already
+defaults an unnamed workset to.
 ⚑⚑ That a workset's name is not on disk is a fact about NAMING; it never made a
 workset root unfindable, and treating it as though it had is what removed this
 function once.  The marker is :func:`~kanibako.project.workset.is_workset_skeleton`.
@@ -260,8 +261,9 @@ def import_named_workset(
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
-    Names it after *root*'s LEAF DIRECTORY basename ([R139]), `_` for each `-` and `.`
-    (spec §0) — a workset records no
+    Names it after *root*'s LEAF DIRECTORY basename
+    (system-design § "Detection & import"), `_` for each `-` and `.` (spec §0) — a
+    workset records no
     name on disk, and the basename is the answer in the absence of another one.
     Returns that name (or the directory's registered one), or ``None`` when *root*
     cannot be imported as a workset — an empty or reserved basename, or ``$HOME``

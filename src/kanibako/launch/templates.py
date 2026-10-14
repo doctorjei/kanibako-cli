@@ -95,10 +95,11 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     )
     if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
         # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
-        # ``agent.shell.template | <None>`` — a SUPPLIED value ([R177]; omitting the
-        # key is the rejected shape: a pseudo-agent has no ``agent.default`` fallback,
-        # so the key would answer nothing).  §2b: the tier installs NO layer-2 template;
-        # the layer itself stays declared, and a ``None`` source SKIPS it at resolve.
+        # ``agent.shell.template | <None>`` — a SUPPLIED value (keyspec §2d
+        # "Pseudo-agent(s)"; omitting the key is the rejected shape: a pseudo-agent has
+        # no ``agent.default`` fallback, so the key would answer nothing).  §2b: the tier
+        # installs NO layer-2 template; the layer itself stays declared, and a ``None``
+        # source SKIPS it at resolve.
         defs[f"agent.{agent_id}.template"] = None
         return defs
     # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user

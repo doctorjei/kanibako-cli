@@ -517,7 +517,7 @@ agent_default:
 # ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above, with the same
 # exception: a fence row declared `<None>` is written `null`, and the reader
 # keeps it a PRESENT `None`, never the string "None" and never an omission.
-# ⚑ EVERY ROW IS A SUPPLIED VALUE ([R177]).  A shell pick never falls back to
+# ⚑ EVERY ROW IS A SUPPLIED VALUE (keyspec §2d).  A shell pick never falls back to
 # `agent.default.*` (`settings_launch._fallback_node`), so a fence row missing
 # here would answer nothing at all.  That is why `bootstrap: "tmux"` is written
 # here although `agent_default:` carries the same `tmux`: it is the shell tier's

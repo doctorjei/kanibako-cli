@@ -95,8 +95,8 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   `{config.agents}/<a>/template` (spec §2a/§2d; `<a>` = the ACTIVE NODE — persona or bare harness).
   ⚑ WHETHER IT SEEDS IS DECIDED AT RESOLVE, OFF THE CASCADE — never here, off the default. The SHELL
   node (`agent_ref.GENERAL_SLOT`) has a present-`None` arm (a supplied value, which beats the default
-  arm — `[R177]`; §2d's shell fence declares `agent.shell.template | <None>`, and §2b says the
-  pseudo-agent installs no layer-2 template), so by default its layer is SKIPPED — and a USER-set
+  arm; §2d's shell fence declares `agent.shell.template | <None>`, and §2b says the pseudo-agent
+  installs no layer-2 template), so by default its layer is SKIPPED — and a USER-set
   `agent.shell.template` seeds through the same layer. §2a says a layer whose source is `<None>` is
   SKIPPED, and the layer EMBEDS its root: an embedded `@`-ref to a present `None` makes the entry
   `None` at expansion (spec §0 — `settings_expand`, one rule for every value) rather than rendering
@@ -133,8 +133,9 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
 ⚑ The shell node's NODE arm is a present `None`. Its §2d fence declares
 `agent.shell.template | <None>`, and a `<None>` there is a SUPPLIED value. `agent.default.template`
 never reaches a shell box: a pseudo-agent has no `agent.default` fallback at all
-(`settings_launch._fallback_node`, keyspec §2d). `[R177]` rejected OMITTING the key — with no
-fallback, an omitted row would leave the shell box no `template` at all. The `agent.shell.seeded` layer is still declared; the `None` source
+(`settings_launch._fallback_node`, keyspec §2d). keyspec §2d "Pseudo-agent(s)" rejected OMITTING
+the key — with no fallback, an omitted row would leave the shell box no `template` at all. The
+`agent.shell.seeded` layer is still declared; the `None` source
 skips it at resolve (see the seed table above); no shell box is seeded from the
 `{config.agents}/shell/template` store. Pinned by `test_templates.py`'s
 `test_the_shell_node_arm_is_a_present_none_over_a_declared_layer`,

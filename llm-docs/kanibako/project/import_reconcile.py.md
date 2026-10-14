@@ -25,11 +25,12 @@ registry section it writes.
 ⚑⚑ **THE TWO MODES DIFFER IN WHERE THE NAME COMES FROM, AND ONLY THERE.** A standalone box composes
 one from its stored `workset.kuid` plus the live dir leaf. A workset records no name anywhere under
 its root — its identity is the global registry's `worksets:` entry — so an imported workset takes
-its **leaf directory basename** ([R139]), which is what `workset create` already defaults an unnamed
-workset to. 🛑 That a workset's name is not on disk is a fact about NAMING; it never made a workset
-root unfindable, and reading it as though it had is what deleted this function once. Detection is
-presence-only in both modes, and `_is_standalone_meta_dir` is the standing proof the two questions
-separate: it finds a box without reading any name out of it.
+its **leaf directory basename** (system-design § "Detection & import"), which is what
+`workset create` already defaults an unnamed workset to. 🛑 That a workset's name is not on disk
+is a fact about NAMING; it never made a workset root unfindable, and reading it as though it had
+is what deleted this function once. Detection is presence-only in both modes, and
+`_is_standalone_meta_dir` is the standing proof the two questions separate: it finds a box without
+reading any name out of it.
 
 ⚑ The walk ALSO calls `project/workset.refuse_retired_workset_identity` at each level, **before**
 the NAMED test — deliberately. A v1.6/v1.7 root HAS the four-dir skeleton, so a NAMED arm running
@@ -177,7 +178,8 @@ box is already seeded on disk.
 
 `root` is the workset root. There is no file to read: the caller has already matched
 `workset.is_workset_skeleton`, and the name is **derived** from the leaf directory basename
-([R139]) as `identifiers.derived_name(root.name)`: `_` for each `-` and `.` (spec §0).
+(system-design § "Detection & import") as `identifiers.derived_name(root.name)`: `_` for each
+`-` and `.` (spec §0).
 
 Order of operations: derive the name → bar checks → `$HOME` guard → already-registered check by
 DIRECTORY (`names.lookup_by_path`, under any name; plus stale-entry clear) → same-kind collision

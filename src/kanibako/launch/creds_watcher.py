@@ -313,7 +313,8 @@ def running_box_agent(runtime, container_name: str) -> str | None:
     splits on ``℘`` alone, so the raw ``+`` stamp would name a plugin that does not
     exist.  Both separators are accepted, so a box stamped ``℘`` by an older version
     still resolves.  The ADDRESS grammar, because a plain-shell box is stamped
-    ``shell`` (keyspec §2b).  Folded to the node ([R173]), so the answer names the
+    ``shell`` (keyspec §2b).  Folded to the node (keyspec §0
+    "An agent's canonical case is carried by its _name_"), so the answer names the
     store directory the launch wrote.  Raises ``ConfigError`` for a malformed stamp;
     each caller decides whether that is said.
     """

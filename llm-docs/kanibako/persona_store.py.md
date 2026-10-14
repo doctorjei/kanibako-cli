@@ -42,8 +42,9 @@ $XDG_CONFIG_HOME/personas/          <- discovery root (FIXED, not configurable)
 
 `persona_store_root` is the single builder for that path, fixed by DESIGN §5a and deliberately not
 configurable. It routes through the internal `user_config_home` resolver in
-`kanibako.settings.paths` ([R154] refuses a `config_home` key by name), so
-`XDG_CONFIG_HOME` is honored iff it is set AND absolute, and otherwise the root is `$HOME/.config`.
+`kanibako.settings.paths` (keyspec §1A declares the finished config file,
+`meta.runtime.user.config`, and no `config_home` key), so `XDG_CONFIG_HOME` is honored iff it is
+set AND absolute, and otherwise the root is `$HOME/.config`.
 
 **Store PRESENCE decides persona-vs-plain (DESIGN §4).** Every discovery entry point here returns a
 clean "not a persona" `None` on a miss, so callers fall straight through to normal agent handling
@@ -70,8 +71,9 @@ it feeds.
 `locate_entry` takes any accepted agent ref (`navigator+codex`, `navigator℘codex`, or an
 already-canonical node-name) and normalizes it through `kanibako.agent_ref.agent_address_node` —
 the ADDRESS grammar, since a lookup names an existing agent and claims nothing, with the harness
-folded to node case (`[R173]`): `navigator+Claude` looks up `<root>/navigator/claude/`, the
-directory the launch looks up. The persona segment keeps its case.
+folded to node case (keyspec §0 "An agent's canonical case is carried by its _name_"):
+`navigator+Claude` looks up `<root>/navigator/claude/`, the directory the launch looks up. The
+persona segment keeps its case.
 
 It returns `None` — a clean "not a persona" — in exactly two cases:
 
