@@ -36,7 +36,7 @@ ENV_VAR_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
 # ⚑ THE RESERVATION REFUSES A CLAIMANT, NOT AN ADDRESS: a ref that ADDRESSES the built-in
 # shell pseudo-agent reaches it through :func:`parse_agent_address`, which is this gate
 # plus that one owner — the name still names nobody else.
-# ⚑ FOLDS FOR COMPARISON, never a prefix test ([R172], keyspec §0): ``Shell``
+# ⚑ FOLDS FOR COMPARISON, never a prefix test (keyspec §0): ``Shell``
 # is the same identifier as ``shell`` & is refused like it, while ``shellx``
 # stays an ordinary name, & widening a user-facing refusal past the names the
 # spec reserves is its own defect.
@@ -197,11 +197,11 @@ def parse_agent_address(raw: str) -> tuple[str, str]:
   ⚑ THE §2d RESERVATION STILL HOLDS for everything that would CLAIM the name — a plugin,
   a persona segment, a harness segment ([R175]: the built-in is the owner, so
   addressing it claims nothing).  ``shell`` inside a composite ref is refused as
-  before, since a persona cannot ride a pseudo-agent ([R178]).
+  before, since a persona cannot ride a pseudo-agent (keyspec §2d "Pseudo-agent(s)").
   ⚑ ONLY :data:`ADDRESSABLE_PSEUDO_AGENTS`, not every pseudo-agent: ``default`` is the any-agent fallback tier,
   not an agent a ref can select, and its §2d fence declares no settings file.
-  ⚑ FOLDS FOR COMPARISON ([R172]): ``Shell`` addresses the same agent, and the node
-  returned is the lowercase slot.
+  ⚑ FOLDS FOR COMPARISON (keyspec §0 "CASE INSENSITIVE for collision purposes"):
+  ``Shell`` addresses the same agent, and the node returned is the lowercase slot.
   """
   if isinstance(raw, str):
     pseudo = find_identifier(raw.strip(), ADDRESSABLE_PSEUDO_AGENTS)
@@ -216,7 +216,8 @@ def agent_address_node(raw: str) -> str:
   🛑 CANONICALIZING IS NOT FOLDING.  The parser normalizes the separator & validates the
   charset but changes no case, while a node is lowercase (keyspec §0 ``⚑ NAMING RULES``).
   A user- or value-supplied spelling therefore folds at the hop that reaches for a node
-  ([R173]) — unfolded, ``Claude`` names ``agents/Claude/``, a store the launch never writes.
+  (keyspec §0 "An agent's canonical case is carried by its _name_") — unfolded,
+  ``Claude`` names ``agents/Claude/``, a store the launch never writes.
   ⚑ THE HARNESS SEGMENT ONLY, which is exactly what the launch folds when it builds its
   node from ``target.name``: a persona segment is the user's, & folding it would name a
   DIFFERENT store than the one the launch wrote for every capitalized persona.

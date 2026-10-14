@@ -43,7 +43,7 @@ def _declared_name(node: str, cls: type) -> str:
     """The plugin's DECLARED name for *node* — its own case, or *node* if it cannot be.
 
     ``system.agent`` holds a NAME, and for an agent the canonical case is the one the
-    PLUGIN declares (``[R172]``, ``[R173]``) — so this command must store ``Kirobo``,
+    PLUGIN declares (keyspec §0 NAMING RULES) — so this command must store ``Kirobo``,
     not the ``kirobo`` node it matched.  The registry is keyed by node and throws the
     declaration away, so it is read back off the class.
 
@@ -609,10 +609,11 @@ def _run_agent_selection(args: argparse.Namespace) -> str | None:
         # (keyspec §0): an agent is one identifier however it is capitalized, and this
         # door and ``start``'s must not disagree about whether it is installed.
         # 🛑 What is MATCHED is the node; what is WRITTEN is the plugin's DECLARED
-        # NAME.  ``system.agent`` holds a name (keyspec §2g, ``[R173]``) and an
-        # agent's canonical case is the plugin's (``[R172]``), so storing the node
-        # here would fold the name on the way to storage and leave the declared case
-        # in no stored carrier at all.  ``resolve_agent`` folds it back at the launch.
+        # NAME.  ``system.agent`` holds a name (keyspec §2g, keyspec §0 "An agent's
+        # canonical case is carried by its _name_") and an agent's canonical case is the
+        # plugin's (keyspec §0 "CASE INSENSITIVE for collision purposes"), so storing
+        # the node here would fold the name on the way to storage and leave the declared
+        # case in no stored carrier at all.  ``resolve_agent`` folds it back at the launch.
         from kanibako.identifiers import find_identifier
         from kanibako.targets import discover_targets
 

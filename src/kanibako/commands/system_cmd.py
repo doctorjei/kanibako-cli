@@ -324,8 +324,9 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     cf = user_config_file()
     # ⚑ The Layer-1 foundation resolve, deliberately NOT ``load_std_paths``: a
-    # stored-but-unusable Layer-2 value must not reach these verbs — the [R147] read-time
-    # refusal owns that guard — and the foundation answers from Layer-1 alone.  (Brick
+    # stored-but-unusable Layer-2 value must not reach these verbs — the read-time
+    # refusal (keyspec §2a "A path key's stored value") owns that guard — and the
+    # foundation answers from Layer-1 alone.  (Brick
     # history: back when ``load_std_paths`` also MATERIALIZED the store, one such value
     # bricked every config verb behind a raw ``OSError``, including the ``reset`` that
     # would have un-stored it.)  These verbs need only ``std.settings`` and ``std.agents``,

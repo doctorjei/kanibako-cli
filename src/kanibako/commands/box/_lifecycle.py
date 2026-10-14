@@ -321,8 +321,9 @@ def _workspace_landing(
     ``workspace_path`` is the RESOLVED ``workset.workspaces``, so under ``workspaces:
     nested/deep`` its parent is ``<root>/nested`` and under an ABSOLUTE repoint it is not
     below the root at all.  An in-place edge OUT of standalone lands at the root unless
-    that repoint put the workspace outside it ([R144]: the box keeps the user's directory);
-    an in-place standalone rename lands at the root, which ``_to_standalone`` reads as such.
+    that repoint put the workspace outside it (system-design § "Box lifecycle": the box
+    keeps the user's directory); an in-place standalone rename lands at the root, which
+    ``_to_standalone`` reads as such.
     """
     if dest is not None:
         return dest
@@ -2061,8 +2062,9 @@ def _run_steps(
             if merge_gitignore is not None:
                 merge_gitignore()
         elif new_workspace == workspace and workspace.resolve() != root.resolve():
-            # ⚑ [R144]: an ABSOLUTE ``workset.workspaces`` is a directory the USER named,
-            # and emptying it is the irreversible loss, so the box simply keeps it.
+            # ⚑ system-design § "Box lifecycle": an ABSOLUTE ``workset.workspaces`` is a
+            # directory the USER named, and emptying it is the irreversible loss, so the
+            # box simply keeps it.
             print(f"Note: left the workspace at {workspace} — workset.workspaces "
                   f"pointed it outside {root}, so it is yours and the box keeps "
                   f"it as its project directory.", file=sys.stderr)
@@ -3718,9 +3720,9 @@ def _standalone_root_artifacts(
     the workspace dir.  Every key the root resolves is listed, ``workset.canon`` included.
 
     *repointed* says the resolved path DIFFERS from that key's default leaf, i.e. the user put
-    it there.  :func:`_consolidate_workspace_subdir` reports those keeps by name ([R144]: a
-    keep that cannot name the path as the user's is just a leak); the default layout keeps
-    stay silent, as they always have.
+    it there.  :func:`_consolidate_workspace_subdir` reports those keeps by name
+    (system-design § "Box lifecycle": a keep that cannot name the path as the user's is
+    just a leak); the default layout keeps stay silent, as they always have.
 
     ⚑ ONE ``workset.yaml`` read feeds every resolution — reading per key opens a window for
     them to disagree about the same document (``_workset_skeleton_dirs``' own reason).
@@ -3876,9 +3878,10 @@ def _consolidate_workspace_subdir(
 
     movable, kept = _consolidation_sweep(root, workspace_subdir, early=early)
     for child, key in kept:
-        # ⚑ [R144]: the user put it there, so the keep is REPORTED and names the key —
-        # otherwise a directory sitting outside the workspace after a convert that says it
-        # consolidated everything is unexplained.  Default-layout keeps stay silent.
+        # ⚑ system-design § "Box lifecycle": the user put it there, so the keep is
+        # REPORTED and names the key — otherwise a directory sitting outside the workspace
+        # after a convert that says it consolidated everything is unexplained.
+        # Default-layout keeps stay silent.
         print(f"Note: left {child} at the standalone root — {key} resolves "
               f"inside it.", file=sys.stderr)
     if not movable:

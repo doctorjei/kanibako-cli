@@ -182,8 +182,9 @@ already enforced that (`STUBBORN_INPLACE_MSG`). A standard move `copytree`s the 
   * **workspace resolves BELOW the root** — the reverse of drift H: lift the files up to the root
     and root the converted box there, so the project stays at the directory the user is standing
     in rather than a subdir.
-  * **workspace resolves OUTSIDE the root** — [R144]: a directory the USER named. Nothing moves
-    and the keep is REPORTED naming the key. Every non-standalone mode's workspace is just its
+  * **workspace resolves OUTSIDE the root** — system-design § "Box lifecycle": a directory the
+    USER named. Nothing moves and the keep is REPORTED naming the key. Every non-standalone
+    mode's workspace is just its
     project dir, and that dir may be anywhere, so keeping it is not a special case — it is the
     ordinary shape. Lifting instead emptied and deleted the user's directory and scattered its
     contents into a sibling tree.
@@ -776,9 +777,10 @@ a name set at all: with `workset.workspaces` pointed outside the root, a literal
 ⚑ `_artifact_claiming` uses an ANCESTOR test, not equality — `store/ro` is not itself a child of the
 root; `store` is, and it HOLDS the arm.
 
-⚑ [R144]: a keep whose resolved path DIFFERS from that key's default is one the USER authored, and
-it is REPORTED by key on stderr (`Note: left <path> at the standalone root — workset.vault_ro
-resolves inside it.`). Default-layout keeps stay silent, as they always have.
+⚑ system-design § "Box lifecycle": a keep whose resolved path DIFFERS from that key's default
+is one the USER authored, and it is REPORTED by key on stderr (`Note: left <path> at the
+standalone root — workset.vault_ro resolves inside it.`). Default-layout keeps stay silent,
+as they always have.
 
 ⚑ An unresolvable repoint RAISES (`SettingsError`, naming the key and the token) instead of
 guessing. A root whose layout keys do not answer is a root whose children cannot be told apart, and

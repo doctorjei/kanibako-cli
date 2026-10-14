@@ -67,7 +67,8 @@ def refresh_auth(
     5. Save updated browser state on success
 
     The stored session is :mod:`kanibako.browser_state`'s to locate — it derives from
-    ``system.state`` itself ([R168]), so nothing about the jar is threaded through here.
+    ``system.state`` itself (keyspec §2g system.state), so nothing about the jar is
+    threaded through here.
 
     Returns :class:`AuthResult` with success status and optional key.
     """

@@ -88,7 +88,7 @@ stripped) parses to `(GENERAL_SLOT, GENERAL_SLOT)` instead of raising.
 *"as any other agent"* (`--agent shell`, `system.agent: shell`), and its §2d fence declares its own
 settings file (`meta.agent.shell.settings`). Addressing the built-in claims nothing (`[R175]`), so
 everything that would CLAIM the name still refuses: a plugin (`targets`), and `shell` as a persona
-or harness segment inside a composite (`[R178]`).
+or harness segment inside a composite (keyspec §2d "Pseudo-agent(s)").
 ⚑ **Only `shell`.** `default` is the any-agent fallback TIER — no spec line selects it as an agent,
 and its fence declares no settings file — so it refuses here as in `parse_agent_ref`.
 ⚑ **Which one to call:** a site that CREATES or DECLARES a name uses `parse_agent_ref`; a site that
@@ -102,15 +102,16 @@ in, so it goes through `agent_address_node` (below, via `config_keys.agent_key_n
 
 ```def agent_address_node(raw: str) -> str```
 The NODE an agent ADDRESS reaches: `parse_agent_address`, then the HARNESS segment folded through
-`identifiers.agent_node_case` (`[R173]`: a node is lowercase; canonicalizing changes no case). The
-persona segment keeps the user's case — the same cut the launch makes when it builds its node from
-`target.name`, so both name one store. **The one carrier of this rule:** the `agent` noun's
-positional (via `config_keys.agent_key_node`), a typed `agent.<node>.*` key (`resolve_key`, same
-route), and a `KANIBAKO_AGENT` stamp read back (`stop`, `code`, the creds watcher, `start`'s
-reattach). ⚑ **One exception, a different question:** `config.resolve_agent` SELECTS an agent to
-launch, so it substitutes the installed registry's stored spelling for the harness
-(`find_identifier`) and refuses an uninstalled one, rather than folding an unchecked spelling.
-Raises as `parse_agent_address` does.
+`identifiers.agent_node_case` (keyspec §0 "An agent's canonical case is carried by its _name_": a
+node is lowercase; canonicalizing changes no case). The persona segment keeps the user's case —
+the same cut the launch makes when it builds its node from `target.name`, so both name one store.
+**The one carrier of this rule:** the `agent` noun's positional (via
+`config_keys.agent_key_node`), a typed `agent.<node>.*` key (`resolve_key`, same route), and a
+`KANIBAKO_AGENT` stamp read back (`stop`, `code`, the creds watcher, `start`'s reattach). ⚑ **One
+exception, a different question:** `config.resolve_agent` SELECTS an agent to launch, so it
+substitutes the installed registry's stored spelling for the harness (`find_identifier`) and
+refuses an uninstalled one, rather than folding an unchecked spelling. Raises as
+`parse_agent_address` does.
 
 ```def agent_segment_case(segment: str) -> str```
 An `agent.<HERE>` segment a user wrote, with only its CASE folded to the node's: a pseudo-agent
@@ -143,10 +144,10 @@ re-split ref on raw separator at call site).
 Return *node* with its harness segment REPLACED by *harness*.
 
 Preserves persona name (left of `℘`) while swapping harness. Its callers use it to put the harness
-segment into the RESOLVED target's NODE spelling (`identifiers.agent_node_case`, `[R173]`: a plugin
-declaring `Claude` keys the lowercase `claude` store directory), or into the registry's stored spelling
-(`config.resolve_agent`), so the store dir + keyspace slot follow the real target while the persona
-segment keeps the user's case.
+segment into the RESOLVED target's NODE spelling (`identifiers.agent_node_case`, keyspec §0 "An
+agent's canonical case is carried by its _name_": a plugin declaring `Claude` keys the lowercase
+`claude` store directory), or into the registry's stored spelling (`config.resolve_agent`), so the
+store dir + keyspace slot follow the real target while the persona segment keeps the user's case.
 
 * bare node (`"claude"`, harness `"claude"`) -> `"claude"` (unchanged);
 * bare node, re-cased harness (`"Claude"`, `"claude"`) -> `"claude"`;
@@ -156,9 +157,10 @@ segment keeps the user's case.
 
 ⚑ It does not validate, so it will compose a node the grammar refuses: `with_harness(
 "navigator℘claude", "shell")` returns `navigator℘shell`, which `parse_agent_ref` refuses — a persona
-cannot ride a pseudo-agent (`[R178]`). No launch path asks for that: a NAMED target never falls back
-to `ShellTarget` (`targets.resolve_target` raises `KeyError`; only the name-less auto-detect ends at
-`ShellTarget`), and a missing binary warns and keeps the plugin's target.
+cannot ride a pseudo-agent (keyspec §2d "Pseudo-agent(s)"). No launch path asks for that: a NAMED
+target never falls back to `ShellTarget` (`targets.resolve_target` raises `KeyError`; only the
+name-less auto-detect ends at `ShellTarget`), and a missing binary warns and keeps the plugin's
+target.
 
 ```def display_agent_ref(node: str) -> str```
 Return the USER-FACING form of a *node*-name (`℘` -> `+`).

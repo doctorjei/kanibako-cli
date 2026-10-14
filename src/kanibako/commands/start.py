@@ -1143,9 +1143,10 @@ def _declared_behavior_bool(key: str, agent_id: str) -> bool:
     would silently disable a feature instead of naming itself.
     """
     # ``pseudo_agent_fence``, the predicate ``settings_launch._fallback_node`` uses; it takes
-    # a NODE, already lowercase — [R173]'s fold is where a NAME becomes one.  A launch runs
-    # only an addressable pseudo-agent: ``default`` is reserved and refused as an agent
-    # name (§2d), and ``pseudo_tier_default`` raises for any name without a tier.
+    # a NODE, already lowercase — the fold is where a NAME becomes one (keyspec §0 "An
+    # agent's canonical case is carried by its _name_").  A launch runs only an addressable
+    # pseudo-agent: ``default`` is reserved and refused as an agent name (§2d), and
+    # ``pseudo_tier_default`` raises for any name without a tier.
     tier = agent_id if pseudo_agent_fence(agent_id) is not None else "default"
     raw = (
         core_defaults.pseudo_tier_default(agent_id, key) if tier == agent_id
@@ -2007,8 +2008,8 @@ def _launch_issues_path(std, container_name: str) -> Path:
     """State-file path for a box's tier-2 launch warnings.
 
     Uses ``std.state`` — the resolved ``system.state``, which every state store
-    derives from and nothing else ([R166]) — so the warnings survive the
-    bootstrap session and can be reprinted on exit, and a user who repoints the
+    derives from and nothing else (keyspec §2g system.state) — so the warnings survive
+    the bootstrap session and can be reprinted on exit, and a user who repoints the
     state root takes them with it.
     """
     return std.state / f"launch-issues.{container_name}"
@@ -3624,7 +3625,7 @@ def _run_container(
     # (``resolve_target`` raises ``KeyError``), so the harness it swaps in is the one
     # that was asked for, re-cased; for a bare agent, node == harness == the
     # target's NODE.  ⚑ ``agent_node_case`` is what
-    # makes that the node and not the plugin's declared NAME ([R173], keyspec §0):
+    # makes that the node and not the plugin's declared NAME (keyspec §0):
     # the name keeps its case, the node — and the ``agents/<node>/`` dir and
     # ``agent.<node>.*`` slot spelled from it — is lowercase.  A plugin calling
     # itself ``Shell`` must not write ``agents/Shell/``.
@@ -4742,7 +4743,7 @@ def _run_container(
             from kanibako.settings import settings_launch
             _realized = _realizer.result
             effective_state = _realized.effective_state
-            # ``run_args`` OFF THE CASCADE, not off the agent FILE (`[R169]`, spec §2d
+            # ``run_args`` OFF THE CASCADE, not off the agent FILE (spec §2d
             # ``agent.<agent>.run_args | <None>   (← agent.default.run_args)``). The
             # file is one LEVEL of that cascade (``agent.<active>``, read from
             # *agent_cfg_path*) like every other agent-scope behavior value, so an
@@ -7344,9 +7345,10 @@ def _effective_behavior_for_display(
     # (``target.name``) — else ``config --effective`` shows the bare-harness view
     # for a persona. Bare: node==harness==the target's NODE → byte-identical. Falls
     # back to that node when a caller omits one (legacy / test convenience).
-    # ⚑ ``agent_node_case``, not the declared name: a node is lowercase ([R173]), and
-    # this value keys ``agents/<node>/agent.yaml`` and ``agent.<node>.*`` — deriving
-    # it unfolded here would spell one agent's slot two ways.
+    # ⚑ ``agent_node_case``, not the declared name: a node is lowercase (keyspec §0 "An
+    # agent's canonical case is carried by its _name_"), and this value keys
+    # ``agents/<node>/agent.yaml`` and ``agent.<node>.*`` — deriving it unfolded here
+    # would spell one agent's slot two ways.
     active = node_name if node_name is not None else agent_node_case(target.name)
 
     # DISPLAY == LAUNCH: the same persona-store tier the launch resolves against
@@ -8273,7 +8275,8 @@ def stored_box_agent(std: "StandardPaths", proj: "ProjectPaths") -> StoredBoxAge
     except Exception:
         target = None
     # ⚑ The NODE name keys both ``agent.<node>.*`` and ``agents/<node>/``; a node is
-    # lowercase ([R173]), so the folded spelling names the file the launch opens.
+    # lowercase (keyspec §0 "An agent's canonical case is carried by its _name_"), so
+    # the folded spelling names the file the launch opens.
     node = (
         with_harness(selection.node, agent_node_case(target.name))
         if target is not None and selection is not None else GENERAL_SLOT
@@ -9331,7 +9334,8 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # slot; with_harness swaps in the actually-resolved target's NODE (fallback-safe),
     # persona preserved. Bare + as-requested -> node == harness == that node.
     # ⚑ ``agent_node_case``, not ``target.name``: the declared name keeps its case,
-    # the node is lowercase ([R173]) — the hoisted site above says why at length.
+    # the node is lowercase (keyspec §0 "An agent's canonical case is carried by its
+    # _name_") — the hoisted site above says why at length.
     agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
     # Load or GENERATE the agent config IN MEMORY (mirrors the launch path) — the
@@ -10251,8 +10255,8 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     🛑 **READERS CANONICALIZE, THEN DERIVE** — ``agent_ref.agent_address_node`` first
     (the ADDRESS grammar: a plain-shell box is stamped ``shell``, the shell
     pseudo-agent, which the claimant grammar refuses; and the harness folded to node
-    case, ``[R173]``), and only then ``harness_of`` / a store path / a settings value.
-    ``harness_of``
+    case, keyspec §0 "An agent's canonical case is carried by its _name_"), and only
+    then ``harness_of`` / a store path / a settings value. ``harness_of``
     splits on ``℘`` ALONE: hand it ``navigator+claude`` and it returns the WHOLE
     string, so ``resolve_target`` looks up a plugin that does not exist.  In
     ``stop.py`` that sits under a blanket catch, i.e. credential writeback would

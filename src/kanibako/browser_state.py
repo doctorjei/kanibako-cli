@@ -4,13 +4,13 @@ Stores Playwright browser context (cookies, localStorage) so that the
 OAuth provider recognizes the session on subsequent refreshes without
 requiring a full re-login.
 
-⚑ THE JAR IS STATE, NOT DATA ([R168]).  It persists between runs on purpose, and that
-never decided anything: the test is precious-and-portable vs regenerable-and-machine-local,
-and a cookie jar is the latter — worthless on another machine, authored by nobody, and worth
-an authorization rather than anything of the user's if it is lost.  So it derives from
-``system.state`` and from nothing else ([R166]), and this module resolves that key ITSELF
-rather than taking a directory from its caller: the one parameter ``auth_browser`` ever
-threaded here existed only to locate this file.
+⚑ THE JAR IS STATE, NOT DATA (keyspec §2g system.state).  It persists between runs on
+purpose, and that never decided anything: the test is precious-and-portable vs
+regenerable-and-machine-local, and a cookie jar is the latter — worthless on another
+machine, authored by nobody, and worth an authorization rather than anything of the user's
+if it is lost.  So it derives from ``system.state`` and from nothing else (keyspec §2g),
+and this module resolves that key ITSELF rather than taking a directory from its caller:
+the one parameter ``auth_browser`` ever threaded here existed only to locate this file.
 """
 
 from __future__ import annotations
@@ -41,13 +41,13 @@ class BrowserState:
 def state_path() -> Path:
     """The browser state file — under ``system.state``, the declared key.
 
-    [R166]: a state store derives from ``system.state`` and from nothing else, so this is
-    the key's RESOLVED value, never ``$XDG_STATE_HOME`` composed with a leaf and never
-    ``config.data``.  :func:`resolve_state_path` is PURE and TOTAL (never raises, creates
-    nothing): it degrades to the key's own default, ``$XDG_STATE_HOME/kanibako``, whenever
-    the host config or settings file is absent, unreadable or malformed — so this function
-    is as total as the hardcoded join it replaces, and reaches a repointed state root when
-    those files ARE readable.
+    keyspec §2g system.state: a state store derives from ``system.state`` and from nothing
+    else, so this is the key's RESOLVED value, never ``$XDG_STATE_HOME`` composed with a
+    leaf and never ``config.data``.  :func:`resolve_state_path` is PURE and TOTAL (never
+    raises, creates nothing): it degrades to the key's own default,
+    ``$XDG_STATE_HOME/kanibako``, whenever the host config or settings file is absent,
+    unreadable or malformed — so this function is as total as the hardcoded join it
+    replaces, and reaches a repointed state root when those files ARE readable.
     """
     return resolve_state_path() / "browser-state" / "context.json"
 
