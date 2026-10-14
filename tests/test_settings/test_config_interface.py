@@ -3060,7 +3060,7 @@ class TestCategoryConfigSet:
         assert "RETIRED" in msg, msg
         assert "agent.<node>.common.<name>" in msg, msg
         # ⚑ The NODE left the file spelling with the S2 flatten
-        # ([spec:15-21, "self"]): the file IS claude's, so the table sits DIRECTLY under ``self:``. The node stays
+        # ([spec:14-18, "self"]): the file IS claude's, so the table sits DIRECTLY under ``self:``. The node stays
         # in the PATH, which is what tells the user which file to open.
         assert "self.common" in msg, msg
         assert "self.claude" not in msg, msg

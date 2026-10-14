@@ -1416,7 +1416,7 @@ launch owes a file to open.
 ⚑⚑ **`key_validity`, NEVER `is_known_key`, AND THE DIFFERENCE IS MEASURED.**
 `is_known_key("agent.claude.self.model")` is **True** — `_parse_persona_agent_key` splits on the LAST
 segment and reads the node as ``claude.self`` — so a literal `is_known_key` gate would leave the
-exact [spec:15-21, "self"] hole open while REFUSING ``run_args`` and ``name``, both live and both
+exact [spec:14-18, "self"] hole open while REFUSING ``run_args`` and ``name``, both live and both
 pinned. `is_known_key` answers *"is this key-SHAPED, as opposed to a project name"*; §0 asks
 *"is this a DECLARED key"*, and only `key_validity` answers that.
 **Do not "simplify" this to the other predicate.**

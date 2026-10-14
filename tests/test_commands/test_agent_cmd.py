@@ -2106,7 +2106,7 @@ class TestAgentSetNull:
         """
         before = self._stored(agent_env)
         assert self._set_null(capsys, "bindings")[0] == 1
-        # The closed keyspace [spec:15-21, "self"] — ``self.model`` names a node, not a key.
+        # The closed keyspace [spec:14-18, "self"] — ``self.model`` names a node, not a key.
         assert self._set_null(capsys, "self.model")[0] == 1
         assert self._stored(agent_env) == before
 
@@ -2232,7 +2232,7 @@ class TestAgentVerbKeyspaceGate:
 
     Every other noun routes its writes through ``set_config_value``, which owns the §0 check;
     this verb has its own writer and had none, so it was the ONE place a user could type
-    ``self.`` and have it land on disk [spec:15-21, "self"].  The gate is ``key_validity`` on the
+    ``self.`` and have it land on disk [spec:14-18, "self"].  The gate is ``key_validity`` on the
     canonical key built from the KNOWN node, NEVER ``is_known_key``: measured,
     ``is_known_key("agent.claude.self.model")`` is True (the persona parser reads the node as
     ``claude.self``), so a literal ``is_known_key`` gate would leave exactly this hole open while
@@ -2290,7 +2290,7 @@ class TestAgentVerbKeyspaceGate:
         )) == 0
 
     def test_the_self_alias_is_refused_on_the_command_line(self, agent_env, capsys):
-        """[spec:15-21, "self"], at the one surface that could still accept it.
+        """[spec:14-18, "self"], at the one surface that could still accept it.
 
         ``self`` is a FILE-SURFACE alias substituted at the parse boundary; nothing past that
         boundary recognizes it, and the way it stays out of the code is that no parser admits
@@ -2649,7 +2649,7 @@ class TestAgentResetRoutesThroughTheOneSetter:
         assert msg.startswith("No override for ")
 
     def test_the_self_alias_is_still_refused_by_the_gate(self, agent_env, capsys):
-        """[spec:15-21, "self"] survives the routing, and it must be the GATE that says so.
+        """[spec:14-18, "self"] survives the routing, and it must be the GATE that says so.
 
         Routing without the gate does not merely change the wording — it blames the AGENT NAME
         for a bad KEY: measured, the engine answers ``agent.claude.self.model`` with "invalid

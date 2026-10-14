@@ -78,7 +78,7 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
     # ⚑ The all-agents marker is written in the SYSTEM file, which is where that tier
     # LIVES: the agent file is the active node's own, so ``self:`` IS ``agent.claude``
     # and it has no spelling for ``agent.default`` at all (the flatten;
-    # [spec:15-21, "self"]).
+    # [spec:14-18, "self"]).
     sysf = _write(
         tmp_path / "sys.yaml",
         {"system": {"template": "system"},
@@ -753,7 +753,7 @@ def test_agent_file_state_alone_still_builds_the_agent_node(tmp_path: Path) -> N
 
 def test_another_agents_sub_table_in_the_agent_file_refuses(tmp_path: Path) -> None:
     # ⚑⚑ THE PURPOSE HALVED, AND THE SURVIVING HALF INVERTED
-    # ([spec:15-21, "self"]). §0 still
+    # ([spec:14-18, "self"]). §0 still
     # lets a settings file set ``agent.<name>.*`` for an agent that is NOT active — but
     # not THIS file: ``self:`` IS ``agent.claude``, so ``self: goose:`` reads
     # ``agent.claude.goose``, which names nothing. The keys for another agent belong in

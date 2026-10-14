@@ -17,7 +17,7 @@ Read the two as two, and do not fold either into the other's wording.
 
 ⚑ **The FILE's shape is not here.** Reading, writing and addressing the per-agent settings file
 belong to `kanibako.settings.agent_file`, which is the one module that spells the file's root table
-([spec:15-21, "self"]). Anything about *how the YAML is laid out* is that module's question, not
+([spec:14-18, "self"]). Anything about *how the YAML is laid out* is that module's question, not
 this one's.
 
 ## Naming

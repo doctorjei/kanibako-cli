@@ -1725,7 +1725,7 @@ def agent_key_reason(node: str, tail: str) -> str | None:
 
     ⚑⚑ ``key_validity`` ON THE CANONICAL KEY, NEVER ``is_known_key``, AND THE DIFFERENCE IS
     MEASURED: ``is_known_key("agent.claude.self.model")`` is **True** (the persona parser splits on
-    the LAST segment and reads the node as ``claude.self``), so the shape [spec:15-21, "self"]
+    the LAST segment and reads the node as ``claude.self``), so the shape [spec:14-18, "self"]
     exists to refuse would sail through, while ``run_args`` — live and pinned — would be
     refused.
     ``is_known_key`` answers "is this key-SHAPED, as opposed to a project name"; §0 asks
@@ -1774,7 +1774,7 @@ def agent_write_key_error(node: str, tail: str, *, verb: str) -> str | None:
     ``set_config_value``, which owns this check for every other noun; this one has its own writer
     and had NO validation at all, so ``agent set claude anything.at.all=x`` stored garbage rc=0 —
     a closed-keyspace breach on a first-class write path, and the ONE place a user could type
-    ``self.`` and have it land [spec:15-21, "self"].
+    ``self.`` and have it land [spec:14-18, "self"].
     """
     reason = agent_key_reason(node, tail)
     if reason is None:

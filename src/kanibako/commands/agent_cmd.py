@@ -621,7 +621,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # judges the tail against the KNOWN-GOOD node (the canonical ``℘`` node), which is the one
         # thing ``set_config_value`` cannot do — that engine reads the node OUT of the key, so
         # ``self.model`` parses as a node ``claude.self`` and the ``self`` spelling, which
-        # [spec:15-21, "self"] confines to the agent file, would be refused for the wrong reason,
+        # [spec:14-18, "self"] confines to the agent file, would be refused for the wrong reason,
         # blaming the agent name rather than naming the key.
         gate_err = _agent_key_gate(agent_id, key, path=path, verb="set")
         if gate_err is not None:
@@ -741,7 +741,7 @@ def _agent_key_gate(
        a declared key" (spec §0).  It covers all five bind-shaped categories, from the same
        derived recognizer the other verbs use, so there is no bindings-only rule to widen later;
     2. the CLOSED KEYSPACE (D-5) — this verb had no vocabulary at all and stored whatever it was
-       handed, including ``self.model`` [spec:15-21, "self"];
+       handed, including ``self.model`` [spec:14-18, "self"];
     3. the VALUE SHAPE (D-7) — a declared key whose value is a TABLE takes no scalar.
     """
     from kanibako.settings.agent_file import table_value_error

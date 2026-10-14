@@ -1,6 +1,6 @@
 """The per-agent settings file's SHAPE — the ONLY module that spells its root table."""
 
-# ⚑⚑ WHY THIS MODULE EXISTS [spec:15-21, "self"].  ``self`` is NOT a key: it is a
+# ⚑⚑ WHY THIS MODULE EXISTS [spec:14-18, "self"].  ``self`` is NOT a key: it is a
 # FILE-SURFACE ALIAS that substitutes to ``agent.<agent>``.  Everything past this boundary
 # traffics in the ACTUAL agent reference, and this is the only place a ``self`` string appears in
 # shipped source.
@@ -52,7 +52,7 @@ from kanibako.utils import deep_merge, stat_unless_gone
 #: The per-agent file's ROOT table — the file's self-reference, spelled ONCE, HERE.
 _ROOT: Final[str] = "self"
 
-#: The SCOPE this file sits at: its root expands to ``agent.<node>`` [spec:15-21, "self"].
+#: The SCOPE this file sits at: its root expands to ``agent.<node>`` [spec:14-18, "self"].
 FILE_SCOPE: Final[str] = "agent"
 
 #: The scopes the file CONTAINS (``workset``, ``box``): spec §0 makes their tables inputs,
@@ -84,7 +84,7 @@ _MODELED_KEYS: Final[frozenset[str]] = frozenset({
 })
 
 #: EVERY category the per-agent file stores FLAT under ``self`` — ``self`` IS ``agent.<node>``, so
-#: there is no second ``<node>`` embedding ([spec:15-21, "self"]; the S2 flatten).
+#: there is no second ``<node>`` embedding ([spec:14-18, "self"]; the S2 flatten).
 #: ``bindings`` is ONE token: its ``{ro, rw}`` table rides WHOLE. ⚑ ORDER IS NOT SIGNIFICANT. It
 #: is ALSO :func:`_read_address`'s category set, which is what stops the value's storage shape and
 #: the cascade's read of it from drifting apart.
@@ -806,7 +806,7 @@ def _yaml_block(doc: dict, indent: str) -> str:
 
 @dataclass(frozen=True)
 class _SubHome:
-    """Whose content a refused ``self.<sub>:`` table is, and where it belongs [spec:15-21, "self"].
+    """Whose content a refused ``self.<sub>:`` table is, and where it belongs [spec:14-18, "self"].
 
     *name* is the agent the sub key REACHES — case folded (Q87), so ``Claude`` is ``claude`` —
     spelled as ``agent set`` and ``agent.<name>`` take it. *where* names that agent's own file,
@@ -898,7 +898,7 @@ def _nested_agent_cure(
     category: str | None, sub_key: str, *, entries: list[tuple[Any, Any]],
     rest: list[str], placeholder: bool = False, home: _SubHome | None = None,
 ) -> str:
-    """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table [spec:15-21, "self"].
+    """The ARM-APPROPRIATE fix for a refused ``self.<sub>:`` sub-table [spec:14-18, "self"].
 
     ⚑ THE EXPLANATION IS UNIFORM (alias expansion) BUT THE CURES ARE NOT, which is why this is a
     function and not one message. The all-agents tier has no agent-file spelling at all — it is
@@ -1050,7 +1050,7 @@ def _nested_table_steps(
 def _refuse_nested_tables(
     root_tbl: dict, *, node: str | None, path: Path | None
 ) -> None:
-    """RAISE when the agent file's ROOT holds a table that is not its own [spec:15-21, "self"].
+    """RAISE when the agent file's ROOT holds a table that is not its own [spec:14-18, "self"].
 
     ⚑⚑ ONE PREDICATE, over the ROOT: *any dict-valued root key outside* :data:`_ROOT_TABLES` *is
     a nested* ``self.<sub>:`` *sub-table and refuses by name*. Not an enumeration, deliberately —
@@ -1091,7 +1091,7 @@ def _refuse_nested_tables(
         )
         rest = sorted(str(k) for k in sub_val if k != category) if category else []
         held = ", ".join(sorted(str(k) for k in sub_val)) or "(nothing)"
-        # ⚑⚑ ONE EXPLANATION FOR EVERY ARM — the alias semantics of [spec:15-21, "self"],
+        # ⚑⚑ ONE EXPLANATION FOR EVERY ARM — the alias semantics of [spec:14-18, "self"],
         # not a redundancy argument: the spelling expands to a key that cannot exist, and that is
         # equally true of ``default``. Only the HISTORY and the CURE split by arm.
         expansion = f"agent.{agent}.{sub}" + (f".{category}" if category else "")

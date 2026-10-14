@@ -1480,7 +1480,7 @@ def _agent_partial(
         # load-bearing: it keeps the fallback layer and any per-agent override distinct under the
         # merge.
         # ⚑ The KEY path is SEEDED, unlike every other level's: this document's root table IS
-        # ``agent.<node>`` ([spec:15-21, "self"]), so the walk starts one scope in and the §2a
+        # ``agent.<node>`` ([spec:14-18, "self"]), so the walk starts one scope in and the §2a
         # DECLARATION ROOT would otherwise have no scope to read. It is the ONLY thing this call
         # does differently from a file tier's — the file naming is the shared wrap's.
         own = _parse_naming_file(

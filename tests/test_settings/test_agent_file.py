@@ -512,7 +512,7 @@ class TestSlotRouting:
         assert level.table["env"] == {"NAV_X": "from-the-file"}
 
     def test_the_bindings_write_arm_is_gone(self, tmp_path):
-        # ⚑⚑ THE INVERSION OF THE S2↔S3 WINDOW PIN ([spec:15-21, "self"]; D-4).
+        # ⚑⚑ THE INVERSION OF THE S2↔S3 WINDOW PIN ([spec:14-18, "self"]; D-4).
         # Through S2 this
         # arm WROTE a ``self.<node>: bindings:`` sub-table that the flattened read then
         # REFUSED — a value laid down where nothing reads it. S3 does not "flatten" the
@@ -552,7 +552,7 @@ class TestSlotRouting:
 class TestTheDestIsData:
     """D-4: a per-entry DESTINATION is DATA and is never split on ``.``.
 
-    [spec:15-21, "self"].
+    [spec:14-18, "self"].
 
     The fifth instance of one root cause ([[dest-is-data-never-split-on-dot]]).  The old bindings
     arm did ``tail.split(".")`` and scattered ``bindings.ro.~/.cache/uv`` across YAML levels, so a
@@ -617,7 +617,7 @@ class TestTableValuedKeysTakeNoScalar:
         assert msg is not None
         assert "holds a TABLE" in msg
         # The cure QUOTES the file's own spelling — the allowed residue
-        # ([spec:15-21, "self"]).
+        # ([spec:14-18, "self"]).
         assert "self.transform_settings" in msg
 
     def test_a_dotted_arm_renders_whole_in_the_cure(self, tmp_path):
@@ -1039,7 +1039,7 @@ class TestLevelTable:
     @pytest.mark.parametrize("category", _FLAT_AGENT_CATEGORIES)
     @pytest.mark.parametrize("sub", ("claude", "default"))
     def test_nested_category_refuses_by_name(self, category, sub):
-        # [spec:15-21, "self"] — ``self.<sub>.<category>`` reads
+        # [spec:14-18, "self"] — ``self.<sub>.<category>`` reads
         # ``agent.<agent>.<sub>.<category>``, which is never syntactically correct.
         # ⚑ EVERY category, from the constant: the refusal is ONE PREDICATE over the root
         # table, so it cannot be true of some categories and not others.
@@ -1537,7 +1537,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         assert "agent info" not in message
 
     def test_the_self_alias_cannot_ride_in_either(self, tmp_path):
-        # [spec:15-21, "self"]: nothing past the parse boundary recognizes ``self``. A
+        # [spec:14-18, "self"]: nothing past the parse boundary recognizes ``self``. A
         # hand-authored ``self.model:`` root leaf is a scalar the loader sweeps into state
         # — and it stops here rather than becoming ``agent.claude.self.model`` in the
         # snapshot.

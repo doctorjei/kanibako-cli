@@ -6,7 +6,7 @@ second is SHARED and not agent-shaped at all ([R147]): whether a stored value sa
 where it points, what a bare relative one roots under, and the refusal when it can say neither.
 
 ⚑ THE FILE'S SHAPE IS NOT HERE — :mod:`kanibako.settings.agent_file` is the one module that
-spells the file's root table [spec:15-21, "self"].  Design notes:
+spells the file's root table [spec:14-18, "self"].  Design notes:
 ``llm-docs/kanibako/settings/agent_config.py.md``.
 """
 

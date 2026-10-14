@@ -51,7 +51,7 @@ Four families route to a per-node agent file rather than to a scope's settings f
 
 ⚑ `_agent_node_route` returns an `AgentFileSlot` carrying the node and the key TAIL, never a
 `self`-rooted file ADDRESS — that would be internal traffic in a FILE-SURFACE alias
-([spec:15-21, "self"]). The address is produced inside `kanibako.settings.agent_file` when the
+([spec:14-18, "self"]). The address is produced inside `kanibako.settings.agent_file` when the
 value is actually read or written.
 
 ### ONE HOME for the recipe

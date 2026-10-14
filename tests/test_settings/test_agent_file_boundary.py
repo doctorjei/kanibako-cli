@@ -1,6 +1,6 @@
 """The agent-file BOUNDARY pins: nothing outside ``settings/agent_file.py`` spells the file.
 
-Three pins, each guarding a different way the boundary leaks (S1; [spec:15-21, "self"] —
+Three pins, each guarding a different way the boundary leaks (S1; [spec:14-18, "self"] —
 *"There is no self:<agent>:foo"* / *"There's no need for our code to ever use self.
 It was created exclusively for config files"*):
 
@@ -96,7 +96,7 @@ class TestNoRootSpellingOutsideTheBoundary:
             "The per-agent file's root table is spelled OUTSIDE "
             "kanibako/settings/agent_file.py:\n  " + "\n  ".join(offenders)
             + "\n`self` is a FILE-SURFACE alias, never internal traffic "
-            '[spec:15-21, "self"] — route the site through agent_file (a slot, a level, or '
+            '[spec:14-18, "self"] — route the site through agent_file (a slot, a level, or '
             "file_spelling()), never a literal."
         )
 

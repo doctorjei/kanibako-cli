@@ -382,7 +382,7 @@ _REFUSED_NESTED = [
 
 @pytest.mark.parametrize("category,var,value", _REFUSED_NESTED, ids=lambda v: str(v))
 class TestNothingNestsUnderSelfButTheCategories:
-    """[spec:15-21, "self"] — *"There is no self:<agent>:foo. It is just
+    """[spec:14-18, "self"] — *"There is no self:<agent>:foo. It is just
     self:foo"*.
 
     ⚑⚑ THE ARGUMENT IS ALIAS EXPANSION, not redundancy. ``self`` is NOT A KEY: it SUBSTITUTES to
@@ -444,7 +444,7 @@ class TestNothingNestsUnderSelfButTheCategories:
     def test_the_message_states_the_alias_expansion_that_makes_it_impossible(
         self, category, var, value,
     ):
-        # [spec:15-21, "self"], pinned as the WORDING it is: the user
+        # [spec:14-18, "self"], pinned as the WORDING it is: the user
         # is told the key their spelling
         # actually reads. Without the expansion the refusal is an assertion of authority; with
         # it, it is an argument they can check. ⚑ ``agent.codex.codex.<category>`` is the whole
@@ -515,7 +515,7 @@ class TestNothingNestsUnderSelfButTheCategories:
 
 
 def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
-    # ⚑⚑ INVERTED, NOT DELETED ([spec:15-21, "self"]). This used to be the SCOPE
+    # ⚑⚑ INVERTED, NOT DELETED ([spec:14-18, "self"]). This used to be the SCOPE
     # CONTROL for
     # the one occupant of the nested shape: ``bindings`` was excluded from the refusal
     # because nested was its ONLY spelling, and refusing it before a flat route existed
@@ -4938,7 +4938,7 @@ class TestCliLevelPrecedence:
         writes ``pref.agent.<agent>.model``, covered separately below.
 
         ⚑⚑ A behavior scalar lives FLAT in the file (``self:`` IS ``agent.claude``, and a
-        ``self: claude:`` sub-table is REFUSED — [spec:15-21, "self"]), and it rides the
+        ``self: claude:`` sub-table is REFUSED — [spec:14-18, "self"]), and it rides the
         file's own ``agent.claude`` level beside the categories, so ``agent_path`` alone
         carries the contender.
         """
@@ -5171,7 +5171,7 @@ def _agent_file_contender(key, value):
     """The ``_persona_snap`` kwargs that put *key* in the AGENT FILE.
 
     There is ONE file shape: everything sits DIRECTLY under ``self:``, which IS
-    ``agent.<node>``; a second ``<node>`` level REFUSES ([spec:15-21, "self"]). A CATEGORY
+    ``agent.<node>``; a second ``<node>`` level REFUSES ([spec:14-18, "self"]). A CATEGORY
     table and a BEHAVIOR scalar both ride ``_agent_partial``'s ``agent.<active>`` level; only
     the spelling differs, as a category is nested by its dotted name.
 
@@ -5271,7 +5271,7 @@ class TestPersonaRungOrdering:
 
         ⚑ The backstop is written in the SYSTEM file, which is the route for it: the agent
         file's flat table is re-rooted for the ACTIVE node only, and ``self.default.env``
-        refuses ([spec:15-21, "self"]). Which FILE supplies it is incidental to the
+        refuses ([spec:14-18, "self"]). Which FILE supplies it is incidental to the
         claim — that two
         disjoint names never meet is exactly why the level does not matter.
         """
