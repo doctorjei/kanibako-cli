@@ -75,7 +75,7 @@ time. `box_scalar_defaults_floor` is the ONE recipe, folded
 by `settings_launch.fold_floor` into every resolve, by `paths._narrow_box_scalar_cascade`, and by
 `config_interface._category_set_lookups`, so the launch floor and the set-time floor cannot drift. `box.shell`'s field default is `None`,
 the declared `<None>` (spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present
-`None` ([R177]). It is not
+`None` (keyspec §0 "it must RESOLVE"). It is not
 `""`: a `default_categories` fold drops a `""` as a suppression (`if val == "": continue`), which
 would leave `{box.shell}` dangling. A whole-value ref to it resolves to `None` (§0). A winning `None`
 lands on the flat `box_shell` field as

@@ -241,7 +241,8 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 * `box.images_store` — the host image-store root behind the shared-images bind (spec §2b; B3): a
   USER key whose DEFAULT is the runtime-probed podman graphroot, injected as a floor scalar at the
   launch seam (`core_defaults.image_default_categories`). A STRING path — `KEY_TYPES` type `path`, so stored raw
-  (only bools are coerced, cf. `box.share_images`) and swept by [R147]'s bare-relative refusal.
+  (only bools are coerced, cf. `box.share_images`) and swept by the bare-relative refusal
+  (keyspec §2a "A path key's stored value").
 * `box.enable_vault` — ⚑ `mode` is NO LONGER a settable config-set key (block B1, spec §2b / §0):
   the project mode is the RO identity anchor `meta.box.mode` (surfacing the runtime-resolved
   `{meta.runtime.project_type}`), set by the construct-time/bootstrap layer (`[project].mode` at box
@@ -387,12 +388,13 @@ column that states it is ONE column, and two code tables would be two answers to
 back a real bool (``set box.share_images false`` actually disables it). The truth table itself lives
 in `config` (shared with the box.meta writer); see `config.coerce_bool`.
 
-**`path`** — a host PATH, [R147]'s set-time half. It is **not** coerced: the
-file keeps the raw spelling, tokens and all (spec §0). What the type governs is the BARE-RELATIVE
-REFUSAL — `is_path_valued_key` reads this table, and `set_config_value`'s preamble refuses a value
-that does not say on its own where it points. The `system.*` and `config.*` rows are DERIVED from
-`bootstrap`' two declared-default tables (P13), so a path key added to either arrives here with
-no edit; the `workset.*` and `box.*` rows are spelled out because no live table enumerates them.
+**`path`** — a host PATH, the set-time half of keyspec §2a "A path key's stored value". It is
+**not** coerced: the file keeps the raw spelling, tokens and all (spec §0). What the type governs is
+the BARE-RELATIVE REFUSAL — `is_path_valued_key` reads this table, and `set_config_value`'s preamble
+refuses a value that does not say on its own where it points. The `system.*` and `config.*` rows are
+DERIVED from `bootstrap`' two declared-default tables (P13), so a path key added to either arrives
+here with no edit; the `workset.*` and `box.*` rows are spelled out because no live table enumerates
+them.
 
 ⚑ **The PARAMETRIC path keys are not spellable here** — `agent.<node>.{template,canon}`, the bare
 any-agent spelling the CLI serves for the same two leaves, and the whole `secret_path.<VAR>` family
@@ -411,7 +413,7 @@ coerces at read. `access` is an ENUM, not a bool: its set-time guard is :func:`a
 `workset.skip_kuid_check` gates the advisory invalid-KUID warning (default true, set via
 config).
 
-## `is_path_valued_key` / `path_key_anchor` — [R147] at set time
+## `is_path_valued_key` / `path_key_anchor` — keyspec §2a "A path key's stored value" at set time
 
 `is_path_valued_key` answers "is this key's value a host path", over the fixed `KEY_TYPES` rows plus
 the three parametric families. `path_key_anchor` answers the second half the refusal needs: the ROOT
@@ -531,9 +533,10 @@ would turn `config set`'s §0 refusal into a write. The SECRET category
 ``agent.<node>.secret_path.<VAR>`` is routed by `_is_agent_node_secret_key` → `_node_secret_target`,
 not here.
 
-⚑⚑ **THE VOCABULARY IS PER AGENT (`[R150]`).** §0 puts the agent specifics in the PLUGINS: a leaf
-established at `agent.default` is universal, and every other leaf is legal only on the agent whose
-plugin declared it. The supplier is `plugin_declared_leaf_map()` — harness → declared leaves, over
+⚑⚑ **THE VOCABULARY IS PER AGENT (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").** §0
+puts the agent specifics in the PLUGINS: a leaf established at `agent.default` is universal, and
+every other leaf is legal only on the agent whose plugin declared it. The supplier is
+`plugin_declared_leaf_map()` — harness → declared leaves, over
 `settings_prefs.default_valid_agents().leaf_map` — and a FLAT union would make
 `agent.claude.provider` a key on the strength of goose's declaration. There is no flat cross-agent
 union in this module.
@@ -703,15 +706,16 @@ canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘`` (``agent.navigator+claude.
 ``agents/<node>/`` slot the resolver reads. The node segment is canonicalized as a WHOLE via
 :func:`agent_key_node` (agent_ref design law: never re-split a ref on the raw separator), which also
 FOLDS its harness to node case (``agent.Shell.label`` -> ``agent.shell.label``,
-``agent.Claude.model`` -> ``agent.claude.model``, `[R173]`) and SAYS SO: ``_typed_key_node`` logs
-one warning per typed spelling per command (Q87: a key from the command line is accepted loudly; the
-§0 check does not fold, so a capital built by code is refused there). A case change is detected by
-``agent_ref.agent_segment_case``, so a separator-only canonicalization is not warned about. A
-``pref.agent.<node>.…`` key is resolved by the same route (``_resolve_agent_key``) with its
-``pref.`` kept, and the warning names the key as typed (``pref.agent.<Node>``). The
-tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``) is preserved verbatim. A malformed node is
-left RAW here — the set/reset persona branch surfaces the parse error (and a bad node never silently
-swaps). Applied ONLY to the ``agent.<node>.*`` node segment, never blindly to all keys.
+``agent.Claude.model`` -> ``agent.claude.model``, keyspec §0 "An agent's canonical case is carried
+by its _name_") and SAYS SO: ``_typed_key_node`` logs one warning per typed spelling per command
+(Q87: a key from the command line is accepted loudly; the §0 check does not fold, so a capital built
+by code is refused there). A case change is detected by ``agent_ref.agent_segment_case``, so a
+separator-only canonicalization is not warned about. A ``pref.agent.<node>.…`` key is resolved by
+the same route (``_resolve_agent_key``) with its ``pref.`` kept, and the warning names the key as
+typed (``pref.agent.<Node>``). The tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``) is
+preserved verbatim. A malformed node is left RAW here — the set/reset persona branch surfaces the
+parse error (and a bad node never silently swaps). Applied ONLY to the ``agent.<node>.*`` node
+segment, never blindly to all keys.
 
 The per-node DESCRIPTOR bind key ``agent.<node>.bindings.{ro,rw}.<name>`` (item-0) is canonicalized
 the SAME way (``<node>`` ``+`` -> ``℘``) and is matched BEFORE the persona form — a bind named after a
@@ -916,8 +920,8 @@ declared vocabulary, so a declared key is refused BY NAME rather than degraded t
 §0); this predicate is `SCALAR_AGENT_LEAVES` — the core declared set MINUS
 `TABLE_VALUED_AGENT_LEAVES`. The one table-valued member, `transform_settings`, is refused by
 :func:`agent_leaf_table_error` at both spellings. A PLUGIN-declared leaf is no key of
-`agent.default` (`[R150]`: only a leaf established at `agent.default` is universal), so there is no
-bare spelling to serve for one.
+`agent.default` (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": only a leaf
+established at `agent.default` is universal), so there is no bare spelling to serve for one.
 
 ```agent_leaf_table_error(canonical: str, *, verb: str) -> str | None```
 Refuse a WRITE at a declared agent leaf whose value is a TABLE (spec §2d).

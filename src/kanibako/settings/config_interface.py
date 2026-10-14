@@ -275,12 +275,13 @@ def _pref_value_error(
             f"(that WRITES a suppression; 'reset {shown}' undoes it)"
         )
 
-    # ⚑ [R147]'s bare-relative refusal, checked AT THE TARGET for the third time and the
-    # same reason ``access`` and ``transform_settings`` are: the preamble guard gates on
-    # the key AS TYPED, and ``pref.agent.<node>.{canon,template}`` — the pref allowlist
-    # admits every ``agent.*.**`` leaf — is a path key wearing a ``pref.`` prefix. A pref
-    # is INSTALLED at its target during resolution (§2h), so a bare relative requested here
-    # reaches the launch as the value of a path key, which is the state [R147] refuses.
+    # ⚑ The bare-relative refusal (keyspec §2a "A path key's stored value"), checked AT
+    # THE TARGET for the third time and the same reason ``access`` and
+    # ``transform_settings`` are: the preamble guard gates on the key AS TYPED, and
+    # ``pref.agent.<node>.{canon,template}`` — the pref allowlist admits every
+    # ``agent.*.**`` leaf — is a path key wearing a ``pref.`` prefix. A pref is INSTALLED
+    # at its target during resolution (§2h), so a bare relative requested here reaches
+    # the launch as the value of a path key, which is the state keyspec §2a refuses.
     path_err = _bare_relative_path_error(
         target, value,
         display_key=canonical, route_key=canonical,
@@ -523,7 +524,8 @@ def _bare_relative_path_error(
     agent_name: str,
     agents_root: "Path | None",
 ) -> "str | None":
-    """[R147] at SET TIME — refuse a bare-relative value for a PATH key, naming both readings.
+    """keyspec §2a "A path key's stored value" at SET TIME — refuse a bare-relative
+    value for a PATH key, naming both readings.
 
     The SET-TIME twin of the three read-time seams (``paths._refuse_bare_relative``,
     ``settings/workset_dirkeys.resolve_workset_dir_key`` and the launch snapshot's
@@ -538,10 +540,10 @@ def _bare_relative_path_error(
     requesting scope's own file.
 
     ⚑⚑ THE TEST IS ON THE SPELLING THE USER TYPED, BEFORE ANY EXPANSION, exactly as it is
-    at read time.  [R147] rules on what is a legal value to have WRITTEN, so
-    ``{$XDG_DATA_HOME}/kanibako`` is legal here even in an environment where that variable
-    answers something odd — refusing it there would report a KEY defect for an
-    ENVIRONMENT one.
+    at read time.  keyspec §2a "A path key's stored value" rules on what is a legal value
+    to have WRITTEN, so ``{$XDG_DATA_HOME}/kanibako`` is legal here even in an environment
+    where that variable answers something odd — refusing it there would report a KEY
+    defect for an ENVIRONMENT one.
     ⚑ AN EMPTY VALUE IS NOT THIS RULE'S BUSINESS, and the guard matches the read-time one:
     there is no bare relative to disambiguate, and calling ``''`` a relative path would be
     a refusal a user cannot act on.
@@ -1362,11 +1364,12 @@ def _stored_shape_for(canonical: str, value: object) -> object:
     twin of :func:`_argv_aware`, and the scope files' half of what ``agent_file.write_leaf``
     already does for the per-agent file.
 
-    ⚑ ``[R169]``: ONE stored shape, whatever route wrote it.  ``run_args`` is typed at the CLI
-    as one scalar string (spec §0, "TYPABLE as a scalar") and stored as argv WORDS, so the
-    split happens ONCE, here, before the value lands — never on read, which would leave the
-    user's own file disagreeing with the CLI's.  The RULE stays in ``agent_file``, the module
-    that owns the §2d leaves' shapes; this only supplies the TAIL it is keyed on.
+    ⚑ keyspec §2d agent.default.run_args: ONE stored shape, whatever route wrote it.
+    ``run_args`` is typed at the CLI as one scalar string (spec §0, "TYPABLE as a scalar")
+    and stored as argv WORDS, so the split happens ONCE, here, before the value lands — never
+    on read, which would leave the user's own file disagreeing with the CLI's.  The RULE
+    stays in ``agent_file``, the module that owns the §2d leaves' shapes; this only supplies
+    the TAIL it is keyed on.
 
     🛑 THE TAIL, NEVER THE WRITTEN LEAF'S NAME — ``_argv_aware``'s 🛑 pointing the other way,
     and the reason this is not folded into ``config_io.write_nested_key``.
@@ -1895,9 +1898,9 @@ def set_config_value(
             f"resolve: {target_reason})"
         )
 
-    # [R147] — a BARE RELATIVE value for a PATH key is AMBIGUOUS and is REFUSED, the twin of
-    # the three read-time refusals in ``paths._refuse_bare_relative``,
-    # ``workset_dirkeys.resolve_workset_dir_key`` and
+    # keyspec §2a "A path key's stored value" — a BARE RELATIVE value for a PATH key is
+    # AMBIGUOUS and is REFUSED, the twin of the three read-time refusals in
+    # ``paths._refuse_bare_relative``, ``workset_dirkeys.resolve_workset_dir_key`` and
     # ``settings_launch._refuse_ambiguous_path_values``. ⚑ THE ONE PLACE IT IS SPELLED for the
     # whole CLI: ``system``/``workset``/``box``/``agent set`` all arrive here, so the rule
     # cannot be reachable at one noun and not another.

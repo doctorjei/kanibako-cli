@@ -2,7 +2,8 @@
 
 ⚑ Every ``MSG_``/``WARN_``/``ERR_`` literal here is USER-VISIBLE output.
 🛑 PATH LITERALS DO NOT LIVE HERE — they moved to :mod:`kanibako.settings.bootstrap`
-(`[R157]`). Do not reintroduce one; add it there and import it.
+(CONVENTIONS P10 "derive from declared keys"). Do not reintroduce one; add it there and
+import it.
 
 ⚑ NO path literal is defined here. ``RUN_USER_UID_PATH`` is IMPORTED from ``bootstrap`` for
 ``WARN_RUNDIR_UNUSABLE``'s splice — the single permitted import, and safe because ``bootstrap``
@@ -70,7 +71,8 @@ WARN_BOX_WORKSPACE_REBUILT = ("Warning: the workspace for box '%s' is missing (%
 ERR_SETTINGS_BAD_PATH = "Unresolvable %s path: %s" # "config" | "system", key
 ERR_SETTINGS_BAD_REF =  "Unknown %sreference: {%s}" # "" | "config ", ref
 ERR_CONFIG_NO_FILE =    "%s is missing. Run any kanibako command to initialize." # config file path
-# ⚑ The LOUD half of R153: a stale settings table in the Layer-1 file refuses, never drops.
+# ⚑ The LOUD half of keyspec §1 "holding anything but `config.*`": a stale settings table in the
+# Layer-1 file refuses, never drops.
 # ⚑ THE CURE IS ORDERED, AND THE ORDER IS LOAD-BEARING: the hand-edit comes FIRST. Every
 # verb resolves its paths through this read, ``system set`` included, so a message that
 # led with the command would send the user to a command that refuses for this same reason.

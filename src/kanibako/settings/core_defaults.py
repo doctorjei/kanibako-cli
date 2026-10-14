@@ -1334,7 +1334,8 @@ def helper_default_categories(
     every-start budget resolve carries the budget row alone.  With a hub, a ``None``
     *log_path* (``workset.logs`` is ``<None>``) still emits the ``helper_log``
     FORMULA: its ``<None>`` source makes the entry ``None`` at expand, so the collapse
-    omits it and ``settings_launch`` gives the [R185] warning when the entry is not null.
+    omits it and ``settings_launch`` gives the lone-``<None>`` warning
+    (keyspec §2a "PER-ENTRY CASCADE MERGE") when the entry is not null.
     A ``None`` or absent *budget_path* emits no budget entry: the start writes the
     document before this runs, so its absence means no budget was delivered.
 

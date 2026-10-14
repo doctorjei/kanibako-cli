@@ -312,7 +312,8 @@ _KEY_ROUTES: dict[str, tuple[tuple[str, ...], str]] = {
 # ``bool``  — coerced to a real bool before writing (the H2 fix).
 # ``int``   — coerced to a real int before writing; a non-numeric value is REFUSED at
 #             set time rather than at the read that needed the number.
-# ``path``  — a host PATH, so [R147]'s bare-relative refusal reaches it at set time
+# ``path``  — a host PATH, so the bare-relative refusal (keyspec §2a "A path key's
+#             stored value") reaches it at set time
 #             (:func:`is_path_valued_key`).  NOT coerced: the file keeps the raw
 #             spelling, tokens and all (spec §0).
 #
@@ -465,7 +466,7 @@ def _coerce_value(canonical: str, value: "str | None") -> object | None:
 
 
 # ---------------------------------------------------------------------------
-# PATH-valued keys — the SET-TIME half of [R147]
+# PATH-valued keys — the SET-TIME half of keyspec §2a "A path key's stored value"
 # ---------------------------------------------------------------------------
 
 def is_path_valued_key(canonical: str) -> bool:
@@ -487,7 +488,8 @@ def is_path_valued_key(canonical: str) -> bool:
 
 
 def path_key_anchor(canonical: str) -> "tuple[str, str]":
-    """``(anchor ref, label)`` for [R147]'s OTHER reading of a bare relative at *canonical*.
+    """``(anchor ref, label)`` for the OTHER reading of a bare relative at *canonical*
+    (keyspec §2a "A path key's stored value").
 
     The anchor is the root the user might have meant INSTEAD of the cwd, and it is the
     one the READ-TIME seams already name, so a key cannot get two answers:
@@ -642,7 +644,8 @@ def agent_key_node(raw: str) -> str:
     ⚑ Every other spelling is an agent ADDRESS, and reaches its node through
     :func:`kanibako.agent_ref.agent_address_node` — the one carrier of the fold, so
     ``agent.Claude.model`` is the ``claude`` node's key and ``agent.Shell.label`` the
-    shell's ([R173]), exactly as the §0 check already reads them.
+    shell's (keyspec §0 "An agent's canonical case is carried by its _name_"),
+    exactly as the §0 check already reads them.
     """
     if find_identifier(raw, (AGENT_DEFAULT_SUB,)) is not None:
         return AGENT_DEFAULT_SUB
@@ -656,7 +659,7 @@ def _typed_key_node(node_raw: str, *, prefix: str) -> str:
     accepted, loudly, once per spelling per command (``settings_assemble.announce_drop_once``).
     *prefix* is what the user typed before the node (``agent`` or ``pref.agent``), so the
     warning names their key. The ``agent`` noun's positional is a NAME and folds silently
-    ([R173]); it does not come here.
+    (keyspec §0 "An agent's canonical case is carried by its _name_"); it does not come here.
     """
     node = agent_key_node(node_raw)
     if agent_segment_case(node_raw) != node_raw:
@@ -717,7 +720,7 @@ def _resolve_agent_key(raw: str, *, prefix: str) -> str:
 # ---------------------------------------------------------------------------
 
 def plugin_declared_leaf_map() -> "Mapping[str, Collection[str]]":
-    """harness → the leaves that PLUGIN declares (spec §0, ``[R150]``), or empty.
+    """harness → the leaves that PLUGIN declares (spec §0), or empty.
 
     ⚑ ONE SUPPLIER FOR THIS MODULE, and that is the whole point of it being a function:
     the per-node RECOGNIZER (:func:`_parse_persona_agent_key`) and the ``agent`` noun's
@@ -727,8 +730,9 @@ def plugin_declared_leaf_map() -> "Mapping[str, Collection[str]]":
     per process, and it has a documented reset seam (``reset_discovery_cache``) that the
     ``settings_keyspace_probe`` memo — primed at ``pytest_configure`` — deliberately
     does not.
-    ⚑ A MAP, because ``[R150]`` makes the vocabulary per-agent: a flat set here made
-    ``agent.claude.provider`` a key on the strength of goose's declaration.
+    ⚑ A MAP, because keyspec §0 "The leaf VOCABULARY is partitioned by TIER" makes the
+    vocabulary per-agent: a flat set here made ``agent.claude.provider`` a key on the
+    strength of goose's declaration.
     ⚑ IMPORTED IN THE BODY: discovery must never run at module import.
     🛑 THE ATTRIBUTE IS ASKED FOR, NEVER ``getattr``-WITH-A-FALLBACK, AND NEVER
     ``or {}``. Both were here, and both converted the STRICT signal into the
@@ -777,7 +781,8 @@ _DECLARED_HERE: Final[_PluginDeclaredLeafMap] = _PluginDeclaredLeafMap()
 #: map that SAYS it could not read them, and every surface in this module is judged
 #: through this one object: without it a goose store on a claude-only machine would be
 #: refused at the ``agent`` noun's §0 gate and at the LAUNCH boundary behind it
-#: (``[R150]`` — *"an uninstalled agent's leaf is CONCEDED, never refused"*).
+#: (keyspec §0 "The leaf VOCABULARY is partitioned by TIER" — *"the leaf is CONCEDED,
+#: never refused"*).
 #: ⚑ It concedes what DISCOVERY did not read, which is the same set the supplier's own
 #: ``AgentNames`` concedes — one rule, read off the one map, rather than a second copy
 #: of it. Both stay LAZY: neither the view nor the concession discovers until asked.
@@ -792,13 +797,14 @@ AGENT_LEAF_MAP: "Mapping[str, Collection[str]]" = ConcedingLeafMap(
 
 # ⚑ NO FLAT CROSS-AGENT UNION LIVES HERE ANY MORE, and re-adding one is the regression.
 # This module kept ``_PERSONA_STATE_LEAVES`` — core §2d unioned over every readable
-# harness — as its leaf vocabulary until ``[R150]`` partitioned the keyspace by AGENT: a
-# leaf established at ``agent.default`` is universal, every other leaf is legal only on
-# the agent whose plugin declared it.  Every surface here judges per-agent now, through
+# harness — as its leaf vocabulary until keyspec §0 "The leaf VOCABULARY is partitioned
+# by TIER" partitioned the keyspace by AGENT: a leaf established at ``agent.default``
+# is universal, every other leaf is legal only on the agent whose plugin declared it.
+# Every surface here judges per-agent now, through
 # ``settings_keyspace.agent_leaf_is_declared`` (which owes the concession) or
-# :class:`~kanibako.settings.settings_keyspace.AgentVocabulary` (which does not); the last
-# union reader, ``agent_file_identity_only``, took the NODE instead on 2026-09-02 and was
-# DELETED with the agent file's non-key ``name`` field on 2026-09-15 (D8b).
+# :class:`~kanibako.settings.settings_keyspace.AgentVocabulary` (which does not); the
+# last union reader, ``agent_file_identity_only``, took the NODE instead on 2026-09-02
+# and was DELETED with the agent file's non-key ``name`` field on 2026-09-15 (D8b).
 _PERSONA_ENV_SECTIONS: frozenset[str] = frozenset({"env"})
 
 # The RESERVED any-agent tier name ("no real agent may be named default"); it is
@@ -832,13 +838,14 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
     """Split an ``agent.<node>.<tail>`` persona key into ``(node_raw, tail)``.
 
     ⚑⚑ THE LEAF TEST IS WHAT DECIDES WHERE THE NODE ENDS, so the node is a BY-PRODUCT
-    of the leaf verdict rather than the other way round — which is why ``[R150]``'s
-    per-agent judgment had to reach in here and not merely sit beside it.  The node
-    offered to :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` is
-    the whole of ``parts[:-1]``, and that function normalizes it: the keys arriving
-    here are RAW (``resolve_key`` calls this BEFORE canonicalization), and
-    ``harness_of`` splits on ``℘`` alone, so a raw ``nav+claude`` judged without
-    normalizing would miss the map and be silently CONCEDED.
+    of the leaf verdict rather than the other way round — which is why the
+    per-agent judgment (keyspec §0 "The leaf VOCABULARY is partitioned by TIER") had
+    to reach in here and not merely sit beside it.  The node offered to
+    :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` is the whole
+    of ``parts[:-1]``, and that function normalizes it: the keys arriving here are
+    RAW (``resolve_key`` calls this BEFORE canonicalization), and ``harness_of``
+    splits on ``℘`` alone, so a raw ``nav+claude`` judged without normalizing would
+    miss the map and be silently CONCEDED.
 
     🛑 IT IS NOT PURELY STRUCTURAL, AND MUST NOT BECOME SO.  Returning
     ``("claude", "zippity")`` for an undeclared tail flips :func:`_is_persona_agent_key`
@@ -1085,8 +1092,9 @@ def agent_default_tier_leaf(key: str) -> str | None:
     # narrowed ``agent.default`` to core (2026-08-30, ``3b20488e``): measured,
     # ``agent.default.provider`` was UNDECLARED at ``key_class`` and ``'provider'`` here
     # — a destination fabricated for a spelling the keyspace refuses, which is the §0
-    # breach this function exists to prevent, pointing the other way.  ``[R150]``:
-    # ``agent.default`` carries only the leaves established AT that tier.
+    # breach this function exists to prevent, pointing the other way.  keyspec §0
+    # "The leaf VOCABULARY is partitioned by TIER": ``agent.default`` carries only the
+    # leaves established AT that tier.
     return parsed[1] if parsed[1] in DECLARED_AGENT_LEAVES else None
 
 
@@ -1747,8 +1755,9 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     FLAT leaf set and had no concession parameter, so this refused ``agent.goose.provider``
     wherever goose was not installed — measured on a simulated claude-only machine, and this is
     the gate every reader of an agent file passes, the launch included (``agent_record``), so a goose store on a machine where goose had
-    been uninstalled would not start.  ``[R150]``: *"per-agent judgment applies where the
-    vocabulary is readable; where it is not, the concession still governs."*
+    been uninstalled would not start.  keyspec §0 "The leaf VOCABULARY is partitioned by TIER":
+    per-agent judgment applies where the vocabulary is readable; where it is not, the concession
+    still governs.
 
     🛑 THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND DO NOT PUT ONE BACK (D8b, 2026-09-15).  An
     ``if tail in {"name", "run_args"}: return None`` short-circuit stood above the gate, and the

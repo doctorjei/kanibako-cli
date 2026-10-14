@@ -276,7 +276,8 @@ working-set anchor exists.
 ```_target_scope_anchors(target, *, agent_path, agent_name) -> dict[str, object]```
 The `{meta.workset.path}`/`{meta.box.path}` directories *target*'s own snapshot resolves, read from the same
 snapshot the E3 probe judges, so a scope file that moves a root (`workset.boxes`) moves the anchor
-the [R147] refusal names. A root the target lacks, or that does not resolve, is absent; a cascade
+the bare-relative refusal (keyspec §2a "A path key's stored value") names. A root the target
+lacks, or that does not resolve, is absent; a cascade
 that cannot be assembled yields `{}` (the refusal is issued either way, naming the ref spelling).
 
 ```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="", target=None)```
@@ -508,9 +509,10 @@ retired the category set route; `_probes_at_set_time` decides which keys reach t
 
 *std* with *proj* (a box), *ws* (a working set) or neither (the system scope) names the COMMAND's
 TARGET (spec §2a): `_set_time_target` builds its `resolve_inputs` once, before the value checks, and
-the [R147] anchor and the E3 probe both read that target's snapshot and its tier files. `box set` and the two create-time writes pass the box,
-`workset set` the working set, `system set` and `agent set` the system scope. A `--null` builds no
-target (there is no value to resolve). A target that cannot be built (`KanibakoError`, e.g. a
+the bare-relative refusal's anchor (keyspec §2a "A path key's stored value") and the E3 probe both
+read that target's snapshot and its tier files. `box set` and the two create-time writes pass the
+box, `workset set` the working set, `system set` and `agent set` the system scope. A `--null` builds
+no target (there is no value to resolve). A target that cannot be built (`KanibakoError`, e.g. a
 dotted `pref:` entry in the box's own file) does NOT refuse the write — spec §2a keeps `config set`
 usable to fix a broken config — so the value is judged against the TARGET-LESS snapshot, which can
 only refuse more, never accept more; a refusal then ends with the build error, naming why an anchor
@@ -572,8 +574,9 @@ The order is deliberate at every step.
    never degraded to "unknown config key" (spec §0) and never quietly accepted. The keys
    themselves are NOT retired — only these routes — so each message points at the settings file
    that actually holds the tuple, and `config get` still reads both.
-8. **A BARE RELATIVE value for a PATH key ([R147])** — the LAST guard, and the only VALUE rule in
-   a preamble otherwise made of NAME rules. That is why it is last: a retired or wrong-scope
+8. **A BARE RELATIVE value for a PATH key (keyspec §2a "A path key's stored value")** — the
+   LAST guard, and the only VALUE rule in a preamble otherwise made of NAME rules. That is why it
+   is last: a retired or wrong-scope
    spelling gets its own specific message rather than this generic value complaint. It runs
    BEFORE the E3 probe, which splices the value into a candidate store — an illegal value is
    refused, not resolved. `_bare_relative_path_error` shares `is_unambiguous_path_value` and
@@ -589,8 +592,8 @@ The order is deliberate at every step.
 
 The command's target supplies them (`_set_time_target` → `resolve_inputs`), for the reason
 `meta_agent_path_floor` is in the snapshot: a value spelled against a declared root DANGLES at
-set time unless the root is floored. It went in with [R147]'s set-time half because the refusal
-OFFERS `@meta.workset.path/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
+set time unless the root is floored. It went in with the set-time half of
+keyspec §2a "A path key's stored value" because the refusal OFFERS `@meta.workset.path/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
 settings key is refused* names it as the first row of the replacement table — and the E3 probe
 was answering "dangling @-reference" to it. A rule that bans a form and then refuses its own
 replacement has not removed the guess, it has removed the key.

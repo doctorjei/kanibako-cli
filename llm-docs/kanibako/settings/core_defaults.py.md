@@ -863,7 +863,7 @@ message LOG, and the SPAWN BUDGET document (spec §2c `box.bindings.ro[~/spawn.y
 * With a hub, a `None` *log_path* — the box's `workset.logs` is a present `<None>` — still emits the
   `helper_log` formula, whose `<None>` source makes the entry `None` at expand; the collapse omits
   it (companion, "The helper-log bind") and `settings_launch` warns when only the source is `<None>`
-  ([R185]). Omitting it here would be a silent second route.
+  (keyspec §2a "PER-ENTRY CASCADE MERGE"). Omitting it here would be a silent second route.
 * A `None` or absent *budget_path* emits no budget entry: the start writes the document before this
   runs, so its absence means no budget was delivered.
 

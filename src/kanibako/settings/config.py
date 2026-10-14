@@ -72,8 +72,9 @@ _DEFAULTS: _BoxScalarDefaults = {
 class KanibakoConfig:
     """The flat merged SETTINGS object (base < system < agent.default < agent.<active> < workset < box < CLI).
 
-    ⚑ NO ``config_paths`` FIELD, AND NO ``paths_project_toml`` (R153, 2026-08-31).  The
-    first was Layer 1 living inside a Layer-2 object, which is what let one read answer both
+    ⚑ NO ``config_paths`` FIELD, AND NO ``paths_project_toml`` (keyspec §1
+    "holding anything but `config.*`", 2026-08-31).  The first was Layer 1 living inside a
+    Layer-2 object, which is what let one read answer both
     layers' questions — it is :class:`BootstrapConfig` now.  The second named
     ``paths.project_toml``, which the keyspace does not declare at all (spec §0), and no
     caller ever read it.
@@ -134,7 +135,8 @@ def config_file_path(config_home: Path) -> Path:
 
 
 def user_config_file() -> Path:
-    """The value of ``meta.runtime.user.config`` — callers READ it; they do not compose it ([R154])."""
+    """The value of ``meta.runtime.user.config`` — callers READ it; they do not compose it
+    (keyspec §1A "never composed")."""
     from kanibako.settings.paths import user_config_home
 
     return config_file_path(user_config_home())
@@ -903,8 +905,9 @@ def resolve_agent(
         # the refusal path below, so the installed-agent count rule cannot be
         # reintroduced there without re-adding this call — which a reader would see.
         installed = set(discover_targets().keys())
-        # ⚑⚑ THIS IS THE HOP WHERE A NAME BECOMES A NODE ([R173]).  ``system.agent``
-        # and ``--agent`` carry a NAME — the plugin's declared case, or whatever the
+        # ⚑⚑ THIS IS THE HOP WHERE A NAME BECOMES A NODE (keyspec §0
+        # "An agent's canonical case is carried by its _name_").  ``system.agent`` and
+        # ``--agent`` carry a NAME — the plugin's declared case, or whatever the
         # user typed — while the registry is keyed by NODE, so the match is case-blind
         # and what comes back is the NODE.  Substituting it is what makes
         # ``--agent Claude`` reach the ``claude`` plugin AND key ``agents/claude/``:
@@ -1027,8 +1030,8 @@ def refuses_null_path_key(canonical: str) -> bool:
     ``workset.logs: null`` "no logs dir".
 
     ⭐ :data:`STANDARD_BIND_SOURCE_KEYS` is the one exclusion, and it exists because the
-    SPEC says so: a refusal there would contradict §2a and leave the [R185] warning
-    offering a remedy no door accepts.
+    SPEC says so: a refusal there would contradict §2a and leave the lone-``<None>``
+    warning (keyspec §2a "PER-ENTRY CASCADE MERGE") offering a remedy no door accepts.
     """
     return (
         canonical in SYSTEM_PATH_DEFAULTS
@@ -1231,7 +1234,8 @@ def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable
     """Refuse a ``null`` at any of *path_keys* in *table*, naming *path* and the keys.
 
     ⚑ THE MEMBERSHIP IS :func:`refuses_null_path_key`, the same one the ``set`` door and
-    the [R185] warning ask, so a key a file may null is null in the SAME set the CLI
+    the lone-``<None>`` warning (keyspec §2a "PER-ENTRY CASCADE MERGE")
+    ask, so a key a file may null is null in the SAME set the CLI
     accepts and the one the warning offers.
     """
     leaves = _flatten_leaves(table, prefix)

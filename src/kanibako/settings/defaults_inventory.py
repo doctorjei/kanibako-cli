@@ -212,9 +212,10 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # The §2d SHELL FENCE's ``agent.shell.template | <None>``, floored as a PRESENT
     # ``None`` by ``launch.templates.agent_template_defaults``.  ⚑ ``<None>`` IS A VALUE
-    # ([R177]): SUPPLIED, so it beats the ``agent.default.template`` fallback, and so it
-    # has a carrier to name — which is why it is not in the "nothing declares it" group
-    # below.  Its layer is declared and SKIPPED at resolve (spec §2a).
+    # (keyspec §2d "Pseudo-agent(s)"): SUPPLIED, so it beats the
+    # ``agent.default.template`` fallback, and so it has a carrier to name — which is
+    # why it is not in the "nothing declares it" group below.  Its layer is declared and
+    # SKIPPED at resolve (spec §2a).
     ("launch/templates.py (shell fence, present None)",
      frozenset({"agent.shell.template"})),
     # ``default: <None>`` rows with NO carrier — true ABSENCES.  ⚑ The shell fence's
