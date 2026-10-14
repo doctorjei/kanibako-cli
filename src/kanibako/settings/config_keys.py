@@ -510,7 +510,8 @@ def path_key_anchor(
     anchor is a scope root and is introduced as one — see :data:`DECLARATION_ROOT_LABEL`.
 
     ⚑ AN ``agent.default`` KEY TAKES *active_agent*'s store (keyspec §2d: the tier's root is
-    the active agent's own path); with no agent it keeps the reserved tier's root.
+    the active agent's own path); with no agent the value applies to EVERY agent, so the
+    anchor is the per-agent form :data:`ANY_AGENT_ROOT_REF`, which names no single directory.
     """
     # ⚑ THE TWO ``secret_path`` SHAPES ARE TESTED FIRST, and the order is load-bearing:
     # ``workset.secret_path.TOKEN`` is a ``workset.*`` key that declares NO default, so
@@ -537,9 +538,16 @@ def path_key_anchor(
     return agent_declaration_root_ref(_tier_node(node, active_agent)), DEFAULT_ROOT_LABEL
 
 
+#: The agent row of the DECLARATION-ROOT table with a literal ``<agent>`` placeholder —
+#: "each agent's store", the root an all-agents value has when no agent is active.
+ANY_AGENT_ROOT_REF: Final[str] = agent_declaration_root_ref("<agent>")
+
+
 def _tier_node(node: str, active_agent: str | None) -> str:
-    """*node*, or *active_agent* for the all-agents tier when one is known."""
-    return active_agent if node == AGENT_DEFAULT_SUB and active_agent else node
+    """*node*; for the all-agents tier, *active_agent* or the ``<agent>`` placeholder."""
+    if node != AGENT_DEFAULT_SUB:
+        return node
+    return active_agent or "<agent>"
 
 
 def agent_node_of(canonical: str) -> str:

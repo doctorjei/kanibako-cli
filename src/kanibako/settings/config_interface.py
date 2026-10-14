@@ -96,6 +96,7 @@ from kanibako.settings.config_dest import (
     _scope_scalar_family,
 )
 from kanibako.settings.config_keys import (
+    ANY_AGENT_ROOT_REF,
     CoercionError,
     KEY_TYPES,
     _KEY_ROUTES,
@@ -486,6 +487,9 @@ def _set_time_anchor(
     # ⚑ ``path_key_anchor`` answers a braced reference, PARSED, not stripped: ``{{`` is a
     # literal brace and ``{$NAME}`` a VARIABLE, so a blind ``[1:-1]`` hands the lookup a
     # bogus key and one named ``$NAME``. Anything else names no anchor.
+    # ⚑ The per-agent placeholder names no directory, so it is never resolved.
+    if anchor_ref == ANY_AGENT_ROOT_REF:
+        return None
     braced = match_braced(anchor_ref, 0) if anchor_ref[:1] == "{" else None
     if braced is None:
         return None

@@ -175,7 +175,10 @@ class TestTheAgentRoutes:
         files = _files(tmp_path)
         message = _set(leaf, _BARE, files, ConfigLevel.system)
         _assert_named_both_readings(message, leaf, _BARE, run_from)
-        assert "{config.agents}/default" in message
+        # No agent is active, so the value is every agent's: the per-agent form, unresolved.
+        assert f"{{meta.agent.<agent>.path}}/{_BARE}" in message
+        assert "{config.agents}/default" not in message
+        assert ", spelled '" not in message
 
     @pytest.mark.parametrize("leaf", ["canon", "template"])
     def test_the_per_node_spelling_is_refused(self, leaf, tmp_path, run_from):
