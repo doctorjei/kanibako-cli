@@ -131,11 +131,23 @@ def agent_declaration_root_ref(node: str) -> str:
     ``meta.agent.default.*``, so its root is the store path that retired anchor
     resolved to — the same directory, spelled with no undeclared ``{key}``-ref.
     A settings-file declaration at ``agent.default`` roots at the ACTIVE node instead
-    (``settings_assemble._declaration_root_ref``); this row is what an agent-less read keeps.
+    (:func:`agent_tier_node`); this row is what an agent-less read keeps.
     """
     if node == "default":
         return "{config.agents}/default"
     return DECLARATION_ROOT_REF["agent"].format(agent=node)
+
+
+def agent_tier_node(node: str, active_agent: str | None, fallback: str) -> str:
+    """The node whose store roots a declaration at ``agent.<node>`` (keyspec §2d).
+
+    ``agent.default`` becomes *active_agent*: its values seed into every agent, and
+    each gets its own directory. With no active agent it becomes *fallback*.
+    """
+    if node != "default":
+        return node
+    return active_agent or fallback
+
 
 _DELIVERY: dict[str, Delivery] = {
     "masks": MOUNT,

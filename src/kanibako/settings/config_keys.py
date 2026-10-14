@@ -35,7 +35,7 @@ from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_categories import (
     DECLARATION_ROOT_REF, ENV_KEY_RE, FILE_SCOPES, SECRET_KEY_RE, SECRET_VAR_RE,
-    agent_declaration_root_ref,
+    agent_declaration_root_ref, agent_tier_node,
 )
 from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (
@@ -518,7 +518,8 @@ def path_key_anchor(
     # the prefix arms below would give it the right root under the wrong label.
     secret = _parse_agent_node_secret_key(canonical)
     if secret is not None:
-        return (agent_declaration_root_ref(_tier_node(secret[0], active_agent)),
+        return (agent_declaration_root_ref(
+                    agent_tier_node(secret[0], active_agent, "<agent>")),
                 DECLARATION_ROOT_LABEL)
     if _is_scope_secret_key(canonical):
         return DECLARATION_ROOT_REF[canonical.split(".", 1)[0]], DECLARATION_ROOT_LABEL
@@ -535,19 +536,13 @@ def path_key_anchor(
     # CLI spelling writes the any-agent tier, whose node is the reserved ``default``.
     parsed = _parse_persona_agent_key(canonical)
     node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
-    return agent_declaration_root_ref(_tier_node(node, active_agent)), DEFAULT_ROOT_LABEL
+    root = agent_declaration_root_ref(agent_tier_node(node, active_agent, "<agent>"))
+    return root, DEFAULT_ROOT_LABEL
 
 
 #: The agent row of the DECLARATION-ROOT table with a literal ``<agent>`` placeholder —
 #: "each agent's store", the root an all-agents value has when no agent is active.
 ANY_AGENT_ROOT_REF: Final[str] = agent_declaration_root_ref("<agent>")
-
-
-def _tier_node(node: str, active_agent: str | None) -> str:
-    """*node*; for the all-agents tier, *active_agent* or the ``<agent>`` placeholder."""
-    if node != AGENT_DEFAULT_SUB:
-        return node
-    return active_agent or "<agent>"
 
 
 def agent_node_of(canonical: str) -> str:

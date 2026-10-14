@@ -54,6 +54,7 @@ from kanibako.settings.keystore import KeyStore, ReservedKeyError
 from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
     DECLARATION_ROOT_REF,
+    agent_tier_node,
 )
 from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop_set
 from kanibako.settings.settings_keyspace import (
@@ -166,9 +167,7 @@ def _declaration_root_ref(
         # The agent tier is DISCRIMINATED (§2d): without the node there is no row.
         if len(segments) != 2:
             return None
-        node = segments[1]
-        if node == _AGENT_DEFAULT_SUB and active_agent:
-            node = active_agent
+        node = agent_tier_node(segments[1], active_agent, segments[1])
         return category_root_ref(scope, category, agent=node)
     return category_root_ref(scope, category) if len(segments) == 1 else None
 

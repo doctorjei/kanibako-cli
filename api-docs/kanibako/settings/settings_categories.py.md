@@ -51,6 +51,7 @@ Delivery = Literal['COPY', 'MOUNT', 'ENV']
 ## Functions
 ```
 def agent_declaration_root_ref(node: str) -> str
+def agent_tier_node(node: str, active_agent: str | None, fallback: str) -> str
 def is_read_only(options: str | None) -> bool
 def path_depth(box_dest: str) -> int
 def gate_credential_delivery(entries: list[CategoryEntry], deliver_creds: bool) -> list[CategoryEntry]
