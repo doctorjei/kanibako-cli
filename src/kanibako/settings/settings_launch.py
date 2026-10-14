@@ -220,9 +220,10 @@ _SYSTEM_SHARE_ALLOWED_KEY = "system.auth.share_allowed"
 
 
 #: The shipped ``system.*`` SCALAR floor — installed at the BASE rung of EVERY resolve,
-#: unconditionally, so a whole-value ``{key}``-ref to one of these keys ANSWERS ([R143]; the
-#: ``workset.channelroot`` defect R-35, "fix the CODE").  Every settings scope still
-#: outranks it by merge level, so a user's ``system:`` table wins by name.
+#: unconditionally, so a whole-value ``{key}``-ref to one of these keys ANSWERS
+#: (keyspec §0 "it must RESOLVE"; the ``workset.channelroot`` defect R-35, "fix the CODE"). 
+#: Every settings scope still outranks it by merge level, so a user's ``system:`` table wins
+#: by name.
 #:
 #: ⚑ UNCONDITIONAL, unlike the four floor FRAGMENTS folded in below: those are optional
 #: because a narrow resolve legitimately has no auth chain or no workset anchor. A
@@ -445,10 +446,11 @@ def meta_agent_path_floor(agent_name: str) -> dict[str, object]:
     # so a path built from the node has already had the fold applied, and
     # ``agent_settings_path`` / the persona shim build the SAME string from the SAME
     # node. 🛑 Folding again HERE would not be a no-op: a node's PERSONA segment
-    # keeps the user's case (neither [R172] nor [R173] reaches it, and ``Q35`` is
-    # open), so a ``tolower`` over the whole value would name ``agents/nav+claude/``
-    # while every other composer named ``agents/Nav+claude/``. The node is what holds
-    # this key and the rest of the tree in agreement.
+    # keeps the user's case (neither keyspec §0 "CASE INSENSITIVE for collision purposes"
+    # nor "An agent's canonical case is carried by its _name_" reaches it, and ``Q35`` is
+    # open), so a ``tolower`` over the whole value would name ``agents/nav+claude/`` while
+    # every other composer named ``agents/Nav+claude/``. The node is what holds this key
+    # and the rest of the tree in agreement.
     return {
         f"meta.agent.{store_agent}.path": f"{{config.agents}}/{store_dirname(store_agent)}"
         for store_agent in {agent_name, harness_of(agent_name)}
@@ -558,10 +560,11 @@ def meta_identity_floor(
     stays optional for narrow resolves that materialize no box tier.
 
     *agent_name* is the cascade discriminator — the NODE, lowercase by construction
-    (``[R173]``). *agent_real_name* carries the plugin's DECLARED harness NAME in the
-    plugin's own case (``Target.name``); its HARNESS SEGMENT is spliced into the
-    node's harness slot to build the case-carrying ``meta.agent.<a>.name`` VALUE and
-    is used for nothing else, so a caller may hand over a bare name or a whole ref.
+    (keyspec §0 "An agent's canonical case is carried by its _name_"). *agent_real_name*
+    carries the plugin's DECLARED harness NAME in the plugin's own case (``Target.name``);
+    its HARNESS SEGMENT is spliced into the node's harness slot to build the case-carrying
+    ``meta.agent.<a>.name`` VALUE and is used for nothing else, so a caller may hand over
+    a bare name or a whole ref.
     ⚑ The STORE-ROOT anchor is keyed on the DISCRIMINATOR, not the real name — the
     store dir is ``agents/<store_dirname(discriminator)>/``, which is what
     ``agent_settings_path`` and the persona shim use, and it is the node that keeps
@@ -617,12 +620,14 @@ def meta_agent_identity_floor(
     # identity on a name with no separator, so only personas move.
     #
     # 🛑🛑 THE HARNESS SEGMENT CARRIES THE PLUGIN'S DECLARED CASE, AND THAT IS
-    # THE WHOLE POINT OF THE KEY ([R173], [R176]). An agent's canonical case
-    # lives in its NAME; the node is the fold OF that name. Substituting the
-    # already-folded discriminator here would leave the declared spelling in no
-    # stored carrier at all, and would satisfy §2d's ``%tolower(…)%`` — the spec's
-    # own adjustment, written precisely to keep the name case-carrying — with a
-    # NO-OP. That is [R171]'s retired fold-to-store cure, re-spelled.
+    # THE WHOLE POINT OF THE KEY
+    # (keyspec §0 "An agent's canonical case is carried by its _name_";
+    # keyspec §2d meta.agent.<agent>.path). An agent's canonical case lives in its
+    # NAME; the node is the fold OF that name. Substituting the already-folded
+    # discriminator here would leave the declared spelling in no stored carrier at
+    # all, and would satisfy §2d's ``%tolower(…)%`` — the spec's own adjustment,
+    # written precisely to keep the name case-carrying — with a NO-OP. That is the
+    # retired fold-to-store cure, re-spelled.
     # ⚑ ``with_harness``, so only the HARNESS moves: a persona segment is the
     # user's and neither ruling reaches it.
     # ⚑ ``harness_of`` on the real name too, so the splice is IDEMPOTENT: a
@@ -768,8 +773,8 @@ def workset_anchor_floor(
     ``workset.workspaces``, STANDALONE's ``workset.registry``, ``workset.template``,
     ``workset.channelroot`` and the four workset-LOCAL ``workset.channels.*`` leaves.
     A user value reaches the key through the settings cascade, which outranks this floor
-    by merge level. A supplied ``<None>`` is a value and a default is a fallback that
-    applies only where nothing was supplied ([R177]); an OMITTED key instead renders
+    by merge level. A declared ``<None>`` is INSTALLED like any declared default
+    (keyspec §0 "it must RESOLVE"); an OMITTED key instead renders
     ``""`` inside an embedded ``{key}``-ref (a present ``None`` makes the whole value
     ``None``, spec §0). ``workset.kuid`` stays absent: its standalone arm is the PROSE
     ``<generated at creation>``, not ``<None>``.
@@ -830,7 +835,7 @@ def workset_anchor_floor(
         # which a standalone root has none; ``launch.templates`` omits the layer off the
         # SAME predicate — ``channels.has_workset_channels`` IS ``mode is not
         # standalone``), and no workset-local channels. ⚑ SUPPLIED, not omitted — the
-        # docstring says why ([R177]).
+        # docstring says why (keyspec §0 "it must RESOLVE").
         floor["workset.registry"] = None
         floor["workset.template"] = None
         floor["workset.channelroot"] = None
@@ -1347,7 +1352,7 @@ _WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
 def _refuse_ambiguous_path_values(
     written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx,
 ) -> None:
-    """RAISE naming EVERY path key a settings file stores as a BARE RELATIVE ([R147], read time).
+    """RAISE naming EVERY path key a settings file stores as a BARE RELATIVE (keyspec §2a "A path key's stored value", read time).
 
     The generic read-time sweep: ``paths._refuse_bare_relative`` covers the
     Layer-1/Layer-2 keys and ``workset_dirkeys.resolve_workset_dir_key`` the workset
@@ -1365,14 +1370,14 @@ def _refuse_ambiguous_path_values(
     ⚑ EVERY offender, not the first, each with the FILE that carries it — the cure is
     a hand-edit, and one name per attempt turns one edit into N launches.
 
-    ⚑⚑ IT JUDGES THE *written* LEVELS, NEVER THE MERGE, because [R147] governs STORED
-    key values. The merge also carries what kanibako supplies itself — the floor
-    (``system.*`` paths already resolved, and refused if bare, by ``paths.py``), the
-    plugin descriptor defaults, the live persona values and the CLI level — and a
-    refusal telling a user to fix a value no file of theirs holds is a false message.
-    That is also why the ``base`` level passes its folded floor: the site file
-    overlays the floor into ONE partial, and a leaf still holding the floor's own
-    value is the floor's, not the file's.
+    ⚑⚑ IT JUDGES THE *written* LEVELS, NEVER THE MERGE, because
+    keyspec §2a "A path key's stored value" governs STORED key values. The merge also
+    carries what kanibako supplies itself — the floor (``system.*`` paths already
+    resolved, and refused if bare, by ``paths.py``), the plugin descriptor defaults,
+    the live persona values and the CLI level — and a refusal telling a user to fix a
+    value no file of theirs holds is a false message. That is also why the ``base``
+    level passes its folded floor: the site file overlays the floor into ONE partial,
+    and a leaf still holding the floor's own value is the floor's, not the file's.
     ⚑ A SHADOWED value is judged too: it is still a stored value, and it wins the
     moment the level above it is removed.
     ⚑ The test is on the STORED spelling: ``{$XDG_DATA_HOME}/x`` is legal even where that
@@ -1440,12 +1445,13 @@ def refuse_read_time_faults(
 ) -> None:
     """RAISE for any stored value a resolve may not proceed with.
 
-    The READ-TIME refusals, IN ORDER. Runs after ``expand``: [R147]'s bare-relative sweep
-    (:func:`_refuse_ambiguous_path_values`, over *written*), then §0's undeclared-key
-    refusal (:func:`_refuse_undeclared_snapshot`, over *expanded*), then §2c's entry at
-    an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*), then
-    §0's per-owner values (:func:`_refuse_inherited_per_owner`, over *written*, each level's
-    scope in *tiers*, and *plugin_owners* the active descriptor's declared bind rows).
+    The READ-TIME refusals, IN ORDER. Runs after ``expand``: the bare-relative sweep
+    (keyspec §2a "A path key's stored value"; :func:`_refuse_ambiguous_path_values`, over
+    *written*), then §0's undeclared-key refusal (:func:`_refuse_undeclared_snapshot`, over
+    *expanded*), then §2c's entry at an internal bind's dest
+    (:func:`_refuse_internal_bind_entries`, over *written*), then §0's per-owner values
+    (:func:`_refuse_inherited_per_owner`, over *written*, each level's scope in *tiers*, and
+    *plugin_owners* the active descriptor's declared bind rows).
     ⚑ ONE CARRIER OF THE ORDER: called only by :func:`build_launch_snapshot`, which every
     resolve (the workset preview too) goes through, so no route can skip one refusal.
     *files* are the tiers the resolve READ, most-specific first
@@ -1915,8 +1921,9 @@ def _agent_identity(agent_name: str) -> dict[str, object]:
     from kanibako.targets import resolve_target
 
     agent_desc = None
-    # The plugin's DECLARED harness name, in its own case ([R173]); *agent_name* is
-    # the NODE, already folded, so it cannot supply this.
+    # The plugin's DECLARED harness name, in its own case
+    # (keyspec §0 "An agent's canonical case is carried by its _name_");
+    # *agent_name* is the NODE, already folded, so it cannot supply this.
     agent_declared_name: str | None = None
     agent_auth_support = False
     try:
@@ -1937,8 +1944,9 @@ def _agent_identity(agent_name: str) -> dict[str, object]:
         agent_desc = None
         agent_declared_name = None
         agent_auth_support = False
-    # ⚑ THE DISCRIMINATOR AND THE VALUE ARE TWO SPELLINGS OF ONE AGENT ([R173]):
-    # the key's segment is the NODE, the value keeps the DECLARED case.
+    # ⚑ THE DISCRIMINATOR AND THE VALUE ARE TWO SPELLINGS OF ONE AGENT
+    # (keyspec §0 "An agent's canonical case is carried by its _name_"): the key's
+    # segment is the NODE, the value keeps the DECLARED case.
     floor = meta_agent_identity_floor(
         agent_name, agent_declared_name, agent_auth_support,
     )
@@ -2209,7 +2217,7 @@ def fold_floor(
     # them by name, and every settings scope outranks them by merge level.
     floor: dict[str, object] = dict(SYSTEM_SCALAR_FLOOR)
     # The box scalars' declared defaults (spec §2b; ``box.shell``'s ``<None>`` as a
-    # present ``None``, [R177]), so a ``{box.shell}`` / ``{box.image}``
+    # present ``None``, keyspec §0 "it must RESOLVE"), so a ``{box.shell}`` / ``{box.image}``
     # a user writes resolves (spec §0) instead of rendering ``""`` or dropping. ONE carrier,
     # :func:`~kanibako.settings.config.box_scalar_defaults_floor`. Every subject: they are
     # DECLARED keys a system or workset file may set downward, and a declared key resolves.
@@ -2590,11 +2598,11 @@ def build_launch_snapshot(
     # exactly the resolves that matter, so a future re-measurement would see only the
     # snapshots that already conform.
     observe_keyspace(expanded, origin="build_launch_snapshot")
-    # [R147] at read time, for EVERY path key a settings file stores. It JUDGES the
-    # levels a user writes — each beside its file — and RESOLVES its anchors off the
-    # expanded snapshot. The persona, descriptor, CLI and floor rungs are kanibako's
-    # own and are deliberately absent (see the function). AFTER the probe, for the
-    # reason the probe states.
+    # keyspec §2a "A path key's stored value" at read time, for EVERY path key a
+    # settings file stores. It JUDGES the levels a user writes — each beside its file —
+    # and RESOLVES its anchors off the expanded snapshot. The persona, descriptor, CLI
+    # and floor rungs are kanibako's own and are deliberately absent (see the
+    # function). AFTER the probe, for the reason the probe states.
     # Then spec §0's RESOLVE clause, enforced. ⚑ A SIBLING of the probe, never a mode
     # of it: the probe is REPORT-ONLY by its own module contract, and the two share
     # the ORACLE so the refusal arms exactly what was measured.
@@ -2659,10 +2667,11 @@ def convenience_bind_sources(
     return out
 
 
-#: The ``<None>`` warnings already given in this process ([R185] and the secret one), by
-#: their text: one command runs several resolves over the same files, and one ``<None>``
-#: is ONE fact. Module-level on the footing of ``settings_assemble._DROP_WARNED``: it
-#: changes no resolution.
+#: The ``<None>`` warnings already given in this process (the lone-``<None>`` warning,
+#: keyspec §2a "PER-ENTRY CASCADE MERGE", and the secret one), by their text: one
+#: command runs several resolves over the same files, and one ``<None>`` is ONE fact.
+#: Module-level on the footing of ``settings_assemble._DROP_WARNED``: it changes no
+#: resolution.
 _NONE_WARNED: "set[str]" = set()
 
 
@@ -2753,7 +2762,7 @@ def _warn_lone_none_standard_binds(
 ) -> None:
     """Warn when a settings file makes only ONE of a STANDARD bind's entry & source ``<None>``.
 
-    Spec §2a / companion "Delivery at launch" ([R185]): a standard bind is omitted by
+    Spec §2a / companion "Delivery at launch": a standard bind is omitted by
     setting BOTH to ``<None>``; if a file sets only one, the launch warns, naming both
     keys and that file.  Both, or neither, is silent.
     ⚑ STANDARD = a floor entry whose source carries a ``{key}``-ref (its source key): the
@@ -2897,7 +2906,7 @@ def _warn_null_ref_secrets(
 ) -> None:
     """Warn when a ``secret_path`` value is ``<None>`` because a key it references is.
 
-    Spec §0 makes the whole value ``<None>`` ([R186]), so the entry mounts nothing and
+    Spec §0 makes the whole value ``<None>``, so the entry mounts nothing and
     the box starts without that secret ([Q94] 3, fail-soft).  The warning names the
     ``secret_path`` key, each ``<None>`` key it references, and where that ``<None>``
     was set, the floor included: a standalone box's ``workset.auth.path`` is the case.
@@ -3996,9 +4005,10 @@ def _emit_scope_node(
             )
             host_src = path_val if isinstance(path_val, str) else str(path_val)
             if host_src and not host_src.startswith("/"):
-                # ⚑ [R147] REACHES THIS FAMILY, and a ``type: path`` grep MISSES it:
-                # the manifest declares ``secret_path`` as ``value: path``, parametric
-                # on VAR, so the VALUE is a path key like any other.
+                # ⚑ keyspec §2a "A path key's stored value" REACHES THIS FAMILY, and a
+                # ``type: path`` grep MISSES it: the manifest declares ``secret_path``
+                # as ``value: path``, parametric on VAR, so the VALUE is a path key like
+                # any other.
                 # ⚑ TWO REFUSALS, SPLIT BY WHERE THE VALUE CAME FROM. A value a SETTINGS
                 # FILE stores is judged first by ``_refuse_ambiguous_path_values`` in
                 # ``build_launch_snapshot``, and gets the two-readings message, its
@@ -4079,9 +4089,10 @@ def _emit_bind_map(
             # A ``<None>`` SOURCE, whole-value or embedded (spec §0): the entry is
             # SKIPPED in every category, never refused ([Q80] (a)) — a seeded layer
             # (§2a) and a bind alike.  ``settings_expand`` hands it up as ``None``, not
-            # absent, so it still overrides a fallback arm in the §2d pick ([R177]).
-            # A STANDARD bind's lone ``<None>`` is WARNED once, by
-            # :func:`_warn_lone_none_standard_binds`; a user-added one is silent ([R185]).
+            # absent, so it still overrides a fallback arm in the §2d pick
+            # (keyspec §2d "Pseudo-agent(s)"). A STANDARD bind's lone ``<None>`` is
+            # WARNED once, by :func:`_warn_lone_none_standard_binds`; a user-added one
+            # is silent (keyspec §2a "PER-ENTRY CASCADE MERGE").
             continue
         if not isinstance(entry, BindEntry):
             raise SettingsError(

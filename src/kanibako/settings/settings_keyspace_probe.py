@@ -55,20 +55,22 @@ positive on a key that IS declared.
 docstring called them a dependent pair three times while every failure it narrates
 was the pair coming apart — including one caller forwarding the vocabulary and
 dropping the concession. A map cannot be forwarded by halves. What it buys beyond
-that is ``[R150]``: a leaf is legal only on the agent (or HARNESS — a persona takes
-its harness's vocabulary) whose plugin declared it, and a per-agent judgment needs
-a per-agent supplier. Reading the descriptors is the membership test, not being
-installed, so a plugin that imports and then fails to declare is conceded like an
-absent one (see :func:`_discover`).
+that is keyspec §0 "The leaf VOCABULARY is partitioned by TIER": a leaf is legal
+only on the agent (or HARNESS — a persona takes its harness's vocabulary) whose
+plugin declared it, and a per-agent judgment needs a per-agent supplier. Reading
+the descriptors is the membership test, not being installed, so a plugin that
+imports and then fails to declare is conceded like an absent one (see
+:func:`_discover`).
 
 ⚑⚑ THE CONCESSION IS ASKED IN FOUR STEPS AND THE FIRST TWO ARE THE KEYSPACE'S.
 Before the map is consulted at all, ``key_class`` asks whether the leaf is in core's
-UNIVERSAL table (``[R150]``: the ``agent.default`` tier is the partition line), and
-then whether the segment COULD name an agent (``_could_name_an_agent``): a §2a
-category token and ``default`` could not, so neither is ever conceded. Asking only
-"is it installed" made ``agent.common.plugins`` — the undiscriminated relic
-MIGRATION.md § "Housekeeping: renames you almost certainly don't carry" tells users
-to grep for — resolve as a KEY, because no plugin declares an agent named ``common``.
+UNIVERSAL table (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": the
+``agent.default`` tier is the partition line), and then whether the segment COULD
+name an agent (``_could_name_an_agent``): a §2a category token and ``default`` could
+not, so neither is ever conceded. Asking only "is it installed" made
+``agent.common.plugins`` — the undiscriminated relic MIGRATION.md § "Housekeeping:
+renames you almost certainly don't carry" tells users to grep for — resolve as a KEY,
+because no plugin declares an agent named ``common``.
 🛑 THE RESIDUAL COST IS STATED, NOT HIDDEN, and it is IRREDUCIBLE: an agent NAME
 cannot be enumerated, so ``agent.goose.zippity`` resolves on a machine without goose
 (the price of not refusing ``agent.goose.provider`` there), and so does a typo'd
@@ -191,7 +193,7 @@ def _discover() -> "Mapping[str, frozenset[str]]":
 
 
 def plugin_agent_leaf_map() -> "Mapping[str, frozenset[str]]":
-  """The PLUGIN-declared leaf vocabulary, harness by harness (spec §0, ``[R150]``).
+  """The PLUGIN-declared leaf vocabulary, harness by harness (spec §0).
 
   ⚑ EAGER ON PURPOSE, and it must stay that way: this call IS the priming point.
   ``tests/_keystore_census`` invokes it at ``pytest_configure``, before any test
@@ -243,8 +245,8 @@ _DECLARED_HERE: Final[_AgentLeafMap] = _AgentLeafMap()
 #: map that SAYS it could not read a harness — an omission is no longer evidence — and
 #: this probe judges the whole store on every armed resolve, so without it an
 #: uninstalled agent's real leaf would be reported UNDECLARED and refused at the
-#: launch seam (``[R150]``). ⚑ The concession is as LAZY as the map: both ask
-#: :func:`_discover` and neither sooner.
+#: launch seam (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). ⚑ The
+#: concession is as LAZY as the map: both ask :func:`_discover` and neither sooner.
 AGENT_LEAF_MAP: Final[ConcedingLeafMap] = ConcedingLeafMap(
   _DECLARED_HERE, unread_harnesses(_DECLARED_HERE),
 )

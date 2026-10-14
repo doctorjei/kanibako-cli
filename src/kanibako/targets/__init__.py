@@ -54,7 +54,7 @@ def _register(
     *override* carries each route's own precedence rule: entry points replace an
     earlier answer, the ``kanibako.plugins`` module fallback keeps the first one.
 
-    ⚑⚑ **THE KEY IS THE NODE, NOT THE DECLARED NAME** (``[R173]``, keyspec §0): a
+    ⚑⚑ **THE KEY IS THE NODE, NOT THE DECLARED NAME** (keyspec §0): a
     plugin calling itself ``Shell`` keeps that spelling in its ``name`` property — the
     canonical NAME — while everything derived from the node is lowercase, the
     ``agents/<node>/`` store dir included.  Deriving the node HERE is what closes the
@@ -201,7 +201,7 @@ def _scan_plugin_modules(
 def discover_targets() -> dict[str, type[Target]]:
     """Scan entry points and plugin modules for targets.
 
-    ⚑ **Keyed by NODE — the declared name in lowercase** (``[R173]``, keyspec §0).
+    ⚑ **Keyed by NODE — the declared name in lowercase** (keyspec §0).
     The declared spelling is the plugin's ``name`` property and stays there; these
     keys are what the ``agents/<node>/`` store dir and the ``agent.<node>.*`` cascade
     slot are spelled from, so they carry the node's case, not the name's.

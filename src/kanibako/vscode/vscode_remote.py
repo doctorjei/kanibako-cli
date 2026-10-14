@@ -355,13 +355,13 @@ def remote_context_name(dest: str) -> str:
 def _vscode_remote_state_dir() -> Path:
     """State dir for the connection store + dispatch log — under ``system.state``.
 
-    [R166]: a state store derives from ``system.state`` and from nothing else, so this is
-    the declared key's resolved value, never ``$XDG_STATE_HOME`` composed with a leaf.
-    :func:`resolve_state_path` is PURE and TOTAL (never raises, creates nothing): it
-    degrades to the key's own default, ``$XDG_STATE_HOME/kanibako``, whenever the host
-    config or settings file is absent/unreadable/malformed — so this function stays as pure
-    and total as it was with that path hardcoded, and reaches a repointed state root when
-    the files ARE readable.
+    keyspec §2g system.state: a state store derives from ``system.state`` and from nothing
+    else, so this is the declared key's resolved value, never ``$XDG_STATE_HOME`` composed
+    with a leaf. :func:`resolve_state_path` is PURE and TOTAL (never raises, creates
+    nothing): it degrades to the key's own default, ``$XDG_STATE_HOME/kanibako``, whenever
+    the host config or settings file is absent/unreadable/malformed — so this function
+    stays as pure and total as it was with that path hardcoded, and reaches a repointed
+    state root when the files ARE readable.
     """
     return resolve_state_path() / "vscode-remote"
 
@@ -573,9 +573,9 @@ def vscode_remote_bin_dir() -> Path:
     wipe is safe — while the data store holds user-meaningful content; generated
     output does not belong there. ⚑ Contrast :func:`_vscode_remote_state_dir`,
     the module's other resolved root: the connection store is STATE and derives
-    from ``system.state`` ([R166]). Two keys, two bases, neither derived from
-    the other. :func:`resolve_cache_path` is PURE and TOTAL, so this stays as
-    total as it was.
+    from ``system.state`` (keyspec §2g system.state). Two keys, two bases,
+    neither derived from the other. :func:`resolve_cache_path` is PURE and TOTAL,
+    so this stays as total as it was.
     """
     return resolve_cache_path() / "vscode-remote" / "bin"
 

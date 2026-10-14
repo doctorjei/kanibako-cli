@@ -15,7 +15,7 @@ class ShellTarget(Target):
 
     @property
     def name(self) -> str:
-        # ⚑ ``shell`` — the §2d pseudo-agent's OWN slot ([R174]/[R175], Q22).
+        # ⚑ ``shell`` — the §2d pseudo-agent's OWN slot ([R175], Q22).
         # The rename reached the display long ago (``display_name`` below); the
         # NAME is what the registry, the store dir and the cascade slot are
         # spelled from, so it moves only with the D6 reservation scoped to let

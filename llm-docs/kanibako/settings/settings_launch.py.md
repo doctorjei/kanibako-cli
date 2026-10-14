@@ -35,19 +35,20 @@ still overrides by name. Plus:
 * **`SYSTEM_SCALAR_FLOOR` — the one part of the floor that is not caller-supplied.** The `floor`
   dict starts SEEDED with kanibako's shipped `system.*` SCALAR defaults (the helper spawn budget
   `system.helpers.{depth,breadth}`, values derived from `bootstrap.SPAWN_BUDGET_DEFAULTS`), so a
-  whole-value `{system.helpers.depth}` ANSWERS for a box that already exists (`[R143]`).
-  It is UNCONDITIONAL, unlike the four optional floor FRAGMENTS below: a narrow resolve genuinely
-  has no auth chain, but a shipped default with no story for being absent would resolve
-  `__MISSING__` for a key the manifest promises a value for. A new non-path `system.*` default
-  belongs in that table; the rest of §2g's scalars either declare no default, are paths floored by
-  `paths.resolve_system_paths`, or ride `auth_chain`.
+  whole-value `{system.helpers.depth}` ANSWERS for a box that already exists
+  (keyspec §0 "it must RESOLVE"). It is UNCONDITIONAL, unlike the four optional floor FRAGMENTS
+  below: a narrow resolve genuinely has no auth chain, but a shipped default with no story for
+  being absent would resolve `__MISSING__` for a key the manifest promises a value for. A new
+  non-path `system.*` default belongs in that table; the rest of §2g's scalars either declare no
+  default, are paths floored by `paths.resolve_system_paths`, or ride `auth_chain`.
 * **The box scalars' declared defaults — every resolve.** The seed also takes
   `config.box_scalar_defaults_floor()` (`box.image`, `box.share_images`, `box.enable_vault`, and
-  `box.shell`'s `<None>` as a present `None`, [R177]) for EVERY subject: they are DECLARED keys a
-  system or workset file may set downward, and a declared key resolves (spec §0). A user's
-  `box.canon={box.shell}/sub` meets the present `None`, which makes the whole value `None`
-  (`settings_expand`, embedded or whole-value), and the entry is skipped. ONE carrier, shared with
-  the set-time probe (`config_interface`) and the narrow box-scalar read (`paths`).
+  `box.shell`'s `<None>` as a present `None`, keyspec §0 "it must RESOLVE") for EVERY subject:
+  they are DECLARED keys a system or workset file may set downward, and a declared key resolves
+  (spec §0). A user's `box.canon={box.shell}/sub` meets the present `None`, which makes the whole
+  value `None` (`settings_expand`, embedded or whole-value), and the entry is skipped. ONE
+  carrier, shared with the set-time probe (`config_interface`) and the narrow box-scalar read
+  (`paths`).
 
 * **OS1** — the two bare behavior floors are mapped to SCOPE-QUALIFIED keys before folding, by
   SOURCE: core's (`core_defaults.behavior_defaults`, the ALL-AGENTS backstop spec §2d lists under
@@ -723,12 +724,13 @@ workset-tier value; only `resolve_workset_dir_key` does, and only pre-snapshot. 
 expand time would have produced `comms/common`. The same is true of a relative `workspaces:` repoint.
 
 🛑 **PRIMARY is a present `None`, and a caller's value there is REFUSED.** Keyspec §2c declares
-`workset.workspaces | <None>` for PRIMARY, and a declared `<None>` is a SUPPLIED value ([R177]), as
-standalone's `<None>` arms are. A value the user sets in the primary workset's settings file is
-honored: it reaches the key through the settings cascade, which outranks the floor by merge level
-(the RAW spelling, as for named), and `project.workset.default_workset` composes member workspaces off
-the same repoint. The floor refuses a CALLER's primary value rather than ignoring it, so the per-mode
-rule has ONE carrier. Q82: "supplied as a present None; a value the user sets is honored".
+`workset.workspaces | <None>` for PRIMARY, and a declared `<None>` is a SUPPLIED value
+(keyspec §0 "it must RESOLVE"), as standalone's `<None>` arms are. A value the user sets in the
+primary workset's settings file is honored: it reaches the key through the settings cascade, which
+outranks the floor by merge level (the RAW spelling, as for named), and
+`project.workset.default_workset` composes member workspaces off the same repoint. The floor refuses a
+CALLER's primary value rather than ignoring it, so the per-mode rule has ONE carrier. Q82: "supplied
+as a present None; a value the user sets is honored".
 
 🛑 **`meta.box.workspace` IS NOT SPELLED AGAINST THIS KEY, AND MUST NOT BE.** `meta.box.workspace`
 is the construct-time `proj.project_path` literal, and it is the `host_src` of the `~/workspace`
@@ -761,8 +763,8 @@ workset.kuid              p/n      kuid.SENTINEL  ("00000")
 ⚑ **A STANDALONE `<None>` IS SUPPLIED, AND THE KUID IS NOT — two different arms.**
 `workset.registry`'s standalone arm is `<None>` — a lone box has no registry tier; `workset.template`'s
 is `<None>` too — a lone box has no template tier, and a workset template seeds FUTURE boxes, of which
-a standalone root will never have one (spec §2c STANDALONE). A declared `<None>` is a VALUE, and a
-default is a fallback that applies only where nothing was supplied (`[R177]`), so the floor emits
+a standalone root will never have one (spec §2c STANDALONE). A declared `<None>` is INSTALLED like any
+declared default (keyspec §0 "it must RESOLVE"), so the floor emits
 both as a present `None`, as it does `workset.channelroot` and the four workset-LOCAL
 `workset.channels.*` leaves. ⚑ An OMITTED key is not the same thing: an embedded `@`-ref coerces an
 absent referent to `""` exactly as it does a `None`, but the seeded-layer skip (`settings_expand`)
@@ -1098,10 +1100,10 @@ So the floor's entries at
 (`merge([dotted_partial(internal), snapshot])`), before `expand`: a null or empty user arm, a user
 null at an internal dest, and a user entry repointing one all leave the internal bind as the floor
 spelled it, while the arm's STANDARD entries still follow the user (a null arm still omits them, with
-the [R185] warning). A narrow resolve re-imposes only what its own floor carries (the image resolve:
-`storage.conf`). ⚑ A user ENTRY at an internal dest does not reach this silently:
-`refuse_read_time_faults` refuses it (below). The re-impose covers the NULL/empty arm, which
-names no internal dest and so is not refused.
+the lone-`<None>` warning (keyspec §2a "PER-ENTRY CASCADE MERGE")). A narrow resolve re-imposes only
+what its own floor carries (the image resolve: `storage.conf`). ⚑ A user ENTRY at an internal dest
+does not reach this silently: `refuse_read_time_faults` refuses it (below). The re-impose covers the
+NULL/empty arm, which names no internal dest and so is not refused.
 
 After `merge`, `expand` runs with `derive=post_expand_keys(snapshot, agent_name)`, so a reference to
 a key the two materializers write only afterwards resolves during expansion: a `meta.box.agent.*`
@@ -1142,8 +1144,8 @@ by dropping the whole table. *tiers* is each written level's scope name (`Cascad
 
 `refuse_read_time_faults` runs, in order:
 
-a. `_refuse_ambiguous_path_values` — [R147] at READ time, over EVERY path key a settings file
-   stores. See the subsection below.
+a. `_refuse_ambiguous_path_values` — keyspec §2a "A path key's stored value" at READ time, over
+   EVERY path key a settings file stores. See the subsection below.
 b. `_refuse_undeclared_snapshot` — §0's RESOLVE clause. A SIBLING of the probe, never a mode of it;
    the two share the ORACLE, so what is armed is exactly what was measured. Both judge the snapshot
    as a WHOLE store (`settings_keyspace.undeclared_store_paths`), whose top level IS the keyspace's,
@@ -1179,9 +1181,10 @@ reports the path value first and the undeclared key on the next run.
 refuses by name, alongside the `config:`-table refusal. Its cure names the agent (*agent_name*,
 unless it is the `shell` slot) and, at the box tier, the box (*box_ref*).
 
-⚑ **After the refusals, `_warn_lone_none_standard_binds` gives the [R185] warning** (spec §2a;
-companion "Delivery at launch"): a STANDARD bind is omitted by setting its entry AND its source key
-to `<None>`, and a settings file that sets only one gets one warning naming both keys and that file.
+⚑ **After the refusals, `_warn_lone_none_standard_binds` gives the lone-`<None>` warning** (spec
+§2a; companion "Delivery at launch"): a STANDARD bind is omitted by setting its entry AND its source
+key to `<None>`, and a settings file that sets only one gets one warning naming both keys and that
+file.
 - **Standard** = a floor entry in a dest-keyed arm whose source carries an `@`-ref — the
   core-defaults tables (incl. the `mode_meta_ref` vault rows, since the floor holds the per-mode
   expression), plugin binds ([Q95] 2), and the helper log, whose table emits its formula even for a
@@ -1202,13 +1205,14 @@ to `<None>`, and a settings file that sets only one gets one warning naming both
   refs are named but never offered as the cure (read-only, §0).
 
 ⚑ **Then `_warn_null_ref_secrets` gives the [Q94] 3 warning.** A `secret_path` value that references
-a present `<None>` is `<None>` as a whole ([R186], spec §0), so the entry mounts nothing and the box
+a present `<None>` is `<None>` as a whole (spec §0), so the entry mounts nothing and the box
 starts without that secret (fail-soft). The warning names the `secret_path` key, each `<None>` ref,
-and where that `<None>` was set — the floor included (`_FLOOR_WHERE`), unlike [R185]: the motivating
-case is a standalone box's `workset.auth.path`, whose `<None>` is the floor's. The agent scope is
-read through the same §2d pick as the emitter (`_agent_pick_node` + `_agent_decl_scope_fn`), so a
-shadowed tier never warns. A `secret_path` set to `null` itself is a reset and silent. `env` has no
-such warning: its `<None>` value is left out silently.
+and where that `<None>` was set — the floor included (`_FLOOR_WHERE`), unlike the
+lone-`<None>` warning (keyspec §2a "PER-ENTRY CASCADE MERGE"): the motivating case is a standalone
+box's `workset.auth.path`, whose `<None>` is the floor's. The agent scope is read through the same
+§2d pick as the emitter (`_agent_pick_node` + `_agent_decl_scope_fn`), so a shadowed tier never
+warns. A `secret_path` set to `null` itself is a reset and silent. `env` has no such warning: its
+`<None>` value is left out silently.
 
 ⚑ **WHY THE MESSAGE CHOICE EXISTS.** Every retired spelling is also an undeclared key, so (b)
 reaches it first — and the seam that owns the tailored selection message (`agent_select`) sits
@@ -1245,7 +1249,7 @@ carrying BOTH a retired spelling and an ordinary undeclared key reports the reti
 the other on the next run. That is a deliberate trade against §0's own "name every entry" rule: the
 retirement message is worth more than the second line, and the second line is not lost.
 
-### The read-time path sweep — [R147] over every path key a file stores
+### The read-time path sweep — keyspec §2a "A path key's stored value" over every path key a file stores
 
 `_refuse_ambiguous_path_values` refuses a BARE RELATIVE path value in any settings file, and names
 EVERY offending key, each with the file that carries it. The cure is a hand-edit, and naming one key
@@ -1280,12 +1284,12 @@ gap.
   reading, and `agent_config.ambiguous_path_value_error` writes the message. The anchor resolves
   against the EXPANDED snapshot, which is why the sweep runs after `expand`. An anchor that does not
   resolve there is named by its own ref spelling.
-* ⚑⚑ **IT JUDGES THE WRITTEN LEVELS, NEVER THE MERGE.** [R147] governs STORED key values. The merge
-  also carries values kanibako supplies itself: the floor, the plugin descriptor defaults, the live
-  persona values and the CLI level. A refusal telling a user to fix a value no file of theirs holds
-  would be a false message. The judged levels are the box file and its prefs, the workset file and
-  its prefs, the agent file (both agent slots), the system file, and the site
-  `base` file.
+* ⚑⚑ **IT JUDGES THE WRITTEN LEVELS, NEVER THE MERGE.** keyspec §2a "A path key's stored value"
+  governs STORED key values. The merge also carries values kanibako supplies itself: the floor, the
+  plugin descriptor defaults, the live persona values and the CLI level. A refusal telling a user to
+  fix a value no file of theirs holds would be a false message. The judged levels are the box file
+  and its prefs, the workset file and its prefs, the agent file (both agent slots), the system file,
+  and the site `base` file.
 * **Each level names its FILE.** Both agent levels are labeled with `agent_path`, the file they are
   read from, so a refusal about the file's root scalars names it as it names its categories. The
   file is ONE written level, so a value in it is judged once and refused once.
@@ -1614,9 +1618,9 @@ omitted at the merge (spec §2a "PER-ENTRY CASCADE MERGE"). ⚑ **The `None` tha
 is an entry whose SOURCE is `<None>`, and it is SKIPPED in every category, never refused** ([Q80]
 (a); spec §2a for a `seeded`
 layer). `settings_expand` hands it up as a present `None` (not absent) — whole-value or embedded
-(spec §0) — so it still overrides a fallback arm in the §2d pick (`[R177]`). A standard bind's lone
-`<None>` is warned by `_warn_lone_none_standard_binds`, not here. Only a non-`BindEntry` of another
-type raises, naming the entry by `entry_label`.
+(spec §0) — so it still overrides a fallback arm in the §2d pick (keyspec §2d "Pseudo-agent(s)"). A
+standard bind's lone `<None>` is warned by `_warn_lone_none_standard_binds`, not here. Only a
+non-`BindEntry` of another type raises, naming the entry by `entry_label`.
 
 ⚑ `name` is the DESTINATION for every category. There is no entry name in the keyspace, so the
 collision messages and the `binding_derivations.*` materialization identify an entry by where it

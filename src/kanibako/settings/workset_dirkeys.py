@@ -317,13 +317,14 @@ def resolve_workset_dir_key(
     :class:`~kanibako.settings.settings_resolve.SettingsError`, naming the key, the file
     and the token, when the value cannot be resolved without the launch snapshot.
 
-    ⚑⚑ A BARE-RELATIVE *repoint* IS REFUSED, NOT ANCHORED ([R147], 2026-08-29).  It
-    used to anchor under *workset_root*, and this seam's own refusal text used to OFFER
-    that form.  The reason it cannot: the reason to set one of these keys AT ALL is to
-    move the directory OFF its ``{meta.workset.path}/<leaf>`` default, so "keep it with
-    the workset" assumes precisely the intent the user is overriding — and the guess is
-    not a confusing message, it is a directory created in the wrong place that then
-    holds data.  The root-relative reading stays expressible; it has to be SAID.
+    ⚑⚑ A BARE-RELATIVE *repoint* IS REFUSED, NOT ANCHORED
+    (keyspec §2a "A path key's stored value", 2026-08-29).  It used to anchor under
+    *workset_root*, and this seam's own refusal text used to OFFER that form.  The
+    reason it cannot: the reason to set one of these keys AT ALL is to move the
+    directory OFF its ``{meta.workset.path}/<leaf>`` default, so "keep it with the
+    workset" assumes precisely the intent the user is overriding — and the guess is not
+    a confusing message, it is a directory created in the wrong place that then holds
+    data.  The root-relative reading stays expressible; it has to be SAID.
     """
     if key not in WORKSET_EARLY_KEYS:
         raise ValueError(f"workset.{key} is not a workset early key")
@@ -334,10 +335,11 @@ def resolve_workset_dir_key(
 
     if not is_unambiguous_path_value(repoint):
         # ⚑ TESTED ON THE STORED SPELLING, and BEFORE the expand, so this seam and the
-        # Layer-1/2 one (``paths._refuse_bare_relative``) ask the ONE question [R147]
-        # asks — "is this a legal value to have written?" — rather than two variants of
-        # it.  A post-expansion absoluteness test would agree here on every reachable
-        # input and disagree in the message, which quotes the value the user typed.
+        # Layer-1/2 one (``paths._refuse_bare_relative``) ask the ONE question
+        # keyspec §2a "A path key's stored value" asks — "is this a legal value to have
+        # written?" — rather than two variants of it.  A post-expansion absoluteness
+        # test would agree here on every reachable input and disagree in the message,
+        # which quotes the value the user typed.
         raise SettingsError(
             ambiguous_path_value_error(
                 f"workset.{key}", repoint,

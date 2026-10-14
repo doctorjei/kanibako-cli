@@ -310,10 +310,11 @@ def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None:
     discriminator itself.
 
     ⚑ THE LEAF MAP RIDES ALONG, and it is a MAP so that the vocabulary and the
-    concession cannot be forwarded apart (``[R150]``, ``key_class``). ``getattr``
-    rather than an attribute because *valid_agents* may be any ``Collection`` — a
-    plain ``frozenset`` in tests — and one that carries no map is judged against
-    core's universal table alone.
+    concession cannot be forwarded apart
+    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER", ``key_class``).
+    ``getattr`` rather than an attribute because *valid_agents* may be any
+    ``Collection`` — a plain ``frozenset`` in tests — and one that carries no map
+    is judged against core's universal table alone.
     """
     return key_validity(
         target,
@@ -646,8 +647,9 @@ class AgentNames(Collection[str]):
     other way until 2026-08-30 — an omitted map turned §2h filter 1 into a pass for
     every ``agent.<name>.<anything>``, a closed keyspace opened by saying nothing.
     An agent that declares nothing is ``{name: frozenset()}``; an agent whose plugin
-    cannot be READ here (uninstalled, or its descriptors raise — ``[R150]``) belongs
-    in *unreadable*, and :func:`default_valid_agents` puts every harness discovery
+    cannot be READ here (uninstalled, or its descriptors raise —
+    keyspec §0 "The leaf VOCABULARY is partitioned by TIER") belongs in
+    *unreadable*, and :func:`default_valid_agents` puts every harness discovery
     could not read there.
     """
 
@@ -661,7 +663,7 @@ class AgentNames(Collection[str]):
     ) -> None:
         self._discovered = frozenset(discovered)
         #: harness → the leaves that PLUGIN declares (§0 "Agent specifics are
-        #: PLUGIN-declared"; ``[R150]`` — legal only on the agent that declared them),
+        #: PLUGIN-declared" — legal only on the agent that declared them),
         #: WITH the harnesses this instance could not read at all.
         #: ⚑ A MAP, NOT A SET, AND IT IS NOT ``_discovered``'s TWIN: an agent whose
         #: descriptors raise is a VALID AGENT NAME with an UNREADABLE vocabulary, so
@@ -725,9 +727,10 @@ def default_valid_agents() -> AgentNames:
     ⚑⚑ AND THE CONCESSION IS STATED, NOT LEFT TO BE INFERRED: this is a DISCOVERY
     result, so it concedes every harness it did not read — the broken plugin above and
     the agent that is not installed at all, which are the same fact from the judge's
-    side (``[R150]``). It used to be carried by absence from the map, and absence is
-    also what an EMPTY map looks like, so any degraded or hand-built supplier read as
-    *"concede everything"*. Only a supplier that has actually looked may say this.
+    side (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). It used to be
+    carried by absence from the map, and absence is also what an EMPTY map looks like,
+    so any degraded or hand-built supplier read as *"concede everything"*. Only a
+    supplier that has actually looked may say this.
     """
     cached = _DISCOVERY.get("default")
     if cached is not None:

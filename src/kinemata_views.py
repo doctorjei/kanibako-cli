@@ -89,7 +89,8 @@ def _standalone_arm(entry: Any) -> tuple[bool, Any]:
 
 def standalone_is_null(entry: Any) -> bool:
     """The row's per-mode map declares its `standalone` arm as `<None>` -- a YAML
-    `null`, which is a VALUE the standalone floor must SUPPLY, never omit ([R177]).
+    `null`, which is a VALUE the standalone floor must SUPPLY, never omit
+    (keyspec §0 "it must RESOLVE").
     """
     has_arm, value = _standalone_arm(entry)
     return has_arm and value is None
