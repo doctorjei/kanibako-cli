@@ -152,8 +152,8 @@ the required `early=` scope (the system tier). It is one face of the no-snapshot
 * **`workset.registry` is SET** — in the root's `workset.yaml` (the nested slot
   `workset: {registry: <path>}`), else at the system tier. The raw value may carry `@`-refs,
   `$XDG_*`, or `~`, resolved by `resolve_workset_dir_key`'s token grammar; a bare-relative value
-  is REFUSED ([R147]), and a value that cannot resolve without the launch snapshot raises
-  `SettingsError` naming the key, the file, and the token.
+  is REFUSED (keyspec §2a "A path key's stored value"), and a value that cannot resolve without the
+  launch snapshot raises `SettingsError` naming the key, the file, and the token.
 * **A present `null` REFUSES**: `SettingsError(ERR_CONFIG_NULL_PATH)`, naming the key and the file.
   This file is the only source of box names, so the default would read a file the user says is not
   there.

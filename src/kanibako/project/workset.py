@@ -16,10 +16,10 @@ single root directory chosen by the user.  Terminology:
   section (``{config.registry}``), mapping its NAME to its ROOT.  ⚑⚑ THAT MAPPING
   IS THE WHOLE OF A WORKSET'S IDENTITY: nothing under the workset root records a
   name, and there is no identity table in either file there.  ⚑ That is a fact
-  about NAMING, not about FINDING ([R139]): a root is still found on disk by its
-  four-dir skeleton (:func:`is_workset_skeleton`), and an unregistered one is
-  imported under its leaf directory name — exactly as ``workset create`` already
-  defaults a name it was not given.  The
+  about NAMING, not about FINDING (system-design § "Detection & import"): a root
+  is still found on disk by its four-dir skeleton (:func:`is_workset_skeleton`),
+  and an unregistered one is imported under its leaf directory name — exactly as
+  ``workset create`` already defaults a name it was not given.  The
   root ``registry.yaml`` carries the ``boxes:`` MEMBERSHIP only; the root
   ``workset.yaml`` carries SETTINGS ONLY, is sparse, and MAY BE ABSENT.  The
   runtime ``meta.workset.*`` keys (spec §1A) are derived at launch from the
@@ -175,8 +175,9 @@ def resolve_workset_workspaces(
 ) -> Path | None:
     """Return the resolved ``workset.workspaces`` dir (*standalone* selects the singular default).
 
-    ``None`` when ``workset.workspaces`` is a present ``<None>`` ([R177]): there is no
-    workspaces dir, and the default leaf would be a path the user said does not exist.
+    ``None`` when ``workset.workspaces`` is a present ``<None>``
+    (keyspec §2h "the ordinary present-`None` rule"): there is no workspaces dir, and the default
+    leaf would be a path the user said does not exist.
     """
     leaf = _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF
     return _resolve_workset_dir(workset_root, workset_settings, leaf, _WORKSPACES_LEAF,
@@ -223,7 +224,8 @@ def workset_workspaces_nulled(workset_root: Path, *, early: EarlyScope) -> bool:
 def refuse_null_workspaces(
     workset_root: Path, what: str, *, standalone: bool = False, early: EarlyScope,
 ) -> None:
-    """RAISE, naming ``workset.workspaces`` and the file, when *workset_root* nulls it ([R177], Q96).
+    """RAISE, naming ``workset.workspaces`` and the file, when *workset_root* nulls it
+    (keyspec §2h "the ordinary present-`None` rule", Q96).
 
     For every operation that would CREATE or COPY a workspace under the root: a null means the
     user said there is no workspace dir, and taking the default instead is the defect.  *what*
@@ -271,9 +273,10 @@ def resolve_workset_boxes(
     ``workset.yaml`` stores the ``workset.registry`` null.  This key's DEFAULT LEAF marks
     nothing.
 
-    🛑 A present ``<None>`` REFUSES, naming the key and the file ([R177], Q96): every box's
-    home and settings live under this dir, so there is no box without it, and taking the
-    default instead would put boxes where the user said there is no store.
+    🛑 A present ``<None>`` REFUSES, naming the key and the file
+    (keyspec §2h "the ordinary present-`None` rule", Q96): every box's home and settings
+    live under this dir, so there is no box without it, and taking the default instead
+    would put boxes where the user said there is no store.
     """
     default_leaf = _STANDALONE_BOXES_LEAF if standalone else BOXES_DIR_NAME
     repoint, where = early_repoint(workset_root, workset_settings, BOXES_DIR_NAME, early=early)
@@ -1179,7 +1182,8 @@ def is_reserved_workset_name(name: str) -> bool:
     named workset's token is its own name emitted verbatim
     (``channels.channels.workset_name_token``).  That is cross-partition channel leakage
     reached by a name we accepted.  Two names differing only by case ARE a collision
-    ([R172]); refusing is both the safer direction and the consistent one.
+    (keyspec §0 "CASE INSENSITIVE for collision purposes"); refusing is both the safer
+    direction and the consistent one.
     """
     return find_identifier(name, RESERVED_WORKSET_NAMES) is not None
 
@@ -1765,7 +1769,7 @@ def box_logs_to_purge(
 # ---------------------------------------------------------------------------
 # The workset SKELETON — ⚑⚑ ONE definition with TWO consumers: ``create_workset``
 # STAMPS these dirs and :func:`is_workset_skeleton` TESTS for them, so the stamp and
-# the test cannot drift ([R139]).
+# the test cannot drift (system-design § "Detection & import").
 # ---------------------------------------------------------------------------
 
 def _workset_skeleton_dirs(root: Path, *, early: EarlyScope) -> tuple[Path, ...]:
@@ -1797,9 +1801,9 @@ def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool:
 
     ⚑ Presence-only, and it names nothing.  A workset root records no name anywhere
     (its identity is the global registry's ``worksets:`` entry), so this answers only
-    *"is a workset here"* — [R139]: detection and naming are two questions, and
-    answering one does not answer the other.  ``_is_standalone_meta_dir`` also names
-    nothing.
+    *"is a workset here"* — system-design § "Detection & import": detection and naming are
+    two questions, and answering one does not answer the other.  ``_is_standalone_meta_dir``
+    also names nothing.
     ⚑ ALL are required (four, fewer under a ``<None>`` ``workset.logs`` or
     ``workset.workspaces``): any one of them alone is an ordinary directory name.
     ⚑ Three of the four are RESOLVED through their workset keys, so this finds a root

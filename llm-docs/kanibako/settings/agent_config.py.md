@@ -3,12 +3,13 @@
 `agent_config` holds two things, and they are not one subject. The first is an agent's **identity
 and where its store sits on the host**: the `AgentConfig` record, the `agents/<agent>/` paths around
 it, and each abstract category's root under them. The second is **shared and not agent-shaped at
-all** ([R147]): whether a stored path value says on its own where it points, what a bare relative one
-roots under, and the refusal when it can say neither. [R147]'s own predicate and message are consumed
-by `settings/paths.py`, `settings/workset_dirkeys.py`, `settings/settings_launch.py`,
-`settings/config_interface.py` and `settings/config_keys.py` (the two anchor labels), and the §2a
-TYPE refusal (`ambiguous_path_shape_error`) by `settings/config.py`, `settings/workset_dirkeys.py`
-and `settings/settings_launch.py` — none of which is asking about an agent. The §2a rooting half
+all** (keyspec §2a "A path key's stored value"): whether a stored path value says on its own where
+it points, what a bare relative one roots under, and the refusal when it can say neither. That
+rule's own predicate and message (keyspec §2a) are consumed by `settings/paths.py`,
+`settings/workset_dirkeys.py`, `settings/settings_launch.py`, `settings/config_interface.py` and
+`settings/config_keys.py` (the two anchor labels), and the §2a TYPE refusal
+(`ambiguous_path_shape_error`) by `settings/config.py`, `settings/workset_dirkeys.py` and
+`settings/settings_launch.py` — none of which is asking about an agent. The §2a rooting half
 (`root_relative_source`) is consumed by `settings/agent_defaults.py` and
 `settings/settings_assemble.py`, which pass a root ref IN — an agent's among them — but never ask
 this module for one; `is_self_resolving` also by `settings/settings_resolve.py` and by
@@ -41,13 +42,13 @@ them sit FLAT under the file's root, beside the category tables, because `self` 
 `agent.<node>`: there is no per-node sub-table to nest them in.
 
 ⚑⚑ **`run_args` IS THREE-STATE (`list[str] | None`), the same shape and the same reason as
-`secret_path`** — `[R169]`. ABSENT is `None` ("this file says nothing about the argv"); an explicit
-`run_args: []` is the user's "no arguments". `agent.default.run_args` reaches a launch, so the
-difference is whether this agent OPTS OUT of that default or lets it through. **Test
-`cfg.run_args is None`** — a truthy test cannot tell them apart, and the one that folds them hands an
-opted-out agent the default it refused. ⚑ A bare `run_args:` in the YAML is a PRESENT "no arguments"
-and loads as `[]`, not as the absent state; the membership test in `agent_file.record` is what parts
-the two `None`-looking shapes.
+`secret_path`** — keyspec §2d agent.default.run_args. ABSENT is `None` ("this file says nothing
+about the argv"); an explicit `run_args: []` is the user's "no arguments". `agent.default.run_args`
+reaches a launch, so the difference is whether this agent OPTS OUT of that default or lets it
+through. **Test `cfg.run_args is None`** — a truthy test cannot tell them apart, and the one that
+folds them hands an opted-out agent the default it refused. ⚑ A bare `run_args:` in the YAML is a
+PRESENT "no arguments" and loads as `[]`, not as the absent state; the membership test in
+`agent_file.record` is what parts the two `None`-looking shapes.
 
 ⚑ **The record has no `name` field.** `agent.<agent>.label` carries an agent's description, as an
 ordinary §2d key, and a file still holding a `name:` line REFUSES the launch by name
@@ -221,16 +222,16 @@ literal `~foo`, a plain relative dir that merely starts with a tilde) is a bare 
 `\/` is no escape (keyspec § 0 "References"), so `\/foo` is not absolute here and its expansion
 refuses it.
 
-## Stored path values — [R147]'s predicate and its refusal
+## Stored path values — the predicate and its refusal (keyspec §2a)
 
-A path key's STORED value must say ON ITS OWN where it points ([R147]): a bare relative
-is AMBIGUOUS and is REFUSED rather than anchored. `is_unambiguous_path_value` is that test and
-`ambiguous_path_value_error` is the wording every seam refuses with. Both live here so the rule has
-ONE predicate and ONE message wherever it fires: `config_interface._bare_relative_path_error` at set
-time, and three read-time seams — `paths._refuse_bare_relative` on the Layer-1/Layer-2 read,
-`workset_dirkeys.resolve_workset_dir_key` on the workset dir keys, and
-`settings_launch._refuse_ambiguous_path_values`, the launch snapshot's sweep over every path key a
-settings file stores.
+A path key's STORED value must say ON ITS OWN where it points
+(keyspec §2a "A path key's stored value"): a bare relative is AMBIGUOUS and is REFUSED rather than
+anchored. `is_unambiguous_path_value` is that test and `ambiguous_path_value_error` is the wording
+every seam refuses with. Both live here so the rule has ONE predicate and ONE message wherever it
+fires: `config_interface._bare_relative_path_error` at set time, and three read-time seams —
+`paths._refuse_bare_relative` on the Layer-1/Layer-2 read, `workset_dirkeys.resolve_workset_dir_key`
+on the workset dir keys, and `settings_launch._refuse_ambiguous_path_values`, the launch snapshot's
+sweep over every path key a settings file stores.
 
 ### `is_unambiguous_path_value(value)`
 
@@ -239,12 +240,13 @@ variable (`{$XDG_DATA_HOME}`). Anything else — a bare leaf, `./x`, `../x`, `@f
 non-XDG variable — is ambiguous.
 
 ⚑⚑ **THE TEST IS ON THE STORED SPELLING, BEFORE EXPANSION, and that is the load-bearing part.**
-[R147] rules on what is a legal value to have WRITTEN, so `{$XDG_DATA_HOME}/kanibako` is legal even in
-an environment where that variable answers something odd. Testing the EXPANDED value would refuse it
-there — reporting a KEY defect for an ENVIRONMENT one, with a "did you mean" line that pastes the
-token back into itself. A SOURCE that expands to a relative path is a different rule at a different
-layer (`settings_expand._refuse_relative_host_src`), with its own message; the two are not one check
-and must not be merged.
+keyspec §2a "A path key's stored value" rules on what is a legal value to have WRITTEN, so
+`{$XDG_DATA_HOME}/kanibako` is legal even in an environment where that variable answers something
+odd. Testing the EXPANDED value would refuse it there — reporting a KEY defect for an ENVIRONMENT
+one, with a "did you mean" line that pastes the token back into itself. A SOURCE that expands to a
+relative path is a different rule at a different layer
+(`settings_expand._refuse_relative_host_src`), with its own message; the two are not one check and
+must not be merged.
 
 ⚑ **It is NARROWER than `is_self_resolving`, on purpose, and the difference is `{$VAR}`.** That
 predicate rules on a BIND SOURCE, where a declaration may name any variable the launch namespace

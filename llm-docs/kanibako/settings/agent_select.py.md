@@ -239,4 +239,5 @@ target seeded by `kanibako-cli` itself (no entry point — `pyproject.toml` carr
 returns `"shell"`. `ShellTarget` has no `descriptor`, so `targets.base.has_plugin` is false for it
 and `commands/start.py` computes `shell_launch = not entrypoint and not has_plugin(target)` — true
 without `--entrypoint` — and runs the resolved `box.shell`. `--agent shell` and `pref.system.agent:
-shell` both work. The retired `no_agent` spelling is refused, never translated ([R174]).
+shell` both work. The retired `no_agent` spelling is refused, never translated
+(MIGRATION.md § "The plain-shell store is").

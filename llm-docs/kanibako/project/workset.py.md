@@ -112,8 +112,9 @@ the per-mode default TABLE is the source, never a second literal at a consumer s
   calling the resolver.
 
 ⚑ **A present `<None>` resolves to `None`** for `channelroot`, `canon`, `template`, `vault_ro`,
-and `vault_rw` ([R177]): nothing collapses it to the default. A null `canon` or `template` skips its
-layer, and a null `channelroot` or vault arm omits its bind.
+and `vault_rw` (keyspec §2h "the ordinary present-`None` rule"): nothing collapses it to the
+default. A null `canon` or `template` skips its layer, and a null `channelroot` or vault arm
+omits its bind.
 * **`workset.canon`** — default `{meta.workset.path}/canon`, and spec §2c declares it UNIFORM IN
   EVERY MODE, deliberately not a per-mode key, so a lone standalone root carries the tier too.
 * **`workset.template`** — default `{meta.workset.path}/template`; `<None>` in standalone (spec
@@ -163,8 +164,9 @@ layer, and a null `channelroot` or vault arm omits its bind.
   `creds_watcher_log_path` and `standalone_logs_dir`. `_workset_skeleton_dirs` then omits the logs
   dir (and the workspaces dir under a null `workset.workspaces`), so such a root is still detected; `remove_box_logs(None, …)` deletes nothing; the hub keeps
   no message log; and `core_defaults.helper_default_categories` omits the log bind while keeping
-  the socket's. The loud warning [R185] owes when only one of the bind's entry and source is
-  `<None>` is not here yet — it belongs to the standard-bind warning pass.
+  the socket's. The loud warning keyspec §2a "PER-ENTRY CASCADE MERGE" owes when only one of the
+  bind's entry and source is `<None>` is not here yet — it belongs to the standard-bind warning
+  pass.
 
 ⚑ **The repoint SLOT is the same key in every mode** — only the default FORMULA varies. A mode flag
 selects a default, never a different storage location.
@@ -205,19 +207,20 @@ Four consequences, each of which someone will otherwise re-derive:
 * **`load_workset` takes the name as an ARGUMENT.** There is nothing on disk to read it from, and
   every caller already has it: each one reached the root through the global registry's mapping.
   The signature is where the model is visible, so do not add a lookup behind it.
-* **A workset is still FOUND on disk — naming and detection are two questions ([R139]).** The
-  ancestor walk's NAMED arm tests `is_workset_skeleton`: the four dirs `create_workset` stamps,
-  present together. Presence-only and name-free, exactly like `_is_standalone_meta_dir`. When it
-  matches an unregistered root, `import_named_workset` registers it under the root's **leaf
-  directory basename** — the same default `workset create` has always applied to a workset created
-  without `--name`. So a workset tree copied to a new machine re-registers itself on first resolve
-  (a standalone box does not: it waits for `box register`). 🛑 The reasoning that says otherwise — *"it has no name on disk, so
-  it cannot be found"* — is the mistake that deleted this once: a fact about where the NAME lives is
+* **A workset is still FOUND on disk — naming and detection are two questions
+  (system-design § "Detection & import").** The ancestor walk's NAMED arm tests
+  `is_workset_skeleton`: the four dirs `create_workset` stamps, present together. Presence-only
+  and name-free, exactly like `_is_standalone_meta_dir`. When it matches an unregistered root,
+  `import_named_workset` registers it under the root's **leaf directory basename** — the same
+  default `workset create` has always applied to a workset created without `--name`. So a workset
+  tree copied to a new machine re-registers itself on first resolve (a standalone box does not: it
+  waits for `box register`). 🛑 The reasoning that says otherwise — *"it has no name on disk, so it
+  cannot be found"* — is the mistake that deleted this once: a fact about where the NAME lives is
   not a fact about whether the THING is findable.
 * **Nothing records when a workset was made.**
 
 Named for its TIER, as `BOX_META_FILE` is (`settings/config.py`: `"workset.yaml"` vs `"box.yaml"`)
-— the filename says which scope's settings the file at that root holds ([R140]).
+— the filename says which scope's settings the file at that root holds (keyspec §1).
 
 ## The global registry
 
@@ -428,8 +431,8 @@ Honors a set `workset: {workspaces: …}`; else the spec default `{meta.workset.
 == `<root>/workspace`. ⚑ The repoint SLOT is the same `workset: {workspaces: …}` key either way —
 only the default formula varies by mode.
 
-A present `<None>` returns `None` ([R177]), never the default:
-a standalone box's `project_path` IS this value, so under a null it is `None` and its
+A present `<None>` returns `None` (keyspec §2h "the ordinary present-`None` rule"), never the
+default: a standalone box's `project_path` IS this value, so under a null it is `None` and its
 `meta.box.workspace` is `<None>` (`settings/paths.ProjectPaths`). What refuses is CREATION under a
 null (`refuse_null_workspaces`, below) and a LAUNCH (`refuse_null_box_workspace`, below): the
 workspace bind is mounted at every launch, so a box without one cannot run (Q106).
@@ -447,15 +450,15 @@ def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = 
 ```
 `workset_workspaces_nulled` is True when the root's workset.yaml carries `workspaces: null`.
 `refuse_null_workspaces` raises `WorksetError` with `messages.ERR_WORKSET_NULL_WORKSPACES`, naming
-the key and `<root>/workset.yaml` ([R177], Q96): a null means there is no workspace dir, so every
-operation that would CREATE or COPY a workspace under the root refuses instead of taking the
-default. Callers: `add_project` (in-tree member), `workset_cmd.run_connect` (before its J2
-bracket), `box/_lifecycle._validate` (an in-tree landing, and an in-place convert to standalone),
-`box/_duplicate` (`--to named`, bare or not, before the prompt; `--to standalone` without `--bare`
-into a root that already nulls it), and `settings/paths.resolve_standalone_project`'s create
-pre-flight (`box create --standalone`), before its first write. *standalone* selects
-`messages.ERR_STANDALONE_NULL_WORKSPACES`, whose cure omits "connect a directory outside it" — a
-lone box's root has no outside member.
+the key and `<root>/workset.yaml` (keyspec §2h "the ordinary present-`None` rule", Q96): a null
+means there is no workspace dir, so every operation that would CREATE or COPY a workspace under the
+root refuses instead of taking the default. Callers: `add_project` (in-tree member),
+`workset_cmd.run_connect` (before its J2 bracket), `box/_lifecycle._validate` (an in-tree landing,
+and an in-place convert to standalone), `box/_duplicate` (`--to named`, bare or not, before the
+prompt; `--to standalone` without `--bare` into a root that already nulls it), and
+`settings/paths.resolve_standalone_project`'s create pre-flight (`box create --standalone`), before
+its first write. *standalone* selects `messages.ERR_STANDALONE_NULL_WORKSPACES`, whose cure omits
+"connect a directory outside it" — a lone box's root has no outside member.
 
 ```python
 def refuse_null_box_workspace(workset_root: Path, workspace: Path | None, box: str, *, standalone: bool, early: EarlyScope) -> None

@@ -2,8 +2,9 @@
 
 TWO SUBJECTS, and neither of them needs a settings file open.  The first is the ``AgentConfig``
 record and where an agent's store sits on the host, down to each abstract category's root.  The
-second is SHARED and not agent-shaped at all ([R147]): whether a stored value says on its own
-where it points, what a bare relative one roots under, and the refusal when it can say neither.
+second is SHARED and not agent-shaped at all (keyspec §2a "A path key's stored value"): whether
+a stored value says on its own where it points, what a bare relative one roots under, and the
+refusal when it can say neither.
 
 ⚑ THE FILE'S SHAPE IS NOT HERE — :mod:`kanibako.settings.agent_file` is the one module that
 spells the file's root table [spec:14-18, "self"].  Design notes:
@@ -36,9 +37,10 @@ class AgentConfig:
     ``| None``: ABSENT (``None`` — this file says nothing about the argv) is not the
     same as an explicit ``run_args: []`` (the user's "no arguments").  The two used to
     load as one empty list, which was harmless while the file was the argv's only
-    source and is not now: ``agent.default.run_args`` reaches a launch (`[R169]`), so
-    the difference is whether this agent OPTS OUT of that default or lets it through.
-    Test ``cfg.run_args is None`` before reading — a truthy test cannot tell them apart.
+    source and is not now: ``agent.default.run_args`` reaches a launch
+    (keyspec §2d agent.default.run_args), so the difference is whether this agent OPTS OUT
+    of that default or lets it through. Test ``cfg.run_args is None`` before reading — a
+    truthy test cannot tell them apart.
 
     ⚑ ``name`` WAS A FIELD HERE AND IS GONE (D8b, 2026-09-15): the agent FILE's own identity
     field, never a keyspace leaf.  ``agent.<agent>.label`` (spec §2d) is the declared key that
@@ -180,7 +182,8 @@ def is_self_resolving(src: str) -> bool:
 
 
 def is_unambiguous_path_value(value: str) -> bool:
-    r"""Whether a STORED PATH-KEY value says ON ITS OWN where it points ([R147]).
+    r"""Whether a STORED PATH-KEY value says ON ITS OWN where it points
+    (keyspec §2a "A path key's stored value").
 
     Legal: absolute, ``~``-rooted, an ``XDG_*`` variable or a key reference.  Anything else — a
     bare leaf, ``./x``, ``../x`` — is AMBIGUOUS and is refused rather than anchored
@@ -228,7 +231,8 @@ def ambiguous_path_value_error(
     key: str, value: str, *, anchor: str, anchor_ref: str | None = None,
     where: str | None = None, anchor_label: str = DEFAULT_ROOT_LABEL,
 ) -> str:
-    """The [R147] refusal for a bare-relative *value* stored at *key* — BOTH readings named.
+    """The refusal for a bare-relative *value* stored at *key* — BOTH readings named
+    (keyspec §2a "A path key's stored value").
 
     *anchor* is the RESOLVED directory of the other candidate reading: the root this
     key's own default sits under, which is the only anchor besides the cwd that the

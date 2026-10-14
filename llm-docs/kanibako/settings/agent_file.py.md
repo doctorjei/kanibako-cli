@@ -67,9 +67,10 @@ reaches the cascade as one level. *scope*, *state* and *contained* default to em
 the agent whose file it is — `assemble_levels` builds BOTH tiers from the one file.
 
 *path* is the file the table was read from, or `None` when the caller did not say. It travels with
-the table for the same reason *node* does: `settings_launch`'s read-time [R147] check names the file
-a bare-relative value sits in, and the focused behavior reads in `commands/start.py` hand
-`build_launch_snapshot` a level without an `agent_path`.
+the table for the same reason *node* does: `settings_launch`'s read-time check
+(keyspec §2a "A path key's stored value") names the file a bare-relative value sits in, and the
+focused behavior reads in `commands/start.py` hand `build_launch_snapshot` a level without an
+`agent_path`.
 
 ## The root
 
@@ -191,12 +192,13 @@ Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one st
 line hands over. **A DIFFERENT QUESTION FROM `_TABLE_VALUED_KEYS`**, and the contrast is the point:
 a table-valued key takes NO scalar and is refused by name; one of these TAKES the scalar and stores
 it as words. So a translation exists, and both ends of it live here — `stored_leaf_shape` splits
-in, `stored_leaf_text` joins back out. ⚑ **BOTH ENDS ARE PUBLIC SINCE `[R169]`, AND THE REASON IS
-THAT THE SCOPE SETTINGS FILES HOLD THESE LEAVES TOO.** `write_leaf` / `read_leaf` are this file's
-callers of them; `config_interface`'s scope-file doors are the system / workset / box files'. The
-membership question is answered HERE either way, so no caller learns which leaves are lists. A
-split living in one writer alone gives the file two write routes with two shapes, and a value
-stored by the other route is reported set and delivered to no launch.
+in, `stored_leaf_text` joins back out. ⚑ **BOTH ENDS ARE PUBLIC SINCE
+keyspec §2d agent.default.run_args, AND THE REASON IS THAT THE SCOPE SETTINGS FILES HOLD THESE
+LEAVES TOO.** `write_leaf` / `read_leaf` are this file's callers of them; `config_interface`'s
+scope-file doors are the system / workset / box files'. The membership question is answered HERE
+either way, so no caller learns which leaves are lists. A split living in one writer alone gives
+the file two write routes with two shapes, and a value stored by the other route is reported set
+and delivered to no launch.
 
 ⚑ **THE PIN IS DERIVED FROM `AgentConfig`, NOT TYPED TWICE** (P13):
 `test_agent_file.py::TestTheArgvSHAPEIsTheFileS::test_the_list_valued_set_is_exactly_AgentConfig_s_
@@ -318,8 +320,8 @@ by `test_read_does_not_re_render`, which uses a scalar leaf.
 single-carrier rule for `_LIST_VALUED_KEYS` above: the shape is decided in ONE place, so a second
 copy in a caller cannot exist to drift. `write_leaf` applies it for this file; `config_interface`'s
 two raw scope-file doors — the bare `agent.default.<leaf>` write and the `pref.*` write — apply it
-for the system / workset / box settings files (`[R169]`: one parser, two entry points, one stored
-shape).
+for the system / workset / box settings files (keyspec §2d agent.default.run_args: one parser, two
+entry points, one stored shape).
 
 ```argv_words(value: str) -> list[str]``` · ```argv_text(words) -> str```
 The two halves of the argv translation. `argv_words` is deliberately `str.split`, NOT
@@ -327,7 +329,7 @@ The two halves of the argv translation. `argv_words` is deliberately `str.split`
 than fix one; a word that must contain a space is hand-edited into the list. `argv_text` is public
 because two display surfaces need it: `agent_cmd._show_agent_config` and `_get_agent_key`.
 
-⚑ **`argv_words` is public because of the LAUNCH (`[R169]`).**
+⚑ **`argv_words` is public because of the LAUNCH (keyspec §2d agent.default.run_args).**
 The behavior table hands `run_args` over as the command-line string `argv_text` joined — so a
 stored list and a string hand-written into a YAML arrive at `start.py`'s `all_extra` seam
 identically — and that seam splits it back with THIS function. One parser, both directions, no
@@ -339,9 +341,9 @@ the value in the shape a FILE holds it in, or the value unchanged where this mod
 for the pair. `None` PASSES THROUGH, because it is the `--null` suppression idiom (spec §2h) and
 splitting it would forge an empty argv line.
 
-⚑ **IT IS A SEAM (`[R169]`):** `config_interface` calls it to normalize before a value lands in a
-system, workset or box settings file, so that a `run_args` typed at the CLI is one shape on disk
-whichever command wrote it.
+⚑ **IT IS A SEAM (keyspec §2d agent.default.run_args):** `config_interface` calls it to normalize
+before a value lands in a system, workset or box settings file, so that a `run_args` typed at the
+CLI is one shape on disk whichever command wrote it.
 
 🛑 **THE ARGUMENT IS THE FILE TAIL, NEVER THE WRITTEN LEAF'S NAME**, and a caller that confuses the
 two breaks a user's data. A user may name an environment variable `run_args`; its tail is the
@@ -377,11 +379,11 @@ exactly what a verb reporting `(not set)` must not be told. That verb uses `read
 command line it is; the two-character `""` spelling is the empty STRING's, a different idiom (spec
 §2h) that must not be handed to a shape which is not it. The three states stay apart: absent →
 `None` (`(not set)`), present-empty-list → a blank line, present-with-words → the words. ⚑⚑ **THE
-RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`, `[R169]`):
-`agent.default.run_args` reaches a launch, so the difference is whether this agent OPTS OUT of that
-default or lets it through. The display convention here and the record's three states are the same
-fact. ⚑ A STRING here renders through the scalar convention unchanged, and `record` splits it the
-same way.
+RECORD KEEPS THEM APART TOO** (`AgentConfig.run_args: list[str] | None`,
+keyspec §2d agent.default.run_args): `agent.default.run_args` reaches a launch, so the difference
+is whether this agent OPTS OUT of that default or lets it through. The display convention here and
+the record's three states are the same fact. ⚑ A STRING here renders through the scalar convention
+unchanged, and `record` splits it the same way.
 
 ```clear_overrides(path: Path) -> int```
 Drop every user override from the file at *path*; return the count.
@@ -491,9 +493,10 @@ into the file works, and the next `save` normalizes it. A bare
 `model: null` paragraph above records; anything else scalar is one word's worth of text and splits
 like one. ⚑ **The KEY'S ABSENCE is read by MEMBERSHIP (`"run_args" not in agent_sec`), not by the
 value being `None`, and the record then holds `None` rather than `[]`** — the three-state read
-(`[R169]`). A bare `run_args:` is a PRESENT "no arguments" and still loads as `[]`, so the two
-`None`-looking YAML shapes part company here: one says nothing, the other refuses the any-agent
-default. Pinned by `test_a_stored_run_args_STRING_is_split_not_discarded`.
+(keyspec §2d agent.default.run_args). A bare `run_args:` is a PRESENT "no arguments" and still
+loads as `[]`, so the two `None`-looking YAML shapes part company here: one says nothing, the
+other refuses the any-agent default. Pinned by
+`test_a_stored_run_args_STRING_is_split_not_discarded`.
 
 ⚑ **Every modeled table is ISINSTANCE-GUARDED, so the record builds.** A VALUE where `env`'s or
 `secret_path`'s table goes is refused by name at the end of `record` (`agent.<node>.env` is a
@@ -666,13 +669,13 @@ file's node tables (`_node_tables`: `self:` judged as the file's own *node*, the
 as the cascade folds it, Q87) in TWO passes, each the launch's own verdict:
 
 1. every KEY of a node table except a category key holding a TABLE, through
-   `config_keys.agent_key_reason` — which concedes a node whose vocabulary is unreadable (`[R150]`),
-   measured to give the launch's §0 audit's verdict on `agent.claude.bogus`, `agent.goose.bogus`,
-   `agent.default.bogus`, `agent.Claude.bogus` and `agent.claude.self` (refused) and on
-   `agent.nosuchharness.x`, `agent.goose.provider` and `agent.claude+nav.bogus` (conceded). A
-   category key holding a value is judged like any key, so `env: 5` refuses and `caches: 'x'` is
-   conceded, as the launch does. ⚑ **`self:` takes the SAME partition**, so `self: {env: 5}` is
-   judged too;
+   `config_keys.agent_key_reason` — which concedes a node whose vocabulary is unreadable
+   (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), measured to give the launch's §0
+   audit's verdict on `agent.claude.bogus`, `agent.goose.bogus`, `agent.default.bogus`,
+   `agent.Claude.bogus` and `agent.claude.self` (refused) and on `agent.nosuchharness.x`,
+   `agent.goose.provider` and `agent.claude+nav.bogus` (conceded). A category key holding a value is
+   judged like any key, so `env: 5` refuses and `caches: 'x'` is conceded, as the launch does.
+   ⚑ **`self:` takes the SAME partition**, so `self: {env: 5}` is judged too;
 2. every PATH, category contents included, through the launch's whole-snapshot audit
    (`settings_keyspace.undeclared_store_paths` over `settings_keyspace_probe.keyspace_verdict`, the
    node table placed at `agent.<node>`): an undeclared bind arm (`bindings: {zz: …}`), a malformed

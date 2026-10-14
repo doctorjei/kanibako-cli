@@ -11,8 +11,8 @@ detection marker is `~/canon/workbook/specs/system-design-1.8.0.md` § "Detectio
 A declaration file: the XDG variable names and their spec defaults, the bootstrap file names, the
 two path-key default tables (Layer-1 `config.*`, Layer-2 `system.*`), the spawn-budget built-ins,
 and the file- and directory-name leaves the layout tier composes. Every path literal in the tree
-belongs here (`[R157]`); `settings/messages.py` holds the message text and imports
-`RUN_USER_UID_PATH` back from here.
+belongs here (CONVENTIONS P10 "derive from declared keys"); `settings/messages.py` holds the
+message text and imports `RUN_USER_UID_PATH` back from here.
 
 ⚑ **IT MUST STAY IMPORT-FREE.** `settings/paths.py` imports it and `project/workset.py` imports
 that, so an import added here can close a cycle. `tests/test_settings/test_paths.py`'s

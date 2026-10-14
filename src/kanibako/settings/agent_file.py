@@ -201,7 +201,8 @@ class AgentFileLevel:
     necessarily the agent whose file this is.  *table* is raw YAML: no ``KeyStore``, no bind
     parsing, no precedence (that is ``settings_assemble``'s half of the seam).  *path* is the
     file the table was read from, or ``None`` when the caller did not say; it travels WITH the
-    table so a refusal about one of its values can name the file ([R147], read time).
+    table so a refusal about one of its values can name the file
+    (keyspec §2a "A path key's stored value", read time).
 
     *scope* is the file's top-level ``agent:`` table, RAW (Q92: read like that table in any
     settings file), already judged by :func:`_contribution`; ``settings_assemble`` parses it.
@@ -451,8 +452,8 @@ def stored_leaf_shape(tail: str, value: object) -> object:
     ⚑⚑ THE WRITE-SIDE TWIN OF :func:`stored_leaf_text`, and PUBLIC for the same reason.  The
     SCOPE settings files hold the §2d leaves too, written by routes that never reach
     :func:`write_leaf`, and each of them stored the STRING the command line handed over —
-    ``[R169]``: one parser, two entry points, ONE stored shape.  They ask HERE rather than
-    each learning which leaves are lists (P10).
+    keyspec §2d agent.default.run_args: one parser, two entry points, ONE stored shape.  They
+    ask HERE rather than each learning which leaves are lists (P10).
 
     🛑 *tail* IS THE FILE TAIL, NEVER THE WRITTEN LEAF'S NAME, and that is the whole safety of
     this call.  A user may name an environment variable ``run_args``; its tail is the DOTTED
@@ -625,8 +626,9 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # kept them apart — ``read_leaf`` answers ``None`` for absent and ``""`` for a
     # stored ``[]`` — and the record collapsing them was harmless only while this file
     # was the argv's sole source.  It is not: ``agent.default.run_args`` reaches a
-    # launch (`[R169]`), so an agent writing ``run_args: []`` to OPT OUT of that
-    # default has to be distinguishable from one that never mentioned the key.
+    # launch (keyspec §2d agent.default.run_args), so an agent writing
+    # ``run_args: []`` to OPT OUT of that default has to be distinguishable from one
+    # that never mentioned the key.
     if "run_args" not in agent_sec:
         cfg.run_args = None
     else:
