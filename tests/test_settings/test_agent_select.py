@@ -568,7 +568,8 @@ class TestSelectAgentSeam:
         does not exist in v1.7.2 (``git grep -c "pref\\.system\\.agent" v1.7.2`` is
         zero), so this spelling was born and retired inside the 1.8.0 rc series. The
         plain-shell box is reached BY NAME: ``--agent shell`` /
-        ``pref.system.agent: shell`` (the retired underscore spelling — [R174]).
+        ``pref.system.agent: shell`` (the retired underscore spelling — MIGRATION.md
+        § "The plain-shell store is").
 
         ⚑ Every spelling here is one YAML reads as Python ``None`` — including a key
         left BLANK after its colon, which makes this state reachable by typo. The

@@ -345,7 +345,7 @@ class TestTheSettingsFileDenialsNameRealFiles:
     ``box.yaml`` from ``bx.yaml``.  This is the case that can: the three tiers each have a
     named filename constant, and a deny row claiming to name one is only true if it does.
     It is what makes the ``settings.yaml`` → ``box.yaml``/``workset.yaml``/``agent.yaml``
-    rename ([R140]) a checked claim rather than a hopeful one.
+    rename (keyspec §1) a checked claim rather than a hopeful one.
     """
 
     @pytest.mark.parametrize("scope", sorted(_SETTINGS_FILE_DENIALS))

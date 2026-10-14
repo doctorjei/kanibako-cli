@@ -814,9 +814,10 @@ class TestTheArgvSHAPEIsTheFileS:
 
         ⚑ OPTIONALITY IS STRIPPED BEFORE THE TEST, and that is the rule this pin means:
         the question is what SHAPE the value has, never whether the field can also be
-        absent.  ``run_args`` is ``list[str] | None`` — three-state, `[R169]` — and a
-        ``startswith("list")`` read of the raw annotation stopped seeing it, which would
-        have let the set drift to empty and passed the guard vacuously (P15).
+        absent.  ``run_args`` is ``list[str] | None`` — three-state, keyspec §2d
+        agent.default.run_args — and a ``startswith("list")`` read of the raw annotation
+        stopped seeing it, which would have let the set drift to empty and passed the
+        guard vacuously (P15).
         """
         import dataclasses
 
@@ -1424,7 +1425,9 @@ class TestTheAgentTable:
         assert agent_record(path, node="default", purpose=ReadPurpose.RESOLVE) == AgentConfig()
 
     @pytest.mark.parametrize("scope", (
-        {"nosuchharness": {"x": 1}},            # conceded: no readable vocabulary ([R150])
+        # conceded: no readable vocabulary (keyspec §0 "The leaf VOCABULARY is partitioned
+        # by TIER")
+        {"nosuchharness": {"x": 1}},
         {"claude": {"run_args": ["-x"], "transform_settings": {"a": 1}}},
         {"bar": {"env": {"A": "1"}}},           # a category's entries are data, not keys
         {"claude": {"caches": "x"}},            # load coerces a wrong shape; the launch refuses it
@@ -1578,7 +1581,8 @@ class TestTheForwardCompatPassthroughIsClosed:
         assert agent_record(path, node="goose", purpose=ReadPurpose.RESOLVE).state == {"provider": "ollama"}
 
     def test_a_persona_file_is_judged_by_its_harness(self, tmp_path):
-        """A persona node (``<pid>℘<hid>``) takes its HARNESS's vocabulary (spec §2d, ``[R150]``).
+        """A persona node (``<pid>℘<hid>``) takes its HARNESS's vocabulary (spec §2d,
+        keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
 
         ``nav℘claude`` is persona ``nav`` on harness ``claude``, so an undeclared leaf refuses
         exactly as it does on ``claude``'s own file, and a declared one loads.  The launch reads
@@ -1596,8 +1600,9 @@ class TestTheForwardCompatPassthroughIsClosed:
         }
 
     def test_a_persona_on_an_uninstalled_harness_concedes(self, tmp_path):
-        # ``[R150]``: where the harness plugin is not here its vocabulary is unreadable, so a
-        # leaf it might declare is CONCEDED, never refused — for a persona as for a bare agent.
+        # keyspec §0 "The leaf VOCABULARY is partitioned by TIER": where the harness plugin
+        # is not here its vocabulary is unreadable, so a leaf it might declare is CONCEDED,
+        # never refused — for a persona as for a bare agent.
         # ⚑ ``claude+work`` is THIS case (persona ``claude`` on harness ``work``), not a hole.
         path = self._file(tmp_path, {"zippity": "1"})
         assert agent_record(path, node="nav℘nosuchharness", purpose=ReadPurpose.RESOLVE).state == {"zippity": "1"}

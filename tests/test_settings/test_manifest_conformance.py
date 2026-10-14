@@ -822,10 +822,11 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: ⚑ ``box.shell`` LEFT this class 2026-09-27: ``config.box_scalar_defaults_floor`` floors
 #: its ``<None>`` as a PRESENT ``None``, compared by the ``box-scalar-floor`` view.
 #: ⚑ ``agent.shell.template`` LEFT this class 2026-09-24: its ``<None>`` is floored as a
-#: PRESENT ``None`` (a supplied value, [R177]), so it has a carrier — compared by the
-#: ``shell-template-none`` kinemata view.  ``agent.shell.{bootstrap,run_args,transform}``
-#: left the same day: the ``agent_shell:`` floor carries them — ``bootstrap`` as the
-#: tier's own ``tmux``, the other two as a present ``None`` — compared by ``shell-tier-fence``.
+#: PRESENT ``None`` (a supplied value, keyspec §2d "Pseudo-agent(s)"), so it has a carrier
+#: — compared by the ``shell-template-none`` kinemata view.
+#: ``agent.shell.{bootstrap,run_args,transform}`` left the same day: the ``agent_shell:``
+#: floor carries them — ``bootstrap`` as the tier's own ``tmux``, the other two as a
+#: present ``None`` — compared by ``shell-tier-fence``.
 #: ``agent.default.{model,endpoint,run_args,transform}`` left likewise: ``agent_default:``
 #: floors them as a present ``None``, compared by ``default-tier-none``.
 #: ``agent.shell.{continue_mode,model,endpoint}`` left 2026-09-27: a shell pick has no
@@ -1287,9 +1288,9 @@ NO_VALUE_RUNTIME_PROSE: frozenset[str] = frozenset({
 })
 
 #: (E7) ``value:`` rows answered OFF-SNAPSHOT through bootstrap constants, which no
-#: launch floor emits.  ``user_config_file`` is READ, never composed (``[R154]``), and
-#: its cell is prose (the ``$XDG_CONFIG_HOME`` fallback), so the manifest side is
-#: asserted verbatim and the reason names the carrier.  (The site pair
+#: launch floor emits.  ``user_config_file`` is READ, never composed (keyspec §1A "never
+#: composed"), and its cell is prose (the ``$XDG_CONFIG_HOME`` fallback), so the manifest
+#: side is asserted verbatim and the reason names the carrier.  (The site pair
 #: ``meta.runtime.admin.{config,settings}`` left this class: ``config.config_base_path``
 #: / ``settings_base_path`` do the join in production, and the ``site-base-files``
 #: kinemata view compares them.)
@@ -2343,25 +2344,26 @@ class TestSetColumnConformance:
 class TestThePathTypeColumnHasOneCodeCarrier:
     """The registry's ``type: path`` rows and what the CODE treats as a path must AGREE.
 
-    ⚑ WHY THIS PIN EXISTS (P15).  [R147]'s refusal reaches exactly the keys
-    ``config_keys.is_path_valued_key`` claims, and a registry row the code does not claim
-    is a path key that quietly takes an ambiguous value at every set route.  Completeness
-    is by HAND for the ``workset.*`` and ``box.*`` rows — no live table enumerates them —
-    so it is bought back here, LOUDLY, instead of being trusted.
+    ⚑ WHY THIS PIN EXISTS (P15).  The path-value refusal (keyspec §2a "A path key's stored
+    value") reaches exactly the keys ``config_keys.is_path_valued_key`` claims, and a
+    registry row the code does not claim is a path key that quietly takes an ambiguous
+    value at every set route.  Completeness is by HAND for the ``workset.*`` and ``box.*``
+    rows — no live table enumerates them — so it is bought back here, LOUDLY, instead of
+    being trusted.
 
     ⚑ THE FOUR ``agent`` ROWS AND THE ``secret_path`` FAMILY ARE PARAMETRIC and carry no
     fixed canonical spelling, so they are asserted through the predicate at the shapes the
     keyspace admits rather than through ``KEY_TYPES``.
 
     ⚑ THE CORPUS IS THE **SETTABLE** PATH ROWS, AND THE ``set:`` COLUMN IS WHAT SPLITS IT —
-    not a name list.  [R147] governs a STORED value: its own words are *"not a legal STORED
-    VALUE … refused at SET TIME and at READ TIME"*, the keyspace set/get routes.  A
-    ``set: never`` row has NO set route — ``TestSetColumnConformance`` asserts the whole
-    ``meta.*`` group is absent from ``_KEY_ROUTES`` — so there is no seam at which the
-    predicate could reach one, and ``is_path_valued_key``'s own header says it is the
-    SET-TIME half.  Both directions are still asserted below: the settable rows must be
-    claimed, and the never-settable ones must NOT be, so ``KEY_TYPES`` cannot quietly grow
-    a ``meta.*`` entry that reads as a set-time guard which can never fire.
+    not a name list.  keyspec §2a governs a STORED value: *"Any other value is refused
+    when it is set and when it is read from a settings file"*, the keyspace set/get
+    routes.  A ``set: never`` row has NO set route — ``TestSetColumnConformance`` asserts
+    the whole ``meta.*`` group is absent from ``_KEY_ROUTES`` — so there is no seam at
+    which the predicate could reach one, and ``is_path_valued_key``'s own header says it
+    is the SET-TIME half.  Both directions are still asserted below: the settable rows
+    must be claimed, and the never-settable ones must NOT be, so ``KEY_TYPES`` cannot
+    quietly grow a ``meta.*`` entry that reads as a set-time guard which can never fire.
     """
 
     def _declared_path_rows(self) -> "tuple[set[str], set[str]]":
@@ -2386,7 +2388,8 @@ class TestThePathTypeColumnHasOneCodeCarrier:
         }
         assert not unclaimed, (
             f"the registry declares these keys ``type: path`` and the code does not "
-            f"treat them as paths, so [R147]'s refusal never reaches them: "
+            f"treat them as paths, so the keyspec §2a path-value refusal never reaches "
+            f"them: "
             f"{sorted(unclaimed)}"
         )
 
@@ -2416,7 +2419,8 @@ class TestThePathTypeColumnHasOneCodeCarrier:
         }
         assert not claimed, (
             f"the code treats these never-settable rows as set-time path keys, but they "
-            f"have no set route for [R147] to reach: {sorted(claimed)}"
+            f"have no set route for the keyspec §2a path-value refusal to reach: "
+            f"{sorted(claimed)}"
         )
 
     def test_the_code_types_every_key_the_registry_declares_it_at(self):

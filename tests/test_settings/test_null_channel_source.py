@@ -3,8 +3,9 @@ one warning at launch (spec §2a), not a hard failure.
 
 ⚑ THE SHAPE.  Every shipped ``channels:`` row carries a ``meta_ref``, so its source is a
 braced ``{system.channels.*}`` ref that resolves through ``system_path_floor`` and a null
-at that key omits the bind with the [R185] warning.  The row that carries NO ``meta_ref``
-reads its runtime-probed host path instead -- the ``entry.get("meta_ref", sources[source])``
+at that key omits the bind with the lone-``<None>`` warning (keyspec §2a "PER-ENTRY
+CASCADE MERGE").  The row that carries NO ``meta_ref`` reads its runtime-probed host path
+instead -- the ``entry.get("meta_ref", sources[source])``
 arm in ``core_defaults.channel_default_categories``.  Four of those probe names are
 STANDARD bind sources, so the probe can answer ``None``, and the producer keeps the slot
 null on purpose (the slot is the standalone-omit gate; see
@@ -196,7 +197,8 @@ class TestTheReclassificationStaysInsideItsLane:
 
     def test_a_null_entry_is_left_alone(self):
         """A null ENTRY (``{dest: null}``) is not a null SOURCE -- the merge and the
-        [R185] both-null rule own it, not this repoint."""
+        both-null rule (keyspec §2a "PER-ENTRY CASCADE MERGE") own it, not this
+        repoint."""
         assert self._floor(None) is None
 
     def test_a_null_source_with_a_declared_key_is_repointed_at_it(self):

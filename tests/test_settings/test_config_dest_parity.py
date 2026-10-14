@@ -74,7 +74,8 @@ def sample_leaf_value(leaf: str, tag: str = "V") -> str:
     value guard and reports it as a routing failure.  Two declared leaves refuse an
     arbitrary string, each for its own declared reason, and both are DERIVED here rather
     than named: ``access`` is an ENUM (``access_value_error``), and ``template``/``canon``
-    are PATHS, where a bare relative is refused as ambiguous ([R147], 2026-08-29).
+    are PATHS, where a bare relative is refused as ambiguous (keyspec §2a "A path key's
+    stored value", 2026-08-29).
 
     ⚑ THE PATH ARM IS AN INVERSION, NOT A LOOSENING.  These sweeps used to pass
     ``V-canon`` / ``probe`` and assert acceptance, which pinned the OLD permissive

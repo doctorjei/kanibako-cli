@@ -175,7 +175,8 @@ class TestTheTableHalfIsRefusedBySHAPE:
         for i, leaf in enumerate(sorted(SCALAR_AGENT_LEAVES)):
             # ⚑ DERIVED from the TARGET leaf's type, because a pref is validated AT its
             # target: ``pref.agent.<node>.canon`` is a path key wearing a prefix, so a
-            # bare-relative sample reds this row on [R147] and not on the pref route.
+            # bare-relative sample reds this row on keyspec §2a "A path key's stored
+            # value" and not on the pref route.
             value = sample_leaf_value(leaf, tag="probe")
             msg = Bench(tmp_path / f"q{i}").set(
                 ConfigLevel.box, f"pref.agent.claude.{leaf}", value,
@@ -315,8 +316,9 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         to core's table (2026-08-30); after that the two DIVERGED — measured,
         ``agent.default.provider`` was UNDECLARED at ``key_class`` and ``'provider'``
         here — and nothing red, because no test asked both doors about one key.
-        ``[R150]``: ``agent.default`` carries only the leaves established AT that tier,
-        and a plugin declares specifics for the agent it ships.
+        keyspec §0 "The leaf VOCABULARY is partitioned by TIER": ``agent.default`` carries
+        only the leaves established AT that tier, and a plugin declares specifics for the
+        agent it ships.
 
         The agreement it means to pin is the real one: this door and ``key_class`` must
         answer the same, whichever way.
@@ -356,9 +358,9 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         ⚑ ``set`` answered *"Error: unknown config key"* at rc 1 before the fix, and
         ``get`` answered "(not set)" over the stored value.
         ⚑ THE LEAF IS READ FROM GOOSE'S OWN ENTRY, not from a cross-agent union: after
-        ``[R150]`` a leaf declared by some OTHER plugin is not a key on goose, so a
-        union-derived corpus would pick one and this row would refuse for the right
-        reason at the wrong key.
+        keyspec §0 "The leaf VOCABULARY is partitioned by TIER" a leaf declared by some
+        OTHER plugin is not a key on goose, so a union-derived corpus would pick one and
+        this row would refuse for the right reason at the wrong key.
         """
         from tests.test_settings.test_config_dest_parity import Bench
         from kanibako.settings.config_keys import ConfigLevel, plugin_declared_leaf_map
@@ -759,17 +761,19 @@ class TestTheFiveDoorsAgreeOnOneKey:
     @pytest.mark.parametrize("leaf", sorted(DECLARED_AGENT_LEAVES))
     @pytest.mark.parametrize("node", [KNOWN, DECLARER, UNREADABLE])
     def test_a_UNIVERSAL_leaf_is_a_key_on_every_agent(self, node, leaf, agents):
-        """``[R150]``: a leaf established at ``agent.default`` is a key on every real
-        agent. It is answered from core's table alone, so the map is never reached and
-        the vocabulary's readability cannot matter."""
+        """keyspec §0 "The leaf VOCABULARY is partitioned by TIER": a leaf established at
+        ``agent.default`` is a key on every real agent. It is answered from core's table
+        alone, so the map is never reached and the vocabulary's readability cannot
+        matter."""
         self._assert_all(node, leaf, agents, True)
 
     def test_a_PLUGIN_leaf_is_a_key_on_the_agent_that_declared_it(self, agents):
         self._assert_all(self.DECLARER, self.PLUGIN_LEAF, agents, True)
 
     def test_a_PLUGIN_leaf_is_NOT_a_key_on_another_agent(self, agents):
-        """🛑 THE HEART OF ``[R150]``, and the flat union's exact defect: goose's
-        ``provider`` was a key on claude because the vocabulary was one set."""
+        """🛑 THE HEART OF keyspec §0 "The leaf VOCABULARY is partitioned by TIER", and the
+        flat union's exact defect: goose's ``provider`` was a key on claude because the
+        vocabulary was one set."""
         self._assert_all(self.KNOWN, self.PLUGIN_LEAF, agents, False)
 
     def test_a_leaf_NOBODY_declares_is_a_key_NOWHERE_readable(self, agents):
@@ -779,8 +783,8 @@ class TestTheFiveDoorsAgreeOnOneKey:
 
     @pytest.mark.parametrize("leaf", [PLUGIN_LEAF, NOBODYS_LEAF])
     def test_an_UNREADABLE_agents_leaf_is_CONCEDED_at_every_door(self, leaf, agents):
-        """🛑 ``[R150]``: *"a narrowing that refuses ``agent.goose.provider`` on a
-        claude-only machine has misread this."*
+        """🛑 keyspec §0 "The leaf VOCABULARY is partitioned by TIER": a narrowing that
+        refuses ``agent.goose.provider`` on a claude-only machine has misread this.
 
         This is the row that was RED before the fix — door 2 refused where door 1
         conceded, and door 2 is the launch gate.

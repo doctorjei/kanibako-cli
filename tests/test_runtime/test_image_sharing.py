@@ -686,13 +686,14 @@ class TestVirtiofsPreflightInRunContainer:
 class TestImageSharingConfig:
     """Tests for the ``box.share_images`` SETTINGS key.
 
-    ⚑⚑ THE FIXTURE FILE AND THE CLAIM MOVED HERE ON 2026-08-31 (R153), NOT THE
-    BEHAVIOR.  Every case below wrote its ``box:`` table into a path named
-    ``kanibako.cfg`` and read it back with ``load_config`` — green, because that
-    was a GENERAL document reader.  Spec §1 gives the Layer-1 bootstrap file the
-    ``config.*`` paths ALONE, so the key's file is a SETTINGS file and its reader is
-    ``load_merged_config``.  The Layer-1 positional is the EMPTY file the ``config_file``
-    fixture writes, which also isolates the XDG env the box-scalar resolve reads.
+    ⚑⚑ THE FIXTURE FILE AND THE CLAIM MOVED HERE ON 2026-08-31 (keyspec §1 "holding
+    anything but `config.*`"), NOT THE BEHAVIOR.  Every case below wrote its ``box:``
+    table into a path named ``kanibako.cfg`` and read it back with ``load_config`` —
+    green, because that was a GENERAL document reader.  Spec §1 gives the Layer-1
+    bootstrap file the ``config.*`` paths ALONE, so the key's file is a SETTINGS file and
+    its reader is ``load_merged_config``.  The Layer-1 positional is the EMPTY file the
+    ``config_file`` fixture writes, which also isolates the XDG env the box-scalar resolve
+    reads.
 
     ⚑ THE CASCADE-PRECEDENCE CLAIM IS NOT RE-ASSERTED HERE.  It lives, over a lower-tier
     floor that DIFFERS from its declared default, at ``tests/test_settings/test_config.py

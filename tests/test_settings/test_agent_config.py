@@ -95,7 +95,8 @@ class TestAgentSettingsPath:
 
 
 class TestUnambiguousPathValue:
-    """[R147]'s predicate, and the ONE way it differs from ``is_self_resolving``.
+    """The path-value predicate (keyspec §2a "A path key's stored value"), and the ONE
+    way it differs from ``is_self_resolving``.
 
     ⚑ THE DIFFERENCE IS THE POINT, so it is asserted as a CONTRAST rather than as two
     independent tables: ``is_self_resolving`` rules on a bind SOURCE, where a
