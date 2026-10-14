@@ -920,8 +920,9 @@ class TestLaunchWiring:
         self, std, config, project_dir,
     ):
         """Spec §0/§2b: every declared box scalar resolves in the MAIN launch snapshot,
-        ``box.shell``'s ``<None>`` as a PRESENT ``None`` ([R177]). RED if
-        ``build_launch_snapshot`` stops folding ``config.box_scalar_defaults_floor``."""
+        ``box.shell``'s ``<None>`` as a PRESENT ``None`` (keyspec §0 "it must RESOLVE").
+        RED if ``build_launch_snapshot`` stops folding
+        ``config.box_scalar_defaults_floor``."""
         from kanibako.settings.config import box_scalar_defaults_floor
         from kanibako.settings.kb_store import __MISSING__
         from kanibako.settings.settings_launch import snapshot_leaf

@@ -125,10 +125,11 @@ class TestTheTierBuilderIsDerivedNotListed:
         (``config_interface._path_tier_split``) resolved all eleven.  So ``config set``
         ACCEPTED a binding sourced at ``@system.cache`` and the launch snapshot answered
         ``__MISSING__``, dropping it with no message and rc 0: the
-        ``system.channels.broadcast`` shape, one omission over.  ``[R143]`` settles that
-        this is a defect rather than a stated omission — *"if it has a default value,
-        yes, thay value should be placed in the keystore"* — so ``system_path_floor``
-        derives from :data:`SYSTEM_PATH_DEFAULTS` ENTIRE and the floor went 8 → 11.
+        ``system.channels.broadcast`` shape, one omission over.  keyspec §0
+        "it must RESOLVE" settles that this is a defect rather than a stated omission —
+        [Jei:2026-08-28] *"if it has a default value, yes, thay value should be placed
+        in the keystore"* — so ``system_path_floor`` derives from
+        :data:`SYSTEM_PATH_DEFAULTS` ENTIRE and the floor went 8 → 11.
 
         ⚑ THE OLD CASE IS NOT DELETED, IT IS TURNED OVER: the widening is loud in the
         same place the omission was.  Consumers checked in that same change, both of

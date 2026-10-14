@@ -19,10 +19,10 @@ def _isolate_browser_state(tmp_home, monkeypatch):
     """Isolate the browser-state jar for the whole module.
 
     Every route through :func:`refresh_auth` loads and may save it, and its location is
-    resolved from the host config + settings files ([R168]: it derives from
-    ``system.state``).  A test that mocks Playwright must still never read or write the
-    developer's real state tree, so the XDG bases (``tmp_home``) and the ``/etc`` config
-    base are pinned once, here, rather than per test.
+    resolved from the host config + settings files (keyspec §2g system.state: it derives
+    from ``system.state``).  A test that mocks Playwright must still never read or write
+    the developer's real state tree, so the XDG bases (``tmp_home``) and the ``/etc``
+    config base are pinned once, here, rather than per test.
     """
     import kanibako.settings.config as cfg_mod
 

@@ -244,8 +244,9 @@ class TestWorksetLocalLeafRepoints:
     def test_a_bare_relative_repoint_is_REFUSED_naming_both_readings(
         self, named_proj, std, tmp_path, monkeypatch,
     ):
-        """[R147]: the six channel leaves route through the same one resolver, so the
-        ambiguity refusal reaches them by the same seam the token refusal above does.
+        """keyspec §2a "A path key's stored value": the six channel leaves route through
+        the same one resolver, so the ambiguity refusal reaches them by the same seam
+        the token refusal above does.
 
         ⚑ INVERTED, NOT DELETED: this used to assert ``wch.chat == ws_root / "talk"``
         under the heading "the ONE pre-snapshot grammar, unchanged".  The grammar IS
@@ -402,7 +403,8 @@ class TestTheFloorCarriesTheWholeFamily:
     ):
         """⚑ standalone: the root and the four LOCAL leaves are ``<None>``, the two
         partition keys are not.  The ``<None>`` is SUPPLIED as a present ``None``, never
-        omitted ([R177]): an absent key renders ``""`` inside an embedded ``{key}``-ref."""
+        omitted (keyspec §0 "it must RESOLVE"): an absent key renders ``""`` inside an
+        embedded ``{key}``-ref."""
         from kanibako.settings.settings_launch import _workset_channel_floor_values
         from kanibako.settings.settings_launch import workset_anchor_floor
 

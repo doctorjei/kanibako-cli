@@ -336,7 +336,8 @@ class TestB2bWorksetAnchors:
         assert "meta.box.vault_ro_src" not in floor
         assert "meta.box.vault_rw_src" not in floor
         # No workset-local channels for standalone: the leaf carries §2c's ``<None>``,
-        # SUPPLIED as a present ``None`` rather than omitted ([R177]).
+        # SUPPLIED as a present ``None`` rather than omitted (keyspec §0
+        # "it must RESOLVE").
         assert "workset.channels.common" in floor
         assert floor["workset.channels.common"] is None
 

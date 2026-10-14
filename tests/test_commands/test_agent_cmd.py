@@ -563,7 +563,8 @@ class TestRunConfig:
     def test_config_show_folds_the_typed_case_to_the_stored_node(
         self, agent_env, capsys,
     ):
-        """``agent show Claude`` reads the store the launch writes ([R173]).
+        """``agent show Claude`` reads the store the launch writes
+        (keyspec §0 "An agent's canonical case is carried by its _name_").
 
         The launch derives the node in lowercase (``agents/claude/``), so the
         verb folds the user-typed harness segment to the same node instead of
@@ -1184,8 +1185,9 @@ class TestSparseWrites:
 
     @pytest.mark.parametrize("verb", ("run_list", "run_get", "run_show", "run_info"))
     def test_the_agent_verbs_concede_what_the_launch_concedes(self, agent_env, capsys, verb):
-        """An agent with no readable vocabulary is conceded ([R150]) by the launch's §0 audit,
-        so the verbs concede it too — one verdict, in both directions."""
+        """An agent with no readable vocabulary is conceded (keyspec §0
+        "The leaf VOCABULARY is partitioned by TIER") by the launch's §0 audit, so the
+        verbs concede it too — one verdict, in both directions."""
         from kanibako.commands import agent_cmd
 
         _write_sparse(agent_env, "claude", {
@@ -2180,7 +2182,8 @@ def _stored_doc(agent_env):
 
 
 class TestAgentSetRefusesABareRelativePath:
-    """[R147] reaches ``agent set`` BECAUSE the verb routes through ``set_config_value``.
+    """keyspec §2a "A path key's stored value" reaches ``agent set`` BECAUSE the verb
+    routes through ``set_config_value``.
 
     ⚑ THIS IS THE PAYOFF OF THAT ROUTING, pinned at the CLI surface rather than at the
     engine: while this verb had its own writer straight to ``write_leaf``, no set-time
@@ -2253,8 +2256,9 @@ class TestAgentVerbKeyspaceGate:
 
     def test_a_persona_agent_takes_its_harness_vocabulary(self, agent_env, capsys):
         """A persona node (``nav+claude`` = persona ``nav`` on harness ``claude``) is gated on
-        its HARNESS's declared keys (spec §2d, ``[R150]``): ``set`` refuses an undeclared leaf
-        and writes nothing, takes a declared one, and ``show`` / ``get`` refuse a hand-written
+        its HARNESS's declared keys (spec §2d, keyspec §0
+        "The leaf VOCABULARY is partitioned by TIER"): ``set`` refuses an undeclared leaf and
+        writes nothing, takes a declared one, and ``show`` / ``get`` refuse a hand-written
         undeclared leaf by name."""
         from kanibako.commands import agent_cmd
         from kanibako.settings.config_io import load_doc
@@ -2280,8 +2284,9 @@ class TestAgentVerbKeyspaceGate:
                 getattr(agent_cmd, verb)(args)
 
     def test_a_persona_on_an_uninstalled_harness_concedes(self, agent_env, capsys):
-        # ``[R150]``: no plugin here declares harness ``nosuchharness``, so its vocabulary is
-        # unreadable and a leaf is CONCEDED rather than refused (``claude+work`` is this case).
+        # keyspec §0 "The leaf VOCABULARY is partitioned by TIER": no plugin here declares
+        # harness ``nosuchharness``, so its vocabulary is unreadable and a leaf is CONCEDED
+        # rather than refused (``claude+work`` is this case).
         from kanibako.commands.agent_cmd import run_set
 
         _write_sparse(agent_env, "nav+nosuchharness", {"self": {}})

@@ -370,8 +370,9 @@ def test_the_reservation_does_not_over_reach(good):
     # PREFIX or extension only.  A name that merely contains or extends a
     # reserved word is an ordinary agent name, and refusing it would widen a
     # user-facing surface past the two names the spec reserves.  Re-casing is
-    # NOT in this list: the reservation folds for comparison ([R172]), so
-    # ``Shell`` is refused like ``shell`` — see the next test.
+    # NOT in this list: the reservation folds for comparison (keyspec §0
+    # "CASE INSENSITIVE for collision purposes"), so ``Shell`` is refused
+    # like ``shell`` — see the next test.
     assert parse_agent_ref(good) == (good, good)
 
 
@@ -379,7 +380,7 @@ def test_the_reservation_does_not_over_reach(good):
     "variant", ["Shell", "SHELL", "sHeLl", "Default", "DEFAULT"],
 )
 def test_the_reservation_folds_for_comparison(variant):
-    """One identifier, one refusal ([R172], keyspec §0 NAMING RULES).
+    """One identifier, one refusal (keyspec §0 NAMING RULES).
 
     A re-cased reserved name is the SAME identifier compared case-blind, so it
     is refused in every role a reserved name is refused in — bare, persona and
@@ -419,9 +420,10 @@ def test_the_reservation_leaves_the_agent_default_key_TIER_alone():
 def test_an_address_may_name_the_shell_pseudo_agent(variant):
     """Keyspec §2b: the shell box is invoked "as any other agent" — ``--agent shell``.
 
-    Folds for comparison ([R172]) and strips like the claimant grammar; the node
-    it returns is the lowercase slot, so every case keys ``agents/shell/``.
-    INVERT: route it through ``parse_agent_ref`` and every variant raises.
+    Folds for comparison (keyspec §0 "CASE INSENSITIVE for collision purposes") and
+    strips like the claimant grammar; the node it returns is the lowercase slot, so
+    every case keys ``agents/shell/``. INVERT: route it through ``parse_agent_ref``
+    and every variant raises.
     """
     assert parse_agent_address(variant) == (GENERAL_SLOT, GENERAL_SLOT)
 
@@ -445,7 +447,7 @@ def test_default_is_not_addressable_as_an_agent():
 @pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
 def test_an_address_still_refuses_a_pseudo_agent_inside_a_composite(name):
     """The claimant refusals are untouched: a persona cannot ride a pseudo-agent,
-    and no persona may be named after one ([R178])."""
+    and no persona may be named after one (keyspec §2d "Pseudo-agent(s)")."""
     with pytest.raises(ConfigError, match=r"harness segment .* RESERVED"):
         parse_agent_address(f"navigator+{name}")
     with pytest.raises(ConfigError, match=r"persona segment .* RESERVED"):
@@ -470,7 +472,8 @@ def test_with_harness_bare_as_requested():
 
 
 def test_with_harness_bare_takes_the_node_spelling():
-    # Bare node typed with a capital -> the lowercase node ([R173]).
+    # Bare node typed with a capital -> the lowercase node
+    # (keyspec §0 "An agent's canonical case is carried by its _name_").
     assert with_harness("Claude", "claude") == "claude"
 
 
@@ -488,8 +491,9 @@ def test_with_harness_does_not_validate():
     """The swap is pure string work, not a grammar check.
 
     It will compose a node the grammar refuses — a persona riding a pseudo-agent
-    ([R178]) — and ``parse_agent_ref`` is what refuses it. No launch path asks for
-    that swap: a NAMED target never falls back to ``ShellTarget``.
+    (keyspec §2d "Pseudo-agent(s)") — and ``parse_agent_ref`` is what refuses it. No
+    launch path asks for that swap: a NAMED target never falls back to
+    ``ShellTarget``.
     """
     composed = with_harness("navigator℘claude", "shell")
     with pytest.raises(ConfigError, match=r"harness segment .* RESERVED"):

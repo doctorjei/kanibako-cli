@@ -160,16 +160,19 @@ def test_explicit_shell_resolves_without_consulting_installed(
     # ``shell`` is SELECTABLE though not claimable: it names the built-in
     # occupying its own slot (spec §2b, [R175]), so it resolves WITHOUT
     # consulting the installed set — even a host with only ``claude`` answers
-    # it.  Fold-to-compare ([R172]): any case reaches the lowercase node.
+    # it.  Fold-to-compare (keyspec §0
+    # "CASE INSENSITIVE for collision purposes"): any case reaches the lowercase
+    # node.
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert resolve_agent(explicit_agent=spelling, requested=None) == "shell"
 
 
 def test_explicit_no_agent_is_not_installed(monkeypatch):
-    # [R174]: ``no_agent`` does not exist — a token reaching the code is an
-    # error, never a translation.  It parses as a name like any other and then
-    # fails the installed-set lookup it was never registered in.
+    # MIGRATION.md § "The plain-shell store is": ``no_agent`` does not exist — a
+    # token reaching the code is an error, never a translation.  It parses as a
+    # name like any other and then fails the installed-set lookup it was never
+    # registered in.
     _patch_targets(monkeypatch, ["claude", "shell"])
     _no_default(monkeypatch)
     with pytest.raises(AgentNotInstalledError):
@@ -269,7 +272,8 @@ def test_bare_claude_unchanged_with_persona_support(monkeypatch):
 
 
 def test_a_typed_case_variant_reaches_the_agent_and_returns_the_NODE(monkeypatch):
-    """``[R173]``: ``system.agent`` and ``--agent`` carry a NAME; the node is lowercase.
+    """keyspec §0 "An agent's canonical case is carried by its _name_": ``system.agent`` and
+    ``--agent`` carry a NAME; the node is lowercase.
 
     This is the hop where the one becomes the other.  Exact matching answered
     ``--agent Claude`` with *"Agent 'Claude' is not installed"* — the installed
@@ -287,9 +291,10 @@ def test_a_typed_case_variant_reaches_the_agent_and_returns_the_NODE(monkeypatch
 def test_a_case_variant_folds_the_HARNESS_and_leaves_the_PERSONA_alone(monkeypatch):
     """Only the harness segment is this ruling's to touch.
 
-    ``[R173]`` splits an agent into a case-carrying NAME and a lowercase NODE; a
-    PERSONA has no plugin to declare it, and whether it folds is still open
-    (``Q35``).  So the substitution replaces exactly the harness.
+    keyspec §0 "An agent's canonical case is carried by its _name_" splits an
+    agent into a case-carrying NAME and a lowercase NODE; a PERSONA has no
+    plugin to declare it, and whether it folds is still open (``Q35``).  So the
+    substitution replaces exactly the harness.
     """
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)

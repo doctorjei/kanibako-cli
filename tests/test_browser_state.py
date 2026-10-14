@@ -41,7 +41,7 @@ class TestBrowserState:
 
 
 class TestStatePath:
-    """The jar's location — ``system.state``, and nothing else ([R166], [R168])."""
+    """The jar's location — ``system.state``, and nothing else (keyspec §2g system.state)."""
 
     def test_path(self, state_home):
         assert state_path() == state_home / "browser-state" / "context.json"
@@ -59,10 +59,11 @@ class TestStatePath:
         assert state_path() == elsewhere / "browser-state" / "context.json"
 
     def test_never_lands_in_the_data_tree(self, state_home, tmp_home):
-        """[R168]: the jar is STATE — regenerable and machine-local — so it derives from
-        ``system.state``.  The retired spelling put it under ``config.data``; nothing may
-        reach that spelling again, and a REPOINTED ``config.data`` moves no state ([R166]),
-        so the store below is the reading that must stay unreachable."""
+        """keyspec §2g system.state: the jar is STATE — regenerable and machine-local — so
+        it derives from ``system.state``.  The retired spelling put it under
+        ``config.data``; nothing may reach that spelling again, and a REPOINTED
+        ``config.data`` moves no state (keyspec §2g), so the store below is the reading
+        that must stay unreachable."""
         store = tmp_home / "srv" / "custom_store"
         (tmp_home / "config" / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
 
@@ -135,7 +136,8 @@ class TestSaveState:
         assert state_path().is_file()
 
     def test_writes_under_the_state_root(self, state_home, tmp_home):
-        """[R168], on the WRITE side: the bytes land in the state tree, never the data one."""
+        """keyspec §2g system.state, on the WRITE side: the bytes land in the state tree,
+        never the data one."""
         save_state(BrowserState(cookies=[{"name": "session"}]))
         assert (state_home / "browser-state" / "context.json").is_file()
         assert list((tmp_home / "data").rglob("browser-state")) == []
