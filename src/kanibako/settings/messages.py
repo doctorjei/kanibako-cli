@@ -2,8 +2,8 @@
 
 ⚑ Every ``MSG_``/``WARN_``/``ERR_`` literal here is USER-VISIBLE output.
 🛑 PATH LITERALS DO NOT LIVE HERE — they moved to :mod:`kanibako.settings.bootstrap`
-(CONVENTIONS P10 "derive from declared keys"). Do not reintroduce one; add it there and
-import it.
+(CONVENTIONS P10 "derive from declared keys"). Do not reintroduce one; add it there
+and import it.
 
 ⚑ NO path literal is defined here. ``RUN_USER_UID_PATH`` is IMPORTED from ``bootstrap`` for
 ``WARN_RUNDIR_UNUSABLE``'s splice — the single permitted import, and safe because ``bootstrap``
