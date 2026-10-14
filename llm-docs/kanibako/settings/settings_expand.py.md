@@ -12,7 +12,7 @@ snapshot (S19). It builds and returns a FRESH `KeyStore`.
 this pass never fabricates a default for a name it cannot find. An absent referent propagates
 ABSENCE — the holder key is DROPPED (whole-value, spec §0) or substitutes the empty string (embedded).
 A PRESENT-`None` referent makes the WHOLE value `None`, whole-value or embedded alike (spec §0:
-*"An embedded reference to a present `<None>` makes the whole value `<None>`."*, [R186]) — and every
+*"An embedded reference to a present `<None>` makes the whole value `<None>`."*) — and every
 other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap breach, an
 unknown `$VAR`, a `{pref.*}` reference, or a binding destination that would resolve to no path.
 
@@ -307,13 +307,14 @@ a `seeded` LAYER (§2a) and a bind alike ([Q80] (a): skip, not refuse).
 ⚑ **The E2 side table.** For each bind entry the node walk turns `None` this way, the expander
 records the refs that did it, keyed by the entry's path (segments, raw destination last), in
 `null_sources`; `expand(…, null_sources=…)` copies it out. `settings_launch` names those keys in
-the [R185] warning for a STANDARD bind. Only an entry reached by the walk is recorded, never a
-transitive read of the same value.
-⚑ `None`, not `_ABSENT`: a supplied `<None>` is a value, and a default is a fallback that applies
-only where nothing was supplied (`[R177]`) — an `_ABSENT` seeded entry would let the §2d pick
-(`settings_launch._agent_pick_node`) refill a shell box's `~/` from a user's `agent.default.seeded`.
+the lone-`<None>` warning (keyspec §2a "PER-ENTRY CASCADE MERGE") for a STANDARD bind. Only an
+entry reached by the walk is recorded, never a transitive read of the same value.
+⚑ `None`, not `_ABSENT`: a supplied `<None>` is a value, and a pseudo-agent does not inherit from
+`agent.default` (keyspec §2d "Pseudo-agent(s)") — an `_ABSENT` seeded entry would let the §2d
+pick (`settings_launch._agent_pick_node`) refill a shell box's `~/` from a user's
+`agent.default.seeded`.
 
-## Embedded `None` — the WHOLE value is `None` (spec §0, [R186])
+## Embedded `None` — the WHOLE value is `None` (spec §0)
 
 *"An embedded reference to a present `<None>` makes the whole value `<None>`."* `_expand_str` hands
 `_expand_embedded` a fresh `none_refs` list; `_lookup_str` RECORDS each present-`None` referent in
@@ -326,7 +327,7 @@ raises — except in a `seeded` map, where it skips the layer (Refusal 1).
 `workset.vault_ro: null` would mount host `/<box>`. It is the one rule for every leaf, so no
 category carries a second copy of it. An ABSENT referent keeps the embedded `""` (spec §0).
 
-## The host-source refusal — POST-expansion, and deliberately not [R147]'s test
+## The host-source refusal — POST-expansion, and deliberately not the keyspec §2a stored-value test
 
 `_refuse_relative_host_src(raw, expanded, chain)` runs in BOTH bind arms once the source half is a
 string, and raises unless the EXPANDED source is empty or absolute. The hazard is
@@ -344,7 +345,8 @@ the mount as `host_src='relcanon/handbook'`.
 🛑 The refusal names the KEY-BEARING EXPRESSION, not just the result — the fix is to the path key,
 and the expanded string no longer says which one that was.
 
-⚑ **It is NOT [R147]'s stored-value check, and the two are not interchangeable.**
+⚑ **It is NOT the stored-value check (keyspec §2a "A path key's stored value"), and the two are
+not interchangeable.**
 `agent_config.is_unambiguous_path_value` — the predicate behind the set-time and read-time key
 refusals — rules on the SPELLING a user stored, BEFORE any expansion, so `{$XDG_DATA_HOME}/kanibako`
 stays legal there whatever the environment answers. This guard rules on what a declaration's source

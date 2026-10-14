@@ -61,7 +61,8 @@ ENV: Final[Delivery] = "ENV"
 #: Read by the three seams that refuse one: ``settings_resolve.refuse_unrooted_source``
 #: (the DECLARATION-LOAD entry refusal), ``settings_expand`` (the post-expansion guard,
 #: which catches the same defect after a ``{key}``-ref dereferences a bare-relative path key,
-#: [R147]) and ``settings_launch`` (a ``secret_path`` host source).
+#: keyspec §2a "A path key's stored value") and ``settings_launch`` (a ``secret_path`` host
+#: source).
 BARE_RELATIVE_SOURCE_HAZARD: Final[str] = (
     "a relative source resolves against whatever directory kanibako happens to be run "
     "from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as "

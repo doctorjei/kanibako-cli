@@ -11,7 +11,7 @@ NEVER mutates the input snapshot (S19): it builds a fresh ``KeyStore``.
 NEVER fabricates a default for a name it cannot find. An absent referent that is a
 declared key propagates ABSENCE (spec §0: whole-value → the holder key is DROPPED,
 embedded → ``""``). A present-``None`` referent makes the WHOLE value ``None``,
-whole-value or embedded alike (spec §0, [R186]). Every other unresolvable case is an
+whole-value or embedded alike (spec §0). Every other unresolvable case is an
 ERROR that NAMES the key: a ref that names no declared key, a cycle, a depth-cap
 breach, an unknown ``{$VAR}``, a ``{pref.*}`` ref, or a binding destination that would
 resolve to no path.
@@ -247,7 +247,8 @@ def expand(
 
     *null_sources*, when given, is filled with the side table
     (:data:`NullSources`): which bind entries came out ``None`` and the refs that made
-    them so.  ``settings_launch`` names those keys in the [R185] warning.
+    them so.  ``settings_launch`` names those keys in the lone-``<None>`` warning
+    (keyspec §2a "PER-ENTRY CASCADE MERGE").
 
     *dest_keys*, when given, is filled with :data:`DestKeys`: the key each bind entry
     was filed under, so a reader holding the stored destination finds the entry
@@ -499,7 +500,7 @@ class _Expander:
     def _refuse_relative_host_src(
         self, raw: str, expanded: str, *, chain: tuple[str, ...]
     ) -> None:
-        """Refuse a host source that EXPANDED to a bare relative path (spec §2a, [R147]).
+        """Refuse a host source that EXPANDED to a bare relative path (spec §2a).
 
         ⚑ THE PARSE CANNOT COVER THIS ONE, which is why the guard is here as well.
         ``settings_assemble._declared_source`` refuses a source SPELLED relative, and
@@ -600,7 +601,7 @@ class _Expander:
         → the value or ``_ABSENT`` (:meth:`_resolve_whole_value_var`). EMBEDDED token
         or plain literal → ``expand_expr`` substitution, where an absent ``{key}``-ref
         substitutes ``""`` — but ANY embedded ``{key}``-ref to a present-``None`` key makes
-        the whole value ``None`` (spec §0, [R186]).  ⚑ Never ``""`` for that case:
+        the whole value ``None`` (spec §0).  ⚑ Never ``""`` for that case:
         ``{key}/x`` with ``key`` null would otherwise become the host path ``/x``.
 
         *space*: ``"host"`` expands ``~``/``{$VAR}`` host-side; ``"defer"`` leaves
@@ -900,7 +901,7 @@ class _Expander:
 
         A present-``None`` referent is RECORDED in *none_refs* before the coercion:
         its ``""`` is a placeholder the caller (:meth:`_expand_str`) discards, since
-        the whole value is then ``None`` (spec §0, [R186]).
+        the whole value is then ``None`` (spec §0).
         """
         resolved = self._resolve_ref(dotted, chain=chain)
         if resolved is None:

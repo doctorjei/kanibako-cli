@@ -609,10 +609,11 @@ def config_entry_groups(keys: Iterable[str]) -> list[tuple[str, list[str]]]:
     The split is the Layer-1 reader's own (:data:`~kanibako.settings.bootstrap.
     CONFIG_PATH_DEFAULTS`, the set ``config.bootstrap_config_paths`` accepts): a DECLARED key
     is cured by moving it to ``kanibako.cfg`` — named by its resolved path, which callers read
-    and never compose ([R154]) — and anything else by deleting it: an undeclared or nested
-    entry, or a ``config:`` holding a value that is not a table, the ``.cfg`` file would refuse
-    too, and a ``config:`` that flattens to nothing (:func:`stored_config_entries`) means
-    nothing in either file. A moved key is machine-wide, not this file's: the cure says so.
+    and never compose (keyspec §1A "never composed") — and anything else by deleting it: an
+    undeclared or nested entry, or a ``config:`` holding a value that is not a table, the
+    ``.cfg`` file would refuse too, and a ``config:`` that flattens to nothing
+    (:func:`stored_config_entries`) means nothing in either file. A moved key is
+    machine-wide, not this file's: the cure says so.
     """
     move = (
         f"move under 'config:' in {user_config_file()} (site-wide: {config_base_path()}) "

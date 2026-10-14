@@ -82,10 +82,10 @@ that unrepresentable.
 ⚑⚑ AND THE CONCESSION RIDES IN THAT SAME PARAMETER, SPOKEN RATHER THAN INFERRED
 (:class:`ConcedingLeafMap`). It was carried by a MISSING KEY until 2026-08-30, and
 a missing key cannot tell *"this machine has no goose plugin to read"* — which
-``[R150]`` requires be conceded — from *"nobody supplied a vocabulary at all"*,
-which must not be. ``{}`` was both, and the second is what a hand-built or degraded
-supplier produces, so §0 failed OPEN on the default. A map now SAYS what it
-concedes; a plain mapping concedes nothing.
+keyspec §0 "The leaf VOCABULARY is partitioned by TIER" requires be conceded — from
+*"nobody supplied a vocabulary at all"*, which must not be. ``{}`` was both, and the
+second is what a hand-built or degraded supplier produces, so §0 failed OPEN on the
+default. A map now SAYS what it concedes; a plain mapping concedes nothing.
 
 ⚑ THAT PURITY MAKES THE INJECTED MAP EXPENSIVE, WHICH IS WHY IT IS ASKED LAST. Its
 production supplier (``settings_keyspace_probe``) answers by IMPORTING every
@@ -277,10 +277,10 @@ TABLE_VALUED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({"transform_setting
 #:
 #: ⚑ IT IS A SUBSET OF :data:`DECLARED_AGENT_LEAVES`, NOT A SECOND KEYSPACE — the same
 #: shape as :data:`TABLE_VALUED_AGENT_LEAVES` above and for the same reason: what it
-#: answers is a narrower question about a fully declared key, here "does [R147]'s
-#: bare-relative refusal reach this value?".  It is the agent-scope half of
-#: ``config_keys.is_path_valued_key``; the other scopes' path keys are spelled in full
-#: in ``config_keys.KEY_TYPES``.
+#: answers is a narrower question about a fully declared key, here "does the
+#: bare-relative refusal reach this value?" (keyspec §2a "A path key's stored value").
+#: It is the agent-scope half of ``config_keys.is_path_valued_key``; the other scopes'
+#: path keys are spelled in full in ``config_keys.KEY_TYPES``.
 PATH_VALUED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({"template", "canon"})
 
 #: The declared agent leaves a CLI ``set`` can actually WRITE — every leaf holding a SCALAR.
@@ -1293,9 +1293,10 @@ class _UnreadHarnesses(Container[str]):
 
     ⚑ A ``Container`` AND NOT A SET, because the honest answer is CO-INFINITE: it
     holds every agent name this machine has never heard of, which is exactly the
-    population ``[R150]`` concedes (*"an uninstalled agent's leaf is CONCEDED rather
-    than refused"*). :func:`_could_name_an_agent` makes the same point about NAMES —
-    a machine cannot enumerate what it has never heard of, so it cannot judge it.
+    population keyspec §0 "The leaf VOCABULARY is partitioned by TIER" concedes
+    (*"the leaf is CONCEDED, never refused"*). :func:`_could_name_an_agent` makes the
+    same point about NAMES — a machine cannot enumerate what it has never heard of, so
+    it cannot judge it.
     """
 
     __slots__ = ("_declared",)
@@ -1322,16 +1323,17 @@ def unread_harnesses(declared: "AgentLeafMap") -> "Container[str]":
 
 
 class ConcedingLeafMap(Mapping[str, "Collection[str]"]):
-    """A leaf map that SAYS which harnesses it could not read (``[R150]``).
+    """A leaf map that SAYS which harnesses it could not read
+    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
 
     ⚑⚑ THE CONCESSION IS A CLAIM A SUPPLIER MAKES, NEVER A GAP A JUDGE INFERS. It was
     absence-of-a-key until 2026-08-30, and absence cannot tell apart the two states
     that wear it: *"this machine has no goose plugin, so goose's vocabulary is
-    unreadable here"* — where ``[R150]`` requires ``agent.goose.provider`` be
-    CONCEDED — and *"no vocabulary was supplied at all"*, where conceding hands every
-    named agent every tail it likes. Both are ``{}``, and the second one was the
-    DEFAULT: a supplier that had read nothing conceded everything, so §0 failed OPEN
-    on an omission.
+    unreadable here"* — where keyspec §0 "The leaf VOCABULARY is partitioned by TIER"
+    requires ``agent.goose.provider`` be CONCEDED — and *"no vocabulary was supplied at
+    all"*, where conceding hands every named agent every tail it likes. Both are
+    ``{}``, and the second one was the DEFAULT: a supplier that had read nothing
+    conceded everything, so §0 failed OPEN on an omission.
     🛑 A PLAIN ``dict`` THEREFORE CONCEDES NOTHING, and that is the fail-closed
     direction — a map with no standing to concede refuses what it cannot vouch for.
     The way to concede is to say so here.
@@ -1369,8 +1371,9 @@ def agent_declared_leaves(
     ``None`` is the CONCESSION and nothing else is: §0 makes agent specifics
     PLUGIN-declared, so where the plugin is absent there is no vocabulary to judge
     against and ``agent.goose.provider`` — a real goose ``setting_descriptor`` leaf —
-    must not be refused on a claude-only machine (``[R150]``: *"a narrowing that
-    refuses ``agent.goose.provider`` on a claude-only machine has misread this"*).
+    must not be refused on a claude-only machine
+    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER": a narrowing that refuses
+    ``agent.goose.provider`` on a claude-only machine has misread this).
 
     ⚑⚑ AND THE MAP HAS TO SAY SO. A harness the map neither declares nor concedes
     gets core's table, because the silence of a map is not evidence about this
@@ -1382,9 +1385,10 @@ def agent_declared_leaves(
     ⚑ THE NORMALIZATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
     :func:`is_valid_agent_segment` gives: a rule every supplier has to re-implement is
     a rule some supplier gets wrong. A persona takes its HARNESS's vocabulary
-    (``[R150]``'s *"or harness"*), and the ref arrives RAW — ``config_keys`` hands this
-    pre-canonicalization keys — so ``harness_of`` alone is not enough: it splits on
-    ``℘`` only, and a raw ``nav+claude`` would miss the map and be silently CONCEDED.
+    (*"or harness"*, keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), and the
+    ref arrives RAW — ``config_keys`` hands this pre-canonicalization keys — so
+    ``harness_of`` alone is not enough: it splits on ``℘`` only, and a raw
+    ``nav+claude`` would miss the map and be silently CONCEDED.
     That was live at the resolve seam: ``agent.nav+claude.zippity`` classified KEY
     while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
     two answers by spelling.
@@ -1424,7 +1428,8 @@ class AgentVocabulary(Collection[str]):
     (:class:`PseudoAgentFence`), because the true-agent rows do not reach it, and it has
     no plugin half.
 
-    ⚑⚑ THE TIER IS THE PARTITION LINE (``[R150]``). A leaf established at
+    ⚑⚑ THE TIER IS THE PARTITION LINE
+    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). A leaf established at
     ``agent.default`` is UNIVERSAL — a key on every real agent; every OTHER leaf is
     legal only on the agent (or harness) whose plugin declared it. So the core §2d
     table is asked FIRST and unconditionally, and the map is asked only for a leaf
@@ -1483,7 +1488,7 @@ class AgentVocabulary(Collection[str]):
 def agent_leaf_is_declared(
     name: str, tail: str, agent_leaf_map: "AgentLeafMap | None",
 ) -> bool:
-    """Is *tail* a declared leaf of agent *name* (spec §0, ``[R150]``)?
+    """Is *tail* a declared leaf of agent *name* (spec §0)?
 
     ⚑ ONE CARRIER FOR THE PER-AGENT RULE. :func:`key_class` judges through
     :class:`AgentVocabulary` because it owes a REASON; ``config_keys``' per-node
@@ -1504,11 +1509,12 @@ class _EffectiveLeaves(Collection[str]):
     """The core §2d set with EVERY harness's declared leaves behind it — lazily.
 
     🛑 THE FLAT CROSS-AGENT UNION, AND IT HAS EXACTLY ONE QUESTION LEFT TO ANSWER.
-    ``[R150]`` killed it as a judge — a plugin's leaf is a key only on the agent whose
-    plugin declared it — so what survives is the ONE surface that carries NO
-    DISCRIMINATOR to judge per-agent with, where the partition is not expressible:
-    the RO ``meta.box.agent.*`` mirror, whose agent is a runtime fact, absent from the
-    key.  (``config_keys.agent_file_identity_only`` was the other until 2026-09-02,
+    Keyspec §0 "The leaf VOCABULARY is partitioned by TIER" killed it as a judge — a
+    plugin's leaf is a key only on the agent whose plugin declared it — so what
+    survives is the ONE surface that carries NO DISCRIMINATOR to judge per-agent with,
+    where the partition is not expressible: the RO ``meta.box.agent.*`` mirror, whose
+    agent is a runtime fact, absent from the key.
+    (``config_keys.agent_file_identity_only`` was the other until 2026-09-02,
     when its two call sites started passing the NODE they already held; it was DELETED
     on 2026-09-15 with the agent file's non-key ``name`` field.)
     Narrowing it to core alone would refuse a leaf that reads back a real value,
@@ -1578,10 +1584,11 @@ def _agent_tail_reason(
     *leaves* is the effective agent-leaf vocabulary: core's universal §2d table plus
     whatever the PLUGINS declare for THIS agent (§0 — *"Agent specifics are
     PLUGIN-declared … Every non-universal specific is established AND modified by the
-    PLUGIN, never hardcoded in core"*; ``[R150]`` partitions by TIER). Without the
-    plugin half a real key is refused: goose declares ``provider`` through
-    ``setting_descriptors()`` and ``agent.goose.provider`` is legitimate. With it
-    unioned ACROSS agents, ``agent.claude.provider`` was a key too — which it is not.
+    PLUGIN, never hardcoded in core"*;
+    keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). Without the plugin half a
+    real key is refused: goose declares ``provider`` through ``setting_descriptors()``
+    and ``agent.goose.provider`` is legitimate. With it unioned ACROSS agents,
+    ``agent.claude.provider`` was a key too — which it is not.
 
     ⚑ *leaves_known* answers FALSE when the caller could not read this agent's plugin
     at all, so *leaves* does not cover it — see :func:`key_class`. Then the VOCABULARY
@@ -1611,9 +1618,10 @@ def _agent_tail_reason(
         if tail[0] in leaves or not leaves_known():
             return _leaf(tail[0])
         return _undeclared(
-            # ⚑ THE AGENT IS NAMED, and after ``[R150]`` it has to be: the vocabulary
-            # is per-agent, so "not a declared agent key" alone reads as though the
-            # leaf were a key NOWHERE. The pinned phrase is kept intact inside it.
+            # ⚑ THE AGENT IS NAMED, and after
+            # keyspec §0 "The leaf VOCABULARY is partitioned by TIER" it has to be: the
+            # vocabulary is per-agent, so "not a declared agent key" alone reads as
+            # though the leaf were a key NOWHERE. The pinned phrase is kept intact inside it.
             f"'{tail[0]}' is not a declared agent key of '{prefix}' (declared: "
             f"{', '.join(sorted(leaves))}, plus the §2a "
             f"categories) (spec §0 — the keyspace is CLOSED)"
@@ -1667,7 +1675,7 @@ def key_class(
     are real, exclusive of ``"default"`` which is always legal.
 
     ⚑⚑ *agent_leaf_map* IS THE LEAF VOCABULARY, HARNESS BY HARNESS, and the shape is
-    the rule (``[R150]``, spec §0 L214-217): a leaf established at ``agent.default``
+    the rule (spec §0 L214-217): a leaf established at ``agent.default``
     is UNIVERSAL, and every OTHER leaf is legal only on the agent or harness whose
     plugin declared it. ``None`` means core's universal table alone.
     ⮕ **THE MAP CARRIES THE CONCESSION TOO, AND SPEAKS IT** — a
@@ -1707,9 +1715,10 @@ def key_class(
     # and materializing the union here charged every ``box.*`` / ``system.*`` /
     # ``meta.*`` path for a plugin import it never uses. See :class:`_EffectiveLeaves`.
     # ⚑ THE FLAT UNION, and its ONE reader is ``meta.box.agent.*`` — the RO mirror,
-    # whose agent is a runtime fact absent from the key, so ``[R150]``'s per-agent
-    # partition has no discriminator to work from there. The ``agent.<name>`` branch
-    # below builds an :class:`AgentVocabulary` instead and never reads this.
+    # whose agent is a runtime fact absent from the key, so the per-agent partition
+    # (keyspec §0 "The leaf VOCABULARY is partitioned by TIER") has no discriminator to
+    # work from there. The ``agent.<name>`` branch below builds an
+    # :class:`AgentVocabulary` instead and never reads this.
     leaves: Collection[str] = effective_agent_leaves(agent_leaf_map)
 
     if head == "config":
@@ -1825,7 +1834,7 @@ def key_class(
             return _namespace("'agent' is a namespace, not a key (spec §2d)")
         name = rest[0]
         # ⚑ BEFORE the validity test: a conceding *valid_agents* would admit the alias as
-        # an unheard-of agent name (``[R150]``).
+        # an unheard-of agent name (keyspec §0 "The leaf VOCABULARY is partitioned by TIER").
         alias = file_alias_reason(name)
         if alias is not None:
             return _undeclared(alias)

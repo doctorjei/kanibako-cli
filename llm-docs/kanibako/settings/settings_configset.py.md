@@ -134,5 +134,5 @@ expression. It is judged at the slot the value is WRITTEN to (`config_dest._key_
 ⚑ **How step 3 detects failure, and why it is neither a prefix match nor a type sniff.** This
 mirrors the live setter in `set_config_value`: `_coerce_value` returns a `CoercionError` and nothing
 else on failure, so the check is `isinstance(coerced, CoercionError)` and the carried `.message` is
-what the user reads. A `str` result is not a failure: `KEY_TYPES` carries `path` (`[R147]`), and a
-path stays a raw string.
+what the user reads. A `str` result is not a failure: `KEY_TYPES` carries `path`
+(keyspec §2a "A path key's stored value"), and a path stays a raw string.

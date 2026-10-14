@@ -119,7 +119,7 @@ class StandardPaths:
     journal: Path
     # ⚑ ``system.cache`` and ``system.state`` are THE host cache and state roots, and the
     # only things a cache or a state store derives from.  Neither has any relationship to
-    # ``config.data`` ([R166]).  Do not re-derive either from a leaf.
+    # ``config.data`` (keyspec §2g system.state).  Do not re-derive either from a leaf.
     cache: Path
     state: Path
     runtime: Path
@@ -560,11 +560,13 @@ def xdg(env_var: str, default_suffix: str) -> Path:
 
 
 def user_config_home() -> Path:
-    """The XDG config base dir — the ONE internal resolver for directory users ([R154]).
+    """The XDG config base dir — the ONE internal resolver for directory users
+    (keyspec §1A "never composed").
 
-    ⚑ NOT A KEY: [R154] refuses a companion ``config_home`` key by name — 18 sites use
-    this value as a DIRECTORY, two outside kanibako's tree entirely (VS Code's
-    ``settings.json``, the persona-grata root), so they route through here instead.
+    ⚑ NOT A KEY: keyspec §1A declares the finished config file and no companion
+    ``config_home`` key — 18 sites use this value as a DIRECTORY, two outside kanibako's
+    tree entirely (VS Code's ``settings.json``, the persona-grata root), so they route
+    through here instead.
     """
     return xdg(XDG_CONFIG_HOME, XDG_SPEC_DEFAULTS[XDG_CONFIG_HOME])
 
@@ -637,10 +639,12 @@ def _refused_null_path_value_error(key: str, default: str, *,
 def _refuse_bare_relative(key: str, raw: object, default: str, *,
                           ctx: ResolveCtx,
                           lookup: Callable[[str, tuple[str, ...]], str]) -> None:
-    """Refuse a Layer-1/Layer-2 path key whose STORED value is a bare relative ([R147]).
+    """Refuse a Layer-1/Layer-2 path key whose STORED value is a bare relative
+    (keyspec §2a "A path key's stored value").
 
     ⚑⚑ THE TEST IS ON THE STORED SPELLING, NOT ON WHAT IT RESOLVED TO, and the
-    difference is load-bearing.  [R147] rules on the value a user WROTE: ``{$XDG_DATA_HOME}
+    difference is load-bearing.  Keyspec §2a "A path key's stored value" rules on the
+    value a user WROTE: ``{$XDG_DATA_HOME}
     /kanibako`` is a legal stored value even in an environment where that variable
     answers something odd, and refusing it there would report a KEY defect for an
     ENVIRONMENT one — with a "did you mean" line that pastes the token back into itself.
@@ -652,7 +656,7 @@ def _refuse_bare_relative(key: str, raw: object, default: str, *,
     ⚑ A PRESENT ``<None>`` IS REFUSED BEFORE THE STRINGIFY, not by it.  ``str(None)``
     is the word ``"None"``, which is a bare relative, so the null used to reach the
     user as *"``config.data`` is set to ``'None'``"* — a message quoting a string
-    nobody wrote.  [R177]/§2h: a present ``<None>`` is a value that does NOT fall
+    nobody wrote.  §2h: a present ``<None>`` is a value that does NOT fall
     back to the key's default, so the cure named here is the real one.
     """
     if raw is None:
@@ -783,8 +787,9 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
             # ⚑ A NULL THE DOORS ADMIT IS OMITTED, NOT RESOLVED (spec §2a): it is a bind's
             # SOURCE key, so the omission is what collapses the bind (§0).  ⚑ AND ONLY
             # THAT ONE — a key the doors still REFUSE must reach
-            # :func:`_refuse_bare_relative` below, which carries the [R177] message that
-            # names a present ``<None>`` as ``<None>``.  Omitting those too would turn a
+            # :func:`_refuse_bare_relative` below, which carries the message that names a
+            # present ``<None>`` as ``<None>``
+            # (keyspec §2h "the ordinary present-`None` rule").  Omitting those too would turn a
             # refusal the user is told about into a silent one, and the membership is the
             # doors' own so the two cannot disagree about which is which.
             continue
@@ -965,9 +970,10 @@ def system_path_floor(std: StandardPaths) -> dict[str, str | None]:
     and resolved by the SET-time tier (``config_interface._path_tier_split``) — answered
     ``__MISSING__`` in every launch snapshot.  ``config set`` therefore ACCEPTED a
     binding sourced at ``@system.cache`` and the launch dropped it with no message and
-    rc 0: the ``system.channels.broadcast`` shape again, one omission over.  [R143]
-    settles that it is a defect rather than a report — *"if it has a default value, yes,
-    thay value should be placed in the keystore"* — universally, with no exemption list.
+    rc 0: the ``system.channels.broadcast`` shape again, one omission over.
+    Keyspec §0 "it must RESOLVE" settles that it is a defect rather than a report —
+    [Jei:2026-08-28] *"if it has a default value, yes, thay value should be placed in the
+    keystore"* — universally, with no exemption list.
 
     ⚑ RESERVED AND REACHABLE ARE ORTHOGONAL, and ``system.backup`` is the one left with
     no consumer: *reserved* is a fact about CONSUMERS, this floor is a fact about the
@@ -1153,8 +1159,9 @@ def resolve_data_path(*, config_home: Path | None = None,
     Resolves ``config.data`` fresh from the host CONFIG file set (base < user, the same
     Layer-1 foundation :func:`load_system_config` reads), so a caller holding no
     :class:`StandardPaths` reaches the directory the user CONFIGURED instead of composing the
-    XDG data base with a hardcoded ``kanibako`` leaf ([R155]: a kanibako subdirectory
-    references ``config.data``; it is never composed from the XDG base).
+    XDG data base with a hardcoded ``kanibako`` leaf
+    (CONVENTIONS P10 "derive from declared keys": a kanibako subdirectory references
+    ``config.data``; it is never composed from the XDG base).
     Unlike ``load_std_paths``, it needs no config file.
 
     ⚑ TOTAL: any failure to read or resolve config — the file is absent, unreadable, or
@@ -1207,7 +1214,8 @@ def resolve_state_path(*, config_home: Path | None = None,
 
     The state-base sibling of :func:`resolve_data_path`, for a caller holding no
     :class:`StandardPaths` that must still land in the state root the user configured
-    ([R166]: every state store derives from ``system.state``, and from nothing else).
+    (keyspec §2g system.state: every state store derives from ``system.state``, and from
+    nothing else).
     :func:`kanibako.vscode.vscode_remote._vscode_remote_state_dir` and
     :func:`kanibako.browser_state.state_path` are those callers.
 

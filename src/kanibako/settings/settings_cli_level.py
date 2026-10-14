@@ -129,7 +129,7 @@ def guard_cli_level(
     ``config_keys.agent_key_reason``: NAMES injected, vocabulary from
     :data:`~kanibako.settings.config_keys.AGENT_LEAF_MAP` — which is a thing to ASK, so a core
     §2d leaf still costs no plugin import, and which CONCEDES an agent it could not read
-    rather than refusing it (``[R150]``, spec §0). A vocabulary a caller may omit judges every
+    rather than refusing it (spec §0). A vocabulary a caller may omit judges every
     agent against core alone; the llm-doc has the measured refusal that cost.
 
     ⚑ A dotted key is split on ``.``, so an agent NODE whose name contains a dot is refused

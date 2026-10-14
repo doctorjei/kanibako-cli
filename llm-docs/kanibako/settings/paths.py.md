@@ -583,9 +583,9 @@ shape is the defect class; the repair is one carrier, not a better promise.
 ⚑⚑ **THE KEY SET IS `SYSTEM_PATH_DEFAULTS` ENTIRE**, derived, with no hand-named roots: every
 declared key with a manifest default — `system.backup`, `system.cache`, and `system.runtime`
 included — reaches the floor, so the set-time tier (`config_interface._path_tier_split`, which
-iterates the whole table) and the launch snapshot answer the same keys. [R143] is the authority —
-*"if it has a default value, yes, thay value should be placed in the keystore"* — universal, no
-allowlist and no origin test.
+iterates the whole table) and the launch snapshot answer the same keys.
+Keyspec §0 "it must RESOLVE" is the authority — [Jei:2026-08-28] *"if it has a default value,
+yes, thay value should be placed in the keystore"* — universal, no allowlist and no origin test.
 
 ⚑ **RESERVED AND REACHABLE ARE ORTHOGONAL, WHICH IS WHY THIS NEEDS NO DISCRIMINATOR.** Nothing reads
 `system.backup`, and nothing here gives it a consumer: *reserved* is a fact about consumers, this
@@ -620,7 +620,7 @@ The system-level path tier (settings-framework `system.path.*`) is resolved from
 set: `/etc` `base.cfg` < user-global. A user with only `~/.config/kanibako.cfg` gets an empty
 `/etc` layer. Neither the cache nor the state root derives from the data
 dir's leaf: `system.cache` and `system.state` are keys of their own, and this is where each one's
-resolved value is materialized ([R166]).
+resolved value is materialized (keyspec §2g system.state).
 
 ```python
 def resolve_project(

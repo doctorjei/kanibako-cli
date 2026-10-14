@@ -190,15 +190,16 @@ Two properties of the map are load-bearing, and neither survives being "simplifi
   map only for a leaf core cannot answer, so `-M` and `-N`/`-C`/`-R` still import no plugin. Handing
   the guard a materialized map instead would change no verdict and restore the whole discovery cost
   silently — `test_a_CORE_leaf_costs_no_plugin_discovery` is the only thing that would notice.
-* **It CONCEDES rather than refuses** what discovery could not read (`[R150]`, spec §0: *"Where an
+* **It CONCEDES rather than refuses** what discovery could not read (spec §0: *"Where an
   agent's vocabulary cannot be read — its plugin is not installed — the leaf is CONCEDED, never
   refused."*). A bare `{}` or a
   `getattr`-with-a-fallback here would swap the strict signal for the permissive one in one
   direction and, for an uninstalled agent, refuse a leaf that names a real value in the other.
 
 ⚑ The vocabulary is per-AGENT, never a union: goose declaring `provider` does not make
-`agent.claude.provider` a key. That partition is `[R150]`'s content and `key_class` enforces it; this
-door only has to hand it the map.
+`agent.claude.provider` a key. That partition is
+keyspec §0 "The leaf VOCABULARY is partitioned by TIER", and `key_class` enforces it; this door
+only has to hand it the map.
 
 ### The dotted-key split
 
