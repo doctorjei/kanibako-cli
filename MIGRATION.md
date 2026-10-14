@@ -539,7 +539,7 @@ inside boxes. In order of likely impact:
 | `system.default_agent` (stored as `agent: default: default_agent:` in `global/settings.yaml`) | `system.agent` (same file, `system: agent:`) | **hard launch error** (below) |
 | `<scope>.shared.<name>` (the `shared` mount category) | `<scope>.common.<name>` | **hard refusal** at the resolve (see *An undeclared key in a settings file now stops the command, and the cure is a hand-edit*) |
 | `system.base_template` | `system.template` (and it now names a template ROOT — *Template and per-agent store moves*) | **hard refusal** at the resolve (see *An undeclared key in a settings file now stops the command, and the cure is a hand-edit*) |
-| `@meta.runtime.ws_settings` (reference target) | `{meta.workset.settings}` | dangling reference |
+| `@meta.runtime.ws_settings` (reference target) | `{meta.workset.settings}` | plain text, silently (below) |
 | settable `box.agent.*` mirror (a `box: agent:` **table**) | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | **hard launch error** (below); write verbs refuse with the pref cure |
 | `auto_approve` (the boolean permission switch) | `access` — a tier, `restricted` \| `editing` \| `full` | **hard launch error** of its own, mapping your stored boolean to a tier (below) |
 
@@ -1212,17 +1212,15 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   box has left. See **Standalone boxes: a relocated store is read where it is, and never deleted
   for you**.
   🛑 **A value that cannot be resolved now stops these commands instead of being ignored.** In
-  1.7.2 both keys were accepted and never read, so an unresolvable one — `@config.registry/ro`,
-  say — sat in a settings file doing nothing. It is read now, and a purge or move refuses by name
+  1.7.2 both keys were accepted and never read, so an unresolvable value sat in a settings file
+  doing nothing. It is read now, and a purge or move refuses by name
   **before deleting anything** rather than part-removing the box. If `box rm --purge` exits 1
   saying `workset.vault_ro is set to ... which cannot be resolved`, fix or unset the value and run
   it again; nothing was removed.
 - **`@meta.runtime.ws_settings`** in any settings file: replace with `{meta.workset.settings}`
-  (identical resolved value). **This one is a reference INSIDE a value, not a key path**, so the
-  closed keyspace never judges it and nothing refuses. It is the quietest of the four: an
-  absent referent propagates absence (the keyspace spec's **Principles**), so a whole-value
-  `@meta.runtime.ws_settings` makes the key holding it disappear from the snapshot, and one
-  embedded in a longer string expands to nothing. Grep for it — you will not be told.
+  (identical resolved value). **This one is inside a value, not a key path**, and it names no key
+  now, so it is plain text: kanibako keeps the characters as written and nothing refuses. It is
+  the quietest of the four. Grep for it — you will not be told.
 
 ### 2.12 The upgrade gate: nothing new appears until `kanibako setup` runs
 
@@ -4397,10 +4395,10 @@ set` skipped that check — it reached the agent's settings file by a route of i
 accepted values that the same setting's other spelling refused:
 
 ```
-$ kanibako agent set claude canon=@bogus.ref
-Set canon=@bogus.ref                          # exit 0, written to the file
+$ kanibako agent set claude canon={bogus.ref}
+Set canon={bogus.ref}                         # exit 0, written to the file
 
-$ kanibako system set agent.claude.canon=@bogus.ref
+$ kanibako system set agent.claude.canon={bogus.ref}
 Error: 'agent.claude.canon': dangling reference '{bogus.ref}' ('bogus' is not a declared
 namespace (declared: config, system, agent, workset, box, meta, pref) — the keyspace is
 CLOSED (spec §0))                             # exit 1, nothing written
@@ -4408,11 +4406,11 @@ CLOSED (spec §0))                             # exit 1, nothing written
 
 Both commands give the second answer now.
 
-**What to do.** Nothing on disk changes, and a value with no `@` or `$` in it is unaffected. What
+**What to do.** Nothing on disk changes, and a value with no reference in it is unaffected. What
 is worth a look is a setting you wrote through `agent set` and never saw take effect: an
 unresolvable reference is not an error at launch, it resolves to an empty string, so the box came
 up with the setting pointed at nothing. Run `kanibako agent show <agent>` for each agent you have
-and re-enter any value carrying an `@` or a `$` — a value that cannot resolve now says so instead
+and re-enter any value carrying a reference — a value that cannot resolve now says so instead
 of being accepted.
 
 ⚑ **A script that calls `kanibako agent set` can now exit non-zero where it used to exit 0.** The
@@ -4475,7 +4473,7 @@ Set the one you mean, spelled so it resolves on its own: an absolute path, '~/..
 ⚑ **`{$XDG_*}` only.** `{$AGENT}` and `{$WORKSET}` expand to a bare *name*, so `{$AGENT}/logs` is as
 relative as `logs` is; they are not accepted as a root.
 
-**This also closes a mount hole.** A bind source such as `@box.canon/handbook` resolves on its own
+**This also closes a mount hole.** A bind source such as `{box.canon}/handbook` resolves on its own
 where it is declared, so the parse-time refusal of *A bare-relative host source is refused, and a
 bare leaf is rooted where it is declared* never saw it — it only became relative once `box.canon`
 was read. podman reads a mount source beginning with neither `.` nor `/` as the name of a **named
@@ -4509,7 +4507,7 @@ parent — which is the root only when `workset.workspaces` is left at its defau
 `workset.yaml` live), so the lift aims at it in every layout. Two things follow, and the second is
 the reason this is here rather than only in the changelog:
 
-- With `workset.workspaces` set **one level deeper** (`@meta.workset.path/nested/deep`), the files
+- With `workset.workspaces` set **one level deeper** (`{meta.workset.path}/nested/deep`), the files
   used to land in `nested/` and the box was registered there, one level below the directory you
   converted. They now land at the root. The interposed directory is removed once emptied; if it
   holds anything else of yours, it stays.
@@ -4756,8 +4754,9 @@ one level too far and so sitting *under* `config:`. Neither took effect before, 
 so. **If you have ever hand-written this file, read the keys under `config:` once.**
 
 🛑 **The reference case is the one that can break a working host, so check for it specifically.**
-If a declared key's value contains `@config.<something>` and that something is not in the list the
-message prints, the file now refuses where it used to resolve. The cure is to inline the value:
+If a declared key's value references `{config.<something>}` (before this release,
+`@config.<something>`) and that something is not in the list the message prints, the file now
+refuses where it used to resolve. The cure is to inline the value:
 write `data: /srv/elsewhere/kanibako` and delete the invented key. Nothing moves on disk — the path
 you were already resolving to is the one you write down.
 
@@ -5385,8 +5384,8 @@ system settings files as well as the working set's, apply its `pref:` requests, 
 **1** on a `config:` table in the working set's settings file and on a `pref:` request a launch
 refuses (a bare relative path, for one). `share list --effective` also exits **1** on an undeclared
 key in the base or system file, which it used to list past; `show --effective` already stopped on
-one, with the message a box gives. A share sourced at `@workset.auth.path/notes` now lists
-`<working set>/auth/notes`, where it listed `/notes`, and one sourced at `@meta.runtime.ws_root/r`
+one, with the message a box gives. A share sourced at `{workset.auth.path}/notes` now lists
+`<working set>/auth/notes`, where it listed `/notes`, and one sourced at `{meta.runtime.ws_root}/r`
 lists `<working set>/r`, where it listed `/r`.
 
 **What to do.** Nothing, if your working set files resolve — and if one of them does not, this is
@@ -5625,12 +5624,12 @@ you.
    `kanibako system set agent.Kirobo.model=…` writes the `kirobo` node's value, which lives in its
    own settings file (`<data>/agents/kirobo/agent.yaml`), not in `<data>/global/settings.yaml`.
 
-3. **Re-spell the agent inside any `@`-reference you wrote as a VALUE**, not just in the keys. A
-   `@meta.agent.Kirobo.path` or an `@agent.Kirobo.<key>` on the right-hand side of a setting is a
+3. **Re-spell the agent inside any reference you wrote as a VALUE**, not just in the keys. A
+   `{meta.agent.Kirobo.path}` or a `{agent.Kirobo.<key>}` on the right-hand side of a setting is a
    key path too, and the `set` above does not reach one. 🛑 **This is the step with no error to
    warn you:** a reference naming a spelling nothing declares is *dangling*, and a dangling
    reference embedded in a value renders as an empty string rather than failing — so a bind whose
-   source read `@meta.agent.Kirobo.path/caches` becomes a bind of the wrong directory and nothing
+   source read `{meta.agent.Kirobo.path}/caches` becomes a bind of the wrong directory and nothing
    is reported. Search for the old spelling anywhere in your settings files, both sides of the
    colon:
 
@@ -8660,8 +8659,9 @@ A source declared in Python takes the same spelling, such as `("{system.cache}/l
 A leftover `$GUEST_HOME` or `${GUEST_HOME}` is refused, naming the defaults file and the braced
 spelling. In a `bindings:` entry, read when the plugin is imported, the plugin does not load:
 kanibako prints `Warning: '<plugin>' failed to load and is being SKIPPED: <file>: Old reference
-spelling …`, and the agent is unavailable. In an `env:` value or a `category_binds:` destination,
-the launch stops with that message; `kanibako system defaults` also prints an `env:` refusal.
+spelling …`, and the agent is unavailable. In an `env:` value or a `category_binds:` or `common:`
+destination, the launch stops with that message; `kanibako system defaults` also prints an `env:`
+refusal.
 
 **What you must do.** Respell `$GUEST_HOME` and each `@` reference in your defaults file and your
 Python declarations. The shipped plugins already use the braced spellings.

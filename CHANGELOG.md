@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the braced spelling; otherwise `@` and `$` are ordinary characters. A literal brace is doubled (`{{`, `}}`). Only
   `\\` and `\~` escape: respell an old `\@`, `\$`, `\{`, or `\/` as `@`, `$`, `{{`, or `/`. Plugin defaults files spell
   `{$GUEST_HOME}` and braced `meta_ref` sources; a leftover `$GUEST_HOME` or `${GUEST_HOME}` is refused, naming the
-  file. A plugin skipped for such a refusal is no longer reported as built against a different kanibako-cli, and
+  file. A plugin skipped for such a refusal is reported as a refused value, not a version mismatch, and
   `system defaults` prints the error of a plugin whose variables cannot be read. See `MIGRATION.md`, "References are
   braced: `{a.b.c}` names a key and `{$NAME}` a variable" and "Plugin values spell references in braces:
   `{$GUEST_HOME}` and `{meta.agent.<agent>.path}`".

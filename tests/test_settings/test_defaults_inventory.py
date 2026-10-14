@@ -484,7 +484,6 @@ class TestEnvRows:
             "agent.shell.env.TERM", "box.env.COLORTERM",
         ]
 
-
     def test_a_refused_plugin_shows_its_error_instead_of_no_rows(self, monkeypatch):
         """A plugin whose defaults file this release refuses is named WITH the refusal.
 
@@ -508,6 +507,7 @@ class TestEnvRows:
         text = out.getvalue()
         assert "refused-defaults.yaml" in text, text
         assert "{$GUEST_HOME}" in text, text
+
 
 class TestRendering:
     """The printed surface — what a reader actually gets."""
