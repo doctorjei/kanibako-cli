@@ -1378,10 +1378,10 @@ keys:
            as DATA any reader of this manifest can act on: THIS ROW'S DEFAULT MAY
            RESOLVE TO ABSENCE, and that is the declared answer rather than a
            dangling default. It is the row's OWN warrant — not an exemption kept
-           somewhere else — which is what lets reachability conformance ([R143]'s
-           property P) read it off the row, name no key, and still admit no
-           unexplained dangle: a declared default either RESOLVES, or DECLARES
-           that it may answer absent. LEGAL ONLY where the default IS one
+           somewhere else — which is what lets reachability conformance (property P
+           of keyspec §0 'it must RESOLVE') read it off the row, name no key, and
+           still admit no unexplained dangle: a declared default either RESOLVES, or
+           DECLARES that it may answer absent. LEGAL ONLY where the default IS one
            whole-value host `{$VAR}` (a PASSTHROUGH), the single shape that can
            answer absence instead of a value; on a literal or a reference default
            absence is a DANGLE and P still says so."
@@ -1537,7 +1537,8 @@ keys:
     default: null
     note: "raw-argv passthrough escape hatch. ⚑ STORED AS A LIST; the CLI takes ONE
            scalar string and normalizes it to a list before writing, so `set:` stays
-           `cli+file` under §0's 'TYPABLE as a scalar' test ([R169], 2026-09-19).
+           `cli+file` under §0's 'TYPABLE as a scalar' test (keyspec §2d
+           agent.default.run_args, 2026-09-19).
            ⚑ The parametric row `agent.<agent>.<key>` states no type of its own — the
            per-agent leaf takes this row's type through the registry invariant 'every
            agent.default.<key> ALSO exists as agent.<agent>.<key> (same type)'."
@@ -1748,7 +1749,8 @@ keys:
     set: cli+file
     default: null
     note: "raw-argv passthrough escape hatch. ⚑ STORED AS A LIST; the CLI takes ONE
-           scalar string and normalizes it to a list before writing ([R169]).
+           scalar string and normalizes it to a list before writing (keyspec §2d
+           agent.default.run_args).
            Floored as a PRESENT None by the shell tier floor (fence <None>)."
     spec: "§2d (shell fence)"
   agent.shell.transform:
@@ -2317,7 +2319,7 @@ keys:
     type: str
     note: "the resolved {system.agent}, REQUIRED whenever a true agent exists; identifies
            the STORE DIR. A plain-shell box carries the concrete `meta.agent.shell.name`
-           literal instead (spec §2d fence; [R176] Q53) — never this parametric row with
+           literal instead (spec §2d fence; Q53) — never this parametric row with
            an empty node. ⚑ Not the cascade key: the key SEGMENT is the canonical
            discriminator and this VALUE is the `+` store spelling, and for a persona the
            two DIFFER (settings_launch)."
@@ -3156,8 +3158,8 @@ not_keys:
                                SAME change (RULINGS R-38)."
     "meta.runtime.ws_settings": "CUT (R-36) — 'no longer needed (unified path)': the §1A
                                  meta.runtime block held ws_root/ws_name/project_type at the time
-                                 of the cut, and config_file joined them 2026-09-01 (R154) — this
-                                 note scopes what ws_settings was cut FROM, not the block's
+                                 of the cut, and config_file joined them 2026-09-01 (keyspec §1A) —
+                                 this note scopes what ws_settings was cut FROM, not the block's
                                  current membership (the
                                  collapse outputs it briefly sat beside became their own
                                  meta.assembly group on 2026-08-09);

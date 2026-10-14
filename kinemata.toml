@@ -59,9 +59,9 @@
 # overlapping modules they are merged into one registry rather than declared
 # twice -- see `store-layout` below.
 #
-# Governing rule: [R159]. "The adoption is judged by what it CATCHES, not by how
-# clean it comes up." Every entry below carries a reason of kind. Nothing here
-# exists to make a number smaller.
+# Governing rule: the adoption is judged by what it CATCHES, not by how clean it
+# comes up. Every entry below carries a reason of kind. Nothing here exists to
+# make a number smaller.
 #
 # ⚑ Every figure quoted in a comment below states the commit it was measured
 # against. They are NOT re-measured at each commit, and several predate the tree
@@ -160,13 +160,13 @@ root = "."
 # deleted from the live path", and this project already excludes it from ruff,
 # mypy and pytest. A duplication checker pointed at a holding pen for deliberate
 # duplicates reports the pen. That argument is sound -- it is simply not what
-# [R159] measures by, which is what a check CATCHES. Measured 2026-09-14 at
-# `75f7da94`: excluding `salvage/` removes ZERO findings from `check`, `unused`
-# and `ids` (byte-identical output either way), and removes 17 claims from the
-# documentation gate by way of salvage/README.md. Anchoring the `exclude` above
-# moved the pair those 17 sit in, so it is re-measured under it the same day:
-# still 17 fewer claims checked with the directory out. So the exclusion
-# buys nothing and costs seventeen claims' worth of coverage.
+# the adoption is measured by, which is what a check CATCHES. Measured
+# 2026-09-14 at `75f7da94`: excluding `salvage/` removes ZERO findings from
+# `check`, `unused` and `ids` (byte-identical output either way), and removes
+# 17 claims from the documentation gate by way of salvage/README.md. Anchoring
+# the `exclude` above moved the pair those 17 sit in, so it is re-measured
+# under it the same day: still 17 fewer claims checked with the directory out.
+# So the exclusion buys nothing and costs seventeen claims' worth of coverage.
 # ⇒ IF IT EVER LIGHTS UP, EXAMINE THE FINDING. Do not reflexively restore the
 # exclude line: a finding out of `salvage/` is either a real second spelling in
 # live code or a genuine dormant-copy report, and only reading it says which.
@@ -626,7 +626,7 @@ section = ["policy", "seed_whitelists", "workset", "deny"]
 # declared empty" and "the row has no arm at all" collapse to the same value in a
 # declarative guard, so `matches` would sweep in every row that never had one.
 # ⚑ A `<None>` ARM IS NOT IN THIS VIEW: it is a VALUE the floor must supply
-# ([R177]), which is `standalone-nulls`', below.
+# (keyspec §0 "it must RESOLVE"), which is `standalone-nulls`', below.
 [[registry]]
 name = "standalone-absences"
 kind = "yaml-mapping"
@@ -655,9 +655,9 @@ where = { holds = "kinemata_views:standalone_is_null" }
 
 # FACT: a `type: path` row that is `set: never` is DERIVED, has no set route, and
 # must NOT be claimed by the set-time path predicate.
-# AUTHORITY: `config_keys.is_path_valued_key` is the code side -- [R147]'s
-# SET-TIME half, by its own header; the manifest's `type:`/`set:` columns are the
-# declared side.
+# AUTHORITY: `config_keys.is_path_valued_key` is the code side -- the SET-TIME
+# half (keyspec §2a "A path key's stored value"), by its own header; the
+# manifest's `type:`/`set:` columns are the declared side.
 # CATCHES: `KEY_TYPES` quietly growing a `meta.*` entry, which would advertise a
 # set-time refusal that can never fire and hand `path_key_anchor` a key with no
 # anchor to name.
@@ -768,7 +768,8 @@ modules = [
 # AUTHORITY: `bootstrap.py` is where the store is laid out before anything else
 # runs; it is the module the layout tier is built on, so a directory name spelled
 # anywhere else is a second copy of the layout. Its own docstring states the rule
-# ([R157]): every path literal in the tree belongs here and nowhere else.
+# (CONVENTIONS P10 "derive from declared keys"): every path literal in the tree
+# belongs here and nowhere else.
 #
 # FACT (from `constants`): the key store's own reserved node names, alongside the
 # path leaves and XDG variable names above. AUTHORITY: `kb_store.py` declares the
@@ -793,7 +794,7 @@ modules = [
 
 # ---------------------------------------------------------------------------
 # FACT: the settings tier's own filenames and the two key/subkey tokens the
-# config engine reserves -- `box.yaml` / `workset.yaml` / `agent.yaml` ([R140]),
+# config engine reserves -- `box.yaml` / `workset.yaml` / `agent.yaml` (keyspec §1),
 # the setup marker key, and the `default` agent sub-scope.
 # AUTHORITY: `config.py` declares the three meta filenames the whole config
 # engine opens; `config_keys.py` declares the key tokens that engine reserves.
@@ -803,8 +804,8 @@ modules = [
 #
 # ⚑ IT WAS MEASURED SILENT at `f26b70e1` under the 2026-09-09 config: every one
 # of its five entries exceeded the default frequency suppression of 20 sites
-# (`workset.yaml` alone had 160), so it reported zero, and per [R159] that was
-# reported rather than tuned away.
+# (`workset.yaml` alone had 160), so it reported zero, and that was reported
+# rather than tuned away.
 # ⚑ NO LONGER SILENT, re-measured 2026-09-14 at `75f7da94` under THIS file:
 # `kinemata check` reports SETUP_MARKER_KEY at 1 site,
 # `settings/defaults_inventory.py:201`. Do not carry the old sentence forward --
@@ -1345,7 +1346,8 @@ kind = "code-patterns"
   # watcher) carried none -- so `start --agent shell` launched and
   # `create --agent shell` refused. A new arm anywhere else is that split
   # starting again. The literal matches in any case: the rule folds for
-  # comparison ([R172]), so `{"Shell"}` is the same arm.
+  # comparison (keyspec §0 "CASE INSENSITIVE for collision purposes"), so
+  # `{"Shell"}` is the same arm.
   [[registry.entry]]
   id = "shell-address-arm"
   antipatterns = ['''find_identifier\(.*\{\s*(?:["'](?i:shell)["']|GENERAL_SLOT)\s*\}''']
@@ -1659,9 +1661,9 @@ section = "jobs"
 # reserved name" -- has a subject that is not in the corpus at scan time, and
 # every mechanism in this file is a static declaration of negative polarity:
 # excellent at "nothing in this corpus spells X", structurally silent about
-# "something not in this corpus might". That half is REPORTED, not approximated
-# ([R160]). What answers for it is `_register`'s skip-and-warn, which is the
-# product behaving, not a check.
+# "something not in this corpus might". That half is REPORTED, not approximated.
+# What answers for it is `_register`'s skip-and-warn, which is the product
+# behaving, not a check.
 #
 # ⚑ `code-patterns` IS FORCED, AND WITH IT THE DIRECTION OF THE PARITY BELOW.
 # The two subjects -- a TOML table's KEYS, and a `@property` returning a literal
@@ -1715,7 +1717,7 @@ section = "jobs"
 # registry where neither `machinery` nor any entry's `home` says where the
 # entries are declared. The honest key would be `mentions_are_uses = false` --
 # these names are declared so that nothing spells them -- and it is NOT
-# EXPRESSIBLE ([R160]): it is absent from `REGISTRY_KEYS`, and declaring it is
+# EXPRESSIBLE: it is absent from `REGISTRY_KEYS`, and declaring it is
 # rc=2, `declares mentions_are_uses, which means nothing here`, measured
 # 2026-09-19. So the `.py` path stands as the closest true thing sayable, and it
 # is the module that owns the reserved set.
@@ -1744,13 +1746,13 @@ suffixes = [".toml"]
   note = "reserved pseudo-agent; an entry point that claims it is never registered"
 
 # ⚑ CASE-INSENSITIVE (`(?mi)`, 2026-09-21): the reservation folds for comparison
-# ([R172], keyspec §0, `agent_ref.reserved_pseudo_agent_reason` through
+# (keyspec §0, `agent_ref.reserved_pseudo_agent_reason` through
 # `identifiers.find_identifier`) — a `Shell = "..."` entry point claims what
 # `shell` reserves, so the pattern folds with the rule. The parity oracle below
 # folds its produced names the same way, for the same reason.
 
 # FACT: core ships exactly one built-in agent, `shell`, which owns the reserved
-# `shell` slot ([R175]: built-in is a category; [R181] (ii)). The declaration
+# `shell` slot ([R175]: built-in is a category). The declaration
 # the `core-agent-names` parity compares against.
 # CATCHES (`check`): a `name` property returning `"shell"` outside its home,
 # i.e. a second class claiming the built-in's slot.
@@ -3471,7 +3473,7 @@ extract = '(?m)^core-req: (.+)$'
 # at launch, which raises. It is the sentence "whose `Target.name` spells a
 # reserved name" that reaches further than the mechanism does.
 #
-# ⚑ PLUGINS ONLY ([R181] (ii)). Core's built-in `ShellTarget` is named `shell`,
+# ⚑ PLUGINS ONLY ([R175]). Core's built-in `ShellTarget` is named `shell`,
 # the very slot the reservation protects, so the AST half walks `packages/*/src`
 # and not `src/`; core's built-ins are pinned separately, to exactly `{shell}`, by
 # the `core-agent-names` parity below. The entry-point half still reads every
@@ -3489,7 +3491,8 @@ import ast, pathlib
 from kanibako.settings.kinemata_keyspace import in_tree_agents
 # The tree's entry-point declarations, from the ONE walk the keyspace adapter uses too.
 for key in sorted(in_tree_agents(pathlib.Path("."))):
-    # The reservation folds for comparison ([R172]), so the oracle folds what it produces.
+    # The reservation folds for comparison (keyspec §0
+    # "CASE INSENSITIVE for collision purposes"), so the oracle folds what it produces.
     print(f"agent-name: {key.casefold()}")
 # Plugin Target classes only; core's built-ins are the `core-agent-names` parity's.
 for source in sorted(pathlib.Path("packages").glob("*/src/**/*.py")):
@@ -3505,7 +3508,7 @@ for source in sorted(pathlib.Path("packages").glob("*/src/**/*.py")):
 """]
 extract = '(?m)^agent-name: (\S+)$'
 
-# Core's built-in agents, pinned to exactly `{shell}` ([R181] (ii)): the one
+# Core's built-in agents, pinned to exactly `{shell}` ([R175]): the one
 # built-in owns the reserved `shell` slot by design (`targets.discover_targets`
 # seeds it). A second core `Target` with a literal `name`, or a renamed
 # `ShellTarget`, reds this `equal`. Same AST walk as above, over `src/`.
@@ -3675,7 +3678,8 @@ translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gem
 #   manifest cell `default: null` removed:
 #     `agent.shell.template: the declaration records no default, and the code
 #     produces 'null'`
-#   the key OMITTED for node `shell` (the shape [R177] rejects):
+#   the key OMITTED for node `shell` (the shape keyspec §2d
+#   "Pseudo-agent(s)" rejects):
 #     `agent.shell.template: declared, produced by nothing`
 #   the node arm floored as a store path (the pre-`26db59aa` code):
 #     `agent.shell.template: default declared 'null', code produces
@@ -3728,10 +3732,11 @@ where = { id_matches = '^(meta\.)?agent\.[a-z_]+\.(auth\.)?[a-z_]+$' }
 # AUTHORITY: `declared`. The manifest rows, sourced from the §2d fence, are the
 # expected values; `core-defaults.yaml`'s `agent_shell:` table, read by
 # `core_defaults.pseudo_tier_defaults`, is the code on trial.
-# CATCHES: a row OMITTED from `agent_shell:` -- the shape [R177] rejects: a shell
-# pick has no `agent.default` fallback (§2d), so the fence row would answer nothing;
-# a `<None>` row stringified to `"None"`; a value that drifted from the fence; AND
-# the manifest cell itself changed or removed.
+# CATCHES: a row OMITTED from `agent_shell:` -- the shape keyspec §2d
+# "Pseudo-agent(s)" rejects: a shell pick has no `agent.default` fallback (§2d),
+# so the fence row would answer nothing; a `<None>` row stringified to `"None"`;
+# a value that drifted from the fence; AND the manifest cell itself changed or
+# removed.
 # ⚑ A VALUE COMPARISON in kinemata `0.4.0`'s `format = "json"`: a declared `null`
 # must meet a printed `null`, which the `text` form cannot carry (measured for
 # `agent-template-source`, above). The oracle prints with `json.dumps`, for the
