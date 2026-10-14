@@ -1248,6 +1248,22 @@ class TestAgentFileReachesTheShellResolves:
             effective_behavior(snapshot, active_agent="shell").get("allow_helpers"),
         )
 
+    def test_a_shell_box_binds_its_own_store_canon(self, tmp_path):
+        """A plain-shell box's agent chapter is ``agents/shell/canon/handbook`` — its own
+        store (§2d), never the shared ``agents/default/canon``."""
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.settings_resolve import GUEST_HOME
+
+        std = _focused_std()
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=_focused_box(tmp_path), agent_name="shell",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=None,
+            guarantee_create=False, cli_level=None,
+        )
+        bind = dict.get(snapshot.box.bindings, "ro")[f"{GUEST_HOME}/canon/handbook/agent"]
+        assert bind.src == str(std.agents / "shell" / "canon" / "handbook")
+
     def test_a_no_target_launch_honors_the_shell_files_allow_helpers(self, tmp_path):
         """A-1: ``kanibako shell`` / ``--entrypoint`` (no target) leaves helpers off
         when ``agents/shell/agent.yaml`` says ``allow_helpers: false``.  The control,

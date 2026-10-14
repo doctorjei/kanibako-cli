@@ -887,8 +887,8 @@ What a v1.7.2 user needs to know:
   `<box_dir>/canon/` is the box's *contribution* root whose `handbook/` is one chapter bound
   read-only at `~/canon/handbook/box`. A file placed in the wrong one is shadowed by the
   mounts and never read.
-- ⚑ **The shared `<data>/agents/default/canon/` no longer reaches a true agent** (a plugin
-  agent or a persona). Its handbook chapter comes from its own store,
+- ⚑ **The shared `<data>/agents/default/canon/` no longer reaches any agent** (a plugin
+  agent, a persona, or a plain-shell box). Its handbook chapter comes from its own store,
   `<data>/agents/<agent>/canon/handbook/` (`agent.default.canon` is `{meta.self.path}/canon`).
   A plugin that ships no chapter gets kanibako's own stamped into that store, once and
   create-if-absent; a persona shares its harness's. Files you placed in
@@ -5760,6 +5760,12 @@ kanibako system set agent.shell.model=<value>
 To keep any other `agent.default` value away from plain-shell boxes, set the shell's own key the
 same way, for example `kanibako system set agent.shell.bootstrap=tmux`. The command writes
 `<data>/agents/shell/agent.yaml`, which outranks `agent.default`.
+
+**A plain-shell box's handbook chapter is `<data>/agents/shell/canon/handbook/`.** Like every
+agent's, its canon is its own store. `kanibako setup` stamps kanibako's chapter there once, and
+never into an existing `canon/`. Files you placed in the shared `<data>/agents/default/canon/`
+stop reaching plain-shell boxes too; move them as described in *The canon books — where your
+instruction files now live*, into `<data>/agents/shell/canon/handbook/`.
 
 **`kanibako shell --persistent` and `kanibako start --entrypoint` follow the box's own agent.**
 These launches run no agent program. In v1.7.2 they read the plain-shell slot's settings and then

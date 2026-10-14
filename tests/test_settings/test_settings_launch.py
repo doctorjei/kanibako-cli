@@ -3046,22 +3046,18 @@ def test_shell_snapshot_carries_empty_mode():
     assert "exec" not in ma  # <None> ⇒ absent, not a null leaf
 
 
-def test_shell_canon_forwards_to_the_default_tier(tmp_path):
+def test_shell_canon_is_its_own_store_through_the_default_tier(tmp_path):
     """``agent.shell.canon`` forwards to ``agent.default.canon`` like any node (shell
-    inherits ``agent.default``, §2d), so a user's ``agent.default.canon`` reaches it.
-    Core's default-tier value for a shell is the shared chapter until the shell store
-    has a ``canon/`` of its own."""
+    inherits ``agent.default``, §2d), and core's value there is the shell's own store
+    (``{meta.self.path}/canon``), with or without a ``canon/`` dir in it."""
     from types import SimpleNamespace
 
     from kanibako.settings.core_defaults import canon_default_categories
 
     std = SimpleNamespace(agents=tmp_path / "agents")
     out = canon_default_categories(std, "shell")
-    assert out["agent.default.canon"] == "{config.agents}/default/canon"
-    assert out["agent.shell.canon"] == "{agent.default.canon}"
-    (tmp_path / "agents" / "shell" / "canon").mkdir(parents=True)
-    out = canon_default_categories(std, "shell")
     assert out["agent.default.canon"] == "{config.agents}/shell/canon"
+    assert out["agent.shell.canon"] == "{agent.default.canon}"
 
 
 def test_meta_identity_standalone_share_workset_none_terminal():

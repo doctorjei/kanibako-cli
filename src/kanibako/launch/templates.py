@@ -640,13 +640,10 @@ def ensure_agent_stores(
             # ``agents/default/canon`` no longer reaches a true agent; this is how the
             # core-shipped chapter still does.  ⚑ OVERRIDE, NOT ADDITIVE: a plugin's or
             # user's ``canon/`` is never merged into, and create-if-absent means a
-            # user's files are never re-seeded over.  A pseudo-agent reads the shared
-            # chapter through its core ``agent.default.canon``
-            # (``core_defaults.canon_default_categories``), so it gets none here.
-            if (
-                base is not None and name not in ADDRESSABLE_PSEUDO_AGENTS
-                and not (store / "canon").exists()
-            ):
+            # user's files are never re-seeded over.  The ``shell`` pseudo-agent's store
+            # is stamped the same way: it inherits ``agent.default.canon`` (§2d), so its
+            # chapter is its own store's too.
+            if base is not None and not (store / "canon").exists():
                 copy_tree(
                     base / PACKAGED_AGENT_DEFAULT / "canon", store / "canon",
                     scope="agent", dest_root=store,

@@ -881,18 +881,10 @@ def canon_default_categories(
         # reaches a true agent and ``agent.<node>.canon`` still beats it.
         # ⚑ NO STORE PROBE: a chapter whose source is absent is dropped silently
         # (``canon_silent_dests``), so a node with no ``canon/`` binds nothing.
-        # ⚑ THE SHELL'S CORE VALUE keeps the shared ``agents/default/canon`` chapter
-        # until its own store has a ``canon/``: nothing stamps core's chapter into the
-        # shell store (``launch.templates.ensure_agent_stores``), so the node arm would
-        # bind none.  It still sits at ``agent.default``, so a user's
-        # ``agent.default.canon`` reaches a shell box too (§2d "Pseudo-agent(s)").
-        shell_shared = (
-            agent_name in ADDRESSABLE_PSEUDO_AGENTS
-            and not (std.agents / store_dirname(agent_name) / "canon").is_dir()
-        )
-        out["agent.default.canon"] = (
-            "{config.agents}/default/canon" if shell_shared else store_canon
-        )
+        # A ``shell`` box takes the same arm: it inherits ``agent.default`` (§2d
+        # "Pseudo-agent(s)"), and ``launch.templates.ensure_agent_stores`` stamps core's
+        # chapter into its store as into every agent's.
+        out["agent.default.canon"] = store_canon
         # ⚑ NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref never resolves through the
         # pick, and the handbook bind below reads ``{agent.<active>.canon}``.
         out[f"agent.{agent_name}.canon"] = "{agent.default.canon}"

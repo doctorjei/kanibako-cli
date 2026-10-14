@@ -1932,14 +1932,15 @@ class TestInstallPackagedTemplates:
 
     def test_unknown_agent_gets_a_store_but_no_payload(self, std):
         """An agent with no packaged payload (e.g. shell) still gets its store
-        skeleton (the mold stamp + D7 dirs) but no content."""
+        skeleton (the mold stamp + D7 dirs) and core's agent chapter, but no payload
+        of its own: its ``canon/`` is exactly core's (``agents/default/canon``)."""
         install_packaged_templates(std, ["shell"])
         store = std.agents / "shell"
         assert (store / "template" / "box" / "home").is_dir()
-        # ⚑ Pinned on the CHAPTER, not a level inside it: a wrong payload reds this
-        # whatever shape it arrives in.  D7 creates the skeleton under ``template/``,
-        # never under ``canon/``, so the negative is not vacuous.
-        assert not (store / "canon" / "handbook").exists()
+        core = std.agents / "default" / "canon"
+        assert sorted(
+            p.relative_to(store / "canon") for p in (store / "canon").rglob("*")
+        ) == sorted(p.relative_to(core) for p in core.rglob("*"))
 
     def test_create_if_absent_does_not_clobber(self, std):
         """A user-edited template file survives a re-install (create-if-absent)."""
@@ -2006,6 +2007,23 @@ class TestEnsureAgentStores:
         (own / "MINE.md").write_text("mine")
         templates.ensure_agent_stores(std, ["thirdparty"])
         assert sorted(p.name for p in own.iterdir()) == ["MINE.md"]
+
+    def test_a_fresh_setup_stamps_cores_chapter_into_the_shell_store(self, std):
+        """The ``shell`` pseudo-agent's chapter is its own store's (§2d ``agent.default
+        .canon = {meta.self.path}/canon``), so setup stamps core's chapter there too."""
+        install_packaged_templates(std, ["shell"])
+        core = std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
+        stamped = std.agents / "shell" / "canon" / "handbook" / "SYS_AGENT.md"
+        assert stamped.read_text() == core.read_text()
+
+    def test_an_existing_shell_store_canon_is_untouched(self, std):
+        """Absent-only: a shell store that already has a ``canon/`` gets no core file."""
+        own = std.agents / "shell" / "canon" / "handbook"
+        own.mkdir(parents=True)
+        (own / "MINE.md").write_text("mine")
+        install_packaged_templates(std, ["shell"])
+        assert sorted(p.name for p in own.iterdir()) == ["MINE.md"]
+        assert (own / "MINE.md").read_text() == "mine"
 
     def test_host_mold_reaches_every_store(self, std):
         """The mold is read AS IT STANDS at action time, so a user's customization
