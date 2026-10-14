@@ -74,26 +74,28 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
         # A NO-AGENT box has no agent tier at all — the ``canon`` sibling's own gate.
         return {}
     defs: dict[str, object] = {}
-    # The §2d DEFAULT-TIER arm of the SOURCE key — the all-agents fallback, sibling
-    # of ``agent.default.canon`` (spec :1143 + :1123 + :1116, the composition the
-    # spec performs in prose at :1144).  ⚑ It is a DECLARED key, so an artifact has
-    # to carry its value or ``system defaults`` prints a row it cannot source;
-    # carrying it here rather than beside the canon arm keeps the template family's
-    # value in the module that owns ``AGENT_TEMPLATE_STORE_REL``.
-    # ⚑ INERT FOR DELIVERY, and that is the point: the node arm below is emitted
-    # for every TRUE agent, so the §2d fallback to this arm never fires.  The shell
-    # pseudo-agent does not inherit ``agent.default`` at all (§2d), so it never reaches
-    # this arm either.
-    # ⚑⚑ INERT FOR DELIVERY IS NOT UNREACHABLE.  Delivery asks which arm the §2d pick
-    # lands on; REACHABILITY asks whether ``{agent.default.template}`` resolves at all.
-    # Two different questions, and the answer to the second must be yes.
-    # ⚑ NO NODE-STORE PROBE, unlike ``canon_default_categories``' node arm
-    # (``store_canon if node_store.is_dir() else …``): that conditional is the canon
-    # key's own behavior, not this family's.
-    defs["agent.default.template"] = (
-        f"{{config.agents}}/default/{AGENT_TEMPLATE_STORE_REL}"
-    )
+    # ⚑ R1 (keyspec §2d *Default settings*): core's value is SEEDED AT
+    # ``agent.default``, the agent's own values go on top, and the user re-overrides
+    # with ``agent.<agent>.template``.  Writing the store path at ``agent.<node>`` put
+    # core in the slot the §2d pick reads FIRST, so a user's ``agent.default.template``
+    # never reached a true agent.
+    # ⚑ PER LAUNCH, NODE-ROOTED: §2d spells the row ``{meta.self.path}/template``,
+    # and ``meta.self`` is the ACTIVE NODE — a persona seeds from its OWN store, and
+    # the shim ``commands.start.ensure_persona_share_symlinks`` links its
+    # ``template`` to the harness's.  ONE HOP UNROLLED: ``meta.agent.<a>.path`` IS
+    # ``{config.agents}/<a>`` (``settings_launch.meta_agent_path_floor`` defines it
+    # as that literal), so the two spellings resolve to one place.
+    # ⚑ KEY vs DIRECTORY: a key segment stays the CANONICAL node, the value is a
+    # store path and takes the ``+`` dirname (``agent_config.store_dirname``).
+    # ⚑ NO NODE-STORE PROBE: the shim guarantees the node's ``template`` entry, and
+    # ``stage_layers`` is skip-if-absent where it does not exist.
     if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
+        # ⚑ A PSEUDO-AGENT READS NO ``agent.default`` VALUE (§2d), so the default arm
+        # keeps the shared store literal it has always carried for a shell box: the
+        # key answers, and nothing the shell delivers changes.
+        defs["agent.default.template"] = (
+            f"{{config.agents}}/default/{AGENT_TEMPLATE_STORE_REL}"
+        )
         # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
         # ``agent.shell.template | <None>`` — a SUPPLIED value (keyspec §2d
         # "Pseudo-agent(s)"; omitting the key is the rejected shape: a pseudo-agent has
@@ -102,36 +104,15 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
         # source SKIPS it at resolve.
         defs[f"agent.{agent_id}.template"] = None
         return defs
-    # SOURCE key (spec §2a/§2d), not a hardcoded path: settable, so a user
-    # override reroutes the layer by cascade precedence.
-    # ⚑⚑ NODE-ROOTED, NEVER THE HARNESS [Jei:2026-08-27].  §2d and the
-    # manifest both give ``agent.<agent>.template =
-    # {meta.agent.<agent>.path}/template``, and ``<agent>`` is the ACTIVE NODE:
-    # a persona seeds from its OWN store.  This used to spell
-    # ``harness_of(agent_id)`` — the same string for a bare agent, and for a
-    # persona a SILENT divergence: ``{config.agents}/<harness>/template`` is a
-    # perfectly resolvable directory that simply names the WRONG store, so
-    # nothing anywhere had cause to complain.  (⚑ The silence is NOT about
-    # ``meta_agent_path_floor`` materializing both anchors — this arm never
-    # went through ``{meta.agent.<a>.path}`` at all.)  The harness's CONTENT
-    # still reaches a persona: the shim
-    # ``commands.start.ensure_persona_share_symlinks`` links
-    # ``agents/<node>/template`` -> ``agents/<harness>/template``, exactly as it
-    # already does for ``common``.  SHARED BY LINK, not by copy — a copy would
-    # need keeping fresh, and a persona that wants its own template simply
-    # replaces the link with a real directory.
-    # ⚑ ONE HOP UNROLLED, like the ``canon`` node arm
-    # (``core_defaults.canon_default_categories``): ``meta.agent.<a>.path`` IS
-    # ``{config.agents}/<a>`` (``settings_launch.meta_agent_path_floor`` defines
-    # it as that literal), so the two spellings resolve to one place.
-    # ⚑ STILL NO NODE-STORE PROBE (see the ``agent.default.template`` note
-    # above): the shim guarantees the node's ``template`` entry exists, and
-    # ``stage_layers`` is skip-if-absent for the case where it does not.
-    # ⚑ KEY vs DIRECTORY: the key segment stays the CANONICAL node, the value is
-    # a store path and takes the ``+`` dirname (``agent_config.store_dirname``).
-    defs[f"agent.{agent_id}.template"] = (
+    # ⚑ THE NODE ROW CARRIES NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref resolves
+    # against the snapshot and never through the pick, so without this row
+    # ``{agent.<node>.template}`` — the layer-2 seed source, the handbook layer root,
+    # and any user ref — would read absent whenever only ``agent.default`` holds it.
+    # A user's or plugin's ``agent.<node>.template`` replaces it.
+    defs["agent.default.template"] = (
         f"{{config.agents}}/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
     )
+    defs[f"agent.{agent_id}.template"] = "{agent.default.template}"
     return defs
 
 
@@ -173,7 +154,12 @@ def template_seed_defaults(
         # ``None`` makes the entry ``None`` (spec §0), and the collapse skips a ``None``
         # seeded entry), and a USER-set ``agent.shell.template`` seeds from that store.
         # Gating on the default's value here dropped the user's value at create.
-        defs[f"agent.{agent_id}.seeded"] = _layer(f"{{agent.{agent_id}.template}}")
+        # ⚑ R1: a TRUE agent's layer is core's ``agent.default.seeded`` (§2d *Default
+        # settings*, ``({self.template}/box/home)``), so a user's ``agent.default``
+        # entry replaces it and the agent's own goes on top.  A pseudo-agent has no
+        # ``agent.default`` fallback (§2d), so its layer stays on its own tier.
+        tier = agent_id if agent_id in ADDRESSABLE_PSEUDO_AGENTS else "default"
+        defs[f"agent.{tier}.seeded"] = _layer(f"{{agent.{agent_id}.template}}")
     if has_workset_channels(proj):
         # STANDALONE (no workset channels) omits the layer: its workset tier is <None>
         # (spec §2c), which the floor SUPPLIES as the source key's present ``None``.
@@ -969,7 +955,7 @@ def handbook_layer_source_keys(
     """
     defs = template_seed_defaults(proj, agent_id)
     keys = ["system.template"]
-    if agent_id and f"agent.{agent_id}.seeded" in defs:
+    if agent_id and {f"agent.{agent_id}.seeded", "agent.default.seeded"} & defs.keys():
         keys.append(f"agent.{agent_id}.template")
     if "workset.seeded" in defs:
         keys.append("workset.template")

@@ -490,38 +490,29 @@ class TestCanonDefaultCategories:
             d for d in arm if "raiju" in d or "claude" in d or "℘" in d
         ], arm
 
-    def test_a_node_without_its_own_canon_falls_back_to_the_default_tier(
-        self, tmp_path,
-    ):
-        """⚑ J-1's beneficiary case: a PERSONA has no package, so nothing stamps a
-        chapter into its store — it must read the DEFAULT agent's chapter, not
-        nothing."""
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), "raiju℘claude")
-        assert cats["agent.default.canon"] == "{config.agents}/default/canon"
-        assert cats["agent.raiju℘claude.canon"] == "{agent.default.canon}"
-
-    def test_a_node_whose_store_provides_a_canon_uses_its_own(self, tmp_path):
-        (tmp_path / "claude" / "canon").mkdir(parents=True)
+    def test_core_seeds_the_nodes_own_store_at_the_default_tier(self, tmp_path):
+        """R1 + his C3 ruling: ``agent.default.canon`` is ``{meta.self.path}/canon`` —
+        the ACTIVE NODE's own store, with or without a ``canon/`` dir there — and the
+        node row only forwards, so a user's ``agent.default.canon`` reaches it."""
         cats = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
-        assert cats["agent.claude.canon"] == "{config.agents}/claude/canon"
-        # The default tier is STILL declared — it is the fallback for everyone else.
-        assert cats["agent.default.canon"] == "{config.agents}/default/canon"
+        assert cats["agent.default.canon"] == "{config.agents}/claude/canon"
+        assert cats["agent.claude.canon"] == "{agent.default.canon}"
+        (tmp_path / "claude" / "canon").mkdir(parents=True)
+        again = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
+        assert again["agent.default.canon"] == "{config.agents}/claude/canon"
 
     def test_a_persona_store_canon_is_named_with_the_plus_spelling(self, tmp_path):
         """⚑ THE SPELLING PIN for the canon arm — literal, and a bare agent cannot
         show it (node == harness ⇒ one string).
 
-        The KEY keeps the canonical node because it is a key path; the VALUE and the
-        store probe that selects it are DIRECTORIES and take the ``+`` form.  Leave
-        either on ``℘`` and the probe reads a dir that is not there: the persona
-        degrades to ``{agent.default.canon}``, its own canon never loads, and NOTHING
+        The KEY keeps the canonical node because it is a key path; the VALUE is a
+        DIRECTORY and takes the ``+`` form.  Left on ``℘`` it names a dir that is
+        not there: the chapter's source is absent, it drops silently, and NOTHING
         reports an error.
         """
-        (tmp_path / "raiju+claude" / "canon").mkdir(parents=True)
         cats = core_defaults.canon_default_categories(_Std(tmp_path), "raiju℘claude")
-        assert cats["agent.raiju℘claude.canon"] == (
-            "{config.agents}/raiju+claude/canon"
-        )
+        assert cats["agent.default.canon"] == "{config.agents}/raiju+claude/canon"
+        assert cats["agent.raiju℘claude.canon"] == "{agent.default.canon}"
 
     def test_a_shell_box_omits_the_agent_chapter_and_key(self, tmp_path):
         """A dangling embedded ref would coerce to ``""`` and yield the degenerate

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from kanibako.settings.kb_store import BindEntry
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_categories import DECLARATION_ROOT_REF
+from kanibako.settings.settings_categories import agent_declaration_root_ref
 from kanibako.settings.settings_resolve import (
     SettingsError,
     literal_expr,
@@ -230,7 +230,7 @@ def harness_store_root(node: str) -> str:
     # ⚑ Read from the ONE copy of the spec's table rather than spelled here, and it is
     # the WHOLE store root, not a category's: ``common`` is one entry under it and the
     # rule below has to hold for every other entry a plugin may name.
-    return DECLARATION_ROOT_REF["agent"].format(agent=node)
+    return agent_declaration_root_ref(node)
 
 
 def harness_store_leaf(host_src: object, harness: str) -> str | None:

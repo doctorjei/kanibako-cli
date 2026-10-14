@@ -202,8 +202,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 130, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 130 this "
+        assert len(doc["keys"]) == 128, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 128 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -1091,8 +1091,6 @@ class TestValueAgentIdentity:
         assert _value("meta.agent.<agent>.settings") == (
             "{meta.agent.<agent>.path}/agent.yaml"
         )
-        assert _value("meta.agent.default.name") == "default"
-        assert _value("meta.agent.default.path") == "{config.agents}/{meta.agent.default.name}"
         assert _value("meta.agent.shell.auth.share_support") is False
         assert _value("meta.agent.shell.path") == "{config.agents}/{meta.agent.shell.name}"
         assert _value("meta.agent.shell.name") == "shell"
@@ -1897,13 +1895,13 @@ class TestDefaultsCoverage:
             f"section 4b classifies rows the manifest no longer declares a value for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 36, (
-            f"the manifest gives {len(declared)} rows a value, not the 36 measured — "
+        assert len(declared) == 34, (
+            f"the manifest gives {len(declared)} rows a value, not the 34 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_value_split_is_the_measured_split(self):
-        """6 pinned, 22 carried, 8 exempted — stated so a silent migration between them reds.
+        """6 pinned, 20 carried, 8 exempted — stated so a silent migration between them reds.
 
         ⚑ 24/10 → 11 pinned + 13 carried / 10 (2026-09-25), with the default side: the
         anchor, auth and re-root rows and the agent-identity literals are compared by
@@ -1916,9 +1914,11 @@ class TestDefaultsCoverage:
         ``meta.agent.shell.auth.share_support`` rows joined ``agent-identity-literals``.
         20 → 22 carried, 10 → 8 exempted (2026-09-27): the site pair
         ``meta.runtime.admin.{config,settings}`` left E7 for the ``site-base-files`` view.
+        22 → 20 carried (189th): ``meta.agent.default.{name,path}`` retired — §2d
+        declares no ``meta.agent.default.*``.
         """
         assert len(PINNED_VALUE_KEYS) == 6
-        assert len(CARRIED_VALUE_KEYS) == 22
+        assert len(CARRIED_VALUE_KEYS) == 20
         assert len(EXEMPT_VALUE_KEYS) == 8
         assert not (PINNED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
         assert not (CARRIED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
@@ -1950,8 +1950,8 @@ class TestDefaultsCoverage:
         )
 
     def test_the_default_value_neither_cells_partition_the_registry(self):
-        """84 + 36 + 10 == 130, disjoint — no row carries both cells, none carries
-        neither unnoticed.  The 130 is the loader's own count, re-stated here as the
+        """84 + 34 + 10 == 128, disjoint — no row carries both cells, none carries
+        neither unnoticed.  The 128 is the loader's own count, re-stated here as the
         arithmetic the three coverage cases must sum to."""
         keys = _keys()
         defaulted = {
@@ -1968,7 +1968,7 @@ class TestDefaultsCoverage:
             f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
         )
         assert defaulted | valued | neither == {str(k) for k in keys}
-        assert (len(defaulted), len(valued), len(neither)) == (84, 36, 10)
+        assert (len(defaulted), len(valued), len(neither)) == (84, 34, 10)
 
 
 # --------------------------------------------------------------------------- #

@@ -294,9 +294,11 @@ class TestTemplateSeedDefaults:
 
         defs = template_seed_defaults(primary_proj, "claude")
         # Layer 2's SOURCE, with its {key}-ref head resolved the way the cascade does:
-        #   {agent.claude.template} -> {config.agents}/claude/<store rel>
-        source = defs["agent.claude.seeded"]["~/"][0]
-        store_ref = defs["agent.claude.template"]
+        #   {agent.claude.template} -> {agent.default.template}
+        #   -> {config.agents}/claude/<store rel>   (R1: core seeds at agent.default)
+        source = defs["agent.default.seeded"]["~/"][0]
+        assert defs["agent.claude.template"] == "{agent.default.template}"
+        store_ref = defs["agent.default.template"]
         assert source.startswith("{agent.claude.template}/")
         resolved = source.replace("{agent.claude.template}", store_ref, 1)
         store_relative = resolved.split("{config.agents}/claude/", 1)[1]
@@ -367,7 +369,7 @@ class TestTemplateSeedDefaults:
         assert "workset.template" not in defs
         # base + agent layers still present.
         assert "system.seeded" in defs
-        assert "agent.claude.seeded" in defs
+        assert "agent.default.seeded" in defs
 
 
 # ---------------------------------------------------------------------------
@@ -833,6 +835,45 @@ class TestLayeredHomeSeed:
         assert (home / "base-only.txt").read_text() == "base"
         assert (home / "CUSTOM.txt").read_text() == "custom"
         assert not (home / "store-only.txt").exists()
+
+    @pytest.mark.parametrize("own", [False, True])
+    def test_a_users_agent_default_template_seeds_a_true_agent_at_create(
+        self, std, config, primary_proj, tmp_path, capsys, own,
+    ):
+        """R1 (keyspec §2d *Default settings*): core seeds ``agent.default`` first, so a
+        user's ``agent.default.template`` replaces the node store at create — and the
+        agent's own ``agent.claude.template`` (``own``) still beats it."""
+        from kanibako.commands.start import _apply_init_seeds
+
+        install_packaged_templates(std, ["claude"])
+        store_home = std.agents / "claude" / "template" / "box" / "home"
+        store_home.mkdir(parents=True, exist_ok=True)
+        (store_home / "store-only.txt").write_text("store")
+        roots = {}
+        for name in ("default", "claude"):
+            roots[name] = tmp_path / f"{name}-tpl"
+            (roots[name] / "box" / "home").mkdir(parents=True)
+            (roots[name] / "box" / "home" / f"{name}.txt").write_text(name)
+        from kanibako.commands.system_cmd import run_set
+
+        # The any-agent tier's CLI spelling is the BARE key (``agent.default.*`` is refused).
+        assert run_set(argparse.Namespace(
+            key_value=f"template={roots['default']}", null=False, force=False,
+        )) == 0
+        if own:
+            _cli_set_agent_key(std, "system set", "claude", "template", str(roots["claude"]))
+
+        _apply_init_seeds(
+            std=std, proj=primary_proj, agent_name="claude", target=_FakeTarget(),
+            global_config_path=std.settings,
+            agent_config_path=agent_settings_path(std.agents, "claude"),
+            logger=logging.getLogger("test-seed"),
+            selection_level=AgentSelection(node="claude", source="settings").selection_level,
+        )
+        home = primary_proj.shell_path
+        assert not (home / "store-only.txt").exists()
+        assert (home / "default.txt").exists() is not own
+        assert (home / "claude.txt").exists() is own
 
     def test_a_cli_null_agent_template_skips_the_layer_at_create(
         self, std, config, primary_proj, capsys,

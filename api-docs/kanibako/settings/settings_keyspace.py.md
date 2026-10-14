@@ -37,7 +37,7 @@ DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'workset_path'
 DECLARED_META_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'global_active'})
 DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset({'name', 'path', 'settings', 'mode', 'exec'})
 DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'share_support'})
-PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({'default': PseudoAgentFence(leaves=DECLARED_AGENT_LEAVES, meta_leaves=frozenset({'name', 'path'}), meta_auth_leaves=frozenset()), 'shell': PseudoAgentFence(leaves=frozenset({'label', 'access', 'continue_mode', 'model', 'endpoint', 'allow_helpers', 'bootstrap', 'run_args', 'transform', 'transform_settings', 'template', 'canon'}), meta_leaves=frozenset({'name', 'path', 'settings', 'mode', 'exec'}), meta_auth_leaves=frozenset({'share_support'}))})
+PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({'default': PseudoAgentFence(leaves=DECLARED_AGENT_LEAVES, meta_leaves=frozenset(), meta_auth_leaves=frozenset()), 'shell': PseudoAgentFence(leaves=frozenset({'label', 'access', 'continue_mode', 'model', 'endpoint', 'allow_helpers', 'bootstrap', 'run_args', 'transform', 'transform_settings', 'template', 'canon'}), meta_leaves=frozenset({'name', 'path', 'settings', 'mode', 'exec'}), meta_auth_leaves=frozenset({'share_support'}))})
 RESERVED_LEAF_NAMES: Final[frozenset[str]] = KeyStore.RESERVED_KEY_NAMES
 RETIRING_KEYS: Final[frozenset[str]] = frozenset()
 PREF_ALLOWLIST: Final[tuple[str, ...]] = ('system.agent', 'agent.*.**')

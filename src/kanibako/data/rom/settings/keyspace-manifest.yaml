@@ -1581,42 +1581,28 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "{config.agents}/default/template"
-    note: "the all-agents fallback arm of the layer-2 TEMPLATE SOURCE, sibling of
-           the agent.default.canon row below — `template` is a §2d default-tier leaf
-           like every other, so the arm exists by the §2d fallback rule
-           (agent.<agent>.<key> -> agent.default.<key>), and it is the all-agents
-           OVERRIDE POINT.
-           ⚑ THE VALUE IS THE SPEC'S OWN SUBSTITUTION, NOT OURS: §2d gives
-           agent.<agent>.template = {meta.agent.<agent>.path}/template and
-           meta.agent.<agent>.path = {config.agents}/{meta.agent.<agent>.name}, with
-           meta.agent.default.name = \"default\". The spec performs exactly those
-           hops in prose one line later for the SIBLING key ('agent.default.canon
-           resolves to {config.agents}/default/canon'), which is why this row spells
-           the result rather than the formula — matching agent.default.canon.
-           ⚑ THE ARTIFACT THAT EMITS IT is launch.templates.agent_template_defaults
-           (folded into the main launch floor; template_seed_defaults composes it for
-           the create-time seed), beside the NODE arm agent.<agent>.template and under
-           the same agent gate. It is INERT for delivery: the node arm is installed for
-           every agent node (a store path, whose template/ subtree ensure_agent_stores
-           guarantee-creates, for a true agent; a present None for the shell
-           pseudo-agent, whose fence declares <None>), so the §2d fallback to this arm
-           never fires. It is emitted anyway because a DECLARED
-           default needs a code artifact carrying its value — `system defaults`
-           refuses to print a row it cannot source, and a default no artifact
-           produces would be exactly that row."
-    spec: "§2d (default tier; the fallback arm of agent.<agent>.template)"
+    default: "{meta.agent.<agent>.path}/template"
+    note: "the layer-2 TEMPLATE SOURCE, CORE-seeded at the default tier (§2d Default
+           settings: the core's agent.default values first, the agent's own on top,
+           then agent.<agent>.<key> from settings files), so a user's
+           agent.default.template reaches every true agent and agent.<agent>.template
+           still beats it. <agent> is the ACTIVE NODE, filled per launch.
+           ⚑ THE ARTIFACT THAT EMITS IT is launch.templates.agent_template_defaults,
+           with the hop unrolled ({config.agents}/<store dirname>/template; the
+           meta.agent.<agent>.path floor is that literal)."
+    spec: "§2d (Default settings)"
   agent.default.canon:
     scope: agent
     type: path
     owner: shared
     set: cli+file
-    default: "{config.agents}/default/canon"
-    note: "the all-agents fallback CANON CONTRIBUTION ROOT (= the parametric
-           default with meta.agent.default.name = \"default\") — a plain dir in
-           the agents store, CORE-owned: there is NO default plugin package
-           (§0 'the base system owns agent.default.*')."
-    spec: "§2d (R-13)"
+    default: "{meta.agent.<agent>.path}/canon"
+    note: "the CANON CONTRIBUTION ROOT, CORE-seeded at the default tier (§2d Default
+           settings), emitted per launch by core_defaults.canon_default_categories:
+           the ACTIVE NODE's own store canon/ (§2d agent.default.canon =
+           {meta.self.path}/canon). A node with no canon/ binds no agent chapter:
+           the handbook chapter's absent source drops silently."
+    spec: "§2d (R-13; Default settings)"
   agent.default.env.TERM:
     scope: agent
     type: str
@@ -1655,8 +1641,10 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "{meta.agent.<agent>.path}/template"
-    note: "per-agent template SOURCE; seed layer 2"
+    default: "{agent.default.template}"
+    note: "per-agent template SOURCE; seed layer 2. The core row only forwards to
+           agent.default.template (§2d Default settings), so a {key}-ref to it
+           answers the inherited value; a plugin or settings value replaces it."
     spec: "§2d"
   agent.<agent>.canon:
     scope: agent
@@ -1664,7 +1652,7 @@ keys:
     type: path
     owner: shared
     set: cli+file
-    default: "{meta.agent.<agent>.path}/canon"
+    default: "{agent.default.canon}"
     fallback: "agent.default.canon"
     note: "the AGENT's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies
            the handbook's AGENT chapter, bound at ~/canon/handbook/agent/.
@@ -2236,23 +2224,6 @@ keys:
   ## different value — targets.__init__._require_meta_name is a NAME-VALIDITY guard
   ## (non-emptiness plus the §2d pseudo-agent reservation)
   ## that feeds nothing, and "for a persona [it] is not the plugin's name at all".
-  meta.agent.default.name:
-    namespace: meta
-    set: never
-    origin: construct_time
-    type: str
-    value: "default"
-    note: "CORE-owned: there is NO default PLUGIN PACKAGE (§0 'the base system owns
-           agent.default.*'), so this fixed literal cannot have a plugin origin"
-    spec: "§2d"
-  meta.agent.default.path:
-    namespace: meta
-    set: never
-    origin: construct_time
-    type: path
-    owner: agent
-    value: "{config.agents}/{meta.agent.default.name}"
-    spec: "§2d"
   ## ---- meta.agent.shell.* — the plain-shell identity anchors (§2d fence) ----
   ## Concrete literals, because the parametric meta.agent.<agent>.* rows below are
   ## §2d "True agent(s)" rows and do not reach a pseudo-agent: the fence's own six
@@ -2506,7 +2477,7 @@ bind_default_entries:
              segment (the plural/singular split is LOAD-BEARING, R-9/R-13). The
              <active> discriminator is the ACTIVE AGENT NODE, interpolated at the
              seam. A plain-shell box binds it like any other: <active> is `shell`
-             and the shell tier's canon IS the all-agents fallback arm
+             and the shell tier's canon is its fence literal
              ({config.agents}/default/canon, spec §2d fence). The entry is omitted
              only for a blank-agent narrow resolve (no node at all — the init agent
              file, workset previews, effective-settings dumps), never for a
@@ -2799,19 +2770,6 @@ bind_default_entries:
 ## ---------------------------------------------------------------------------
 category_default_entries:
 
-  ## ⚑ METADATA ABOUT THE KEYS BELOW — DELIBERATELY NOT A CHILD OF ONE.
-  ## EVERY child of a key below is a DESTINATION (these maps are indexed by their
-  ## DESTINATION), so a metadata field parked among them would put TWO SHAPES in
-  ## ONE MAP — one child whose value is a list of parameter names, the rest entry
-  ## mappings — which is the ambiguity Code Convention 0 forbids. It is recorded
-  ## here instead, keyed by the KEY it describes, in the same `[<param>]` spelling
-  ## the `keys:` table uses for its own `parametric:` field.
-  ## `<agent>` in a key name below is therefore a PLACEHOLDER: the row stands for
-  ## one terminal key per installed agent, not for a key literally spelled
-  ## `agent.<agent>.seeded`.
-  parametric_keys:
-    "agent.<agent>.seeded": [agent]
-
   ## ---- THE THREE SEED LAYERS (R-14, dest-keyed 2026-08-07f) ---------------
   ## COPIES, not mounts: the dest is a GUEST path, RESOLVED to the host store when
   ## the copy runs (§0 / R-20; respelled 2026-08-08, was "{meta.box.path}/home").
@@ -2826,13 +2784,15 @@ category_default_entries:
       note: "layer 1 — base BOX template (global); source = the box/home subtree of
              the system template ROOT (R-1: system.template, NOT the root itself)"
       spec: "§2a (seed layer 1; R-14)"
-  agent.<agent>.seeded:               # parametric in <agent> — see parametric_keys above
+  agent.default.seeded:
     "~/":
       user_key: true
       owner: shared
       default: "({agent.<agent>.template}/box/home)"
       note: "layer 2 — per-agent (agent = persona + harness); template holds
-             settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
+             settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds.
+             CORE-seeded at the default tier (§2d Default settings); <agent> is the
+             ACTIVE NODE, filled per launch."
       spec: "§2a (seed layer 2; R-14) / §2d"
   workset.seeded:
     "~/":

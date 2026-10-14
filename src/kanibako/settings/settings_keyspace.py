@@ -568,7 +568,9 @@ PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({
     # set, which §2d's generic row derives from this block.
     "default": PseudoAgentFence(
         leaves=DECLARED_AGENT_LEAVES,
-        meta_leaves=frozenset({"name", "path"}),
+        # ⚑ NO META TIER: §2d declares no ``meta.agent.default.*`` — a core value that
+        # needs a store root roots at the ACTIVE node (``meta.self.path``).
+        meta_leaves=frozenset(),
         meta_auth_leaves=frozenset(),
     ),
     # §2d **shell** — the plain shell. A pseudo-agent defines a value for every universal
@@ -1227,13 +1229,19 @@ def _meta_reason(
             return _undeclared(_bad_agent_reason(name, valid_agents))
         shown = display_agent_ref(name)
         sub = tail[1:]
+        # A pseudo-agent is judged against its own §2d block, never the true-agent rows.
+        fence = pseudo_agent_fence(name)
+        if fence is not None and not (fence.meta_leaves or fence.meta_auth_leaves):
+            spelled = ".".join(("meta.agent", shown, *sub))
+            return _undeclared(
+                f"'{spelled}' is not a declared key: '{name}' declares no "
+                f"meta.agent.* keys (spec §2d)"
+            )
         if not sub:
             # ⚑ THE OTHER NAMESPACE ONE WORD AWAY ([R141]): this is the agent's own
             # ANCHOR group; ``meta.box.agent`` above is the RO mirror of the settable
             # contract. Two namespaces, one word apart — say which, never both.
             return _namespace(f"'meta.agent.{shown}' is a namespace, not a key")
-        # A pseudo-agent is judged against its own §2d block, never the true-agent rows.
-        fence = pseudo_agent_fence(name)
         meta_leaves = (
             DECLARED_META_AGENT_LEAVES if fence is None else fence.meta_leaves
         )

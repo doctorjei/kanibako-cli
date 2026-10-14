@@ -865,26 +865,37 @@ def canon_default_categories(
 
     ⚑ A MIXED table — the ``box.bindings.ro`` entries PLUS the agent scalars their ``{key}``-refs
     resolve against; both land in the SAME floor, so a user override of the scalar reroutes
-    the bind.  ⚑⚑ The ACTIVE NODE's floor value is store-dependent (J-1 option (a)).
+    the bind.
     """
     # ⚑ KEY vs DIRECTORY: the ``agent.<node>.canon`` key below keeps the CANONICAL
-    # node, while the value and the probe below it are store PATHS and take the ``+``
+    # node, while the value is a store PATH and takes the ``+``
     # dirname (``agent_config.store_dirname``).
     store_canon = (
         f"{{config.agents}}/{store_dirname(agent_name)}/canon" if agent_name else None
     )
     out: dict[str, object] = {}
     if agent_name:
-        out["agent.default.canon"] = "{config.agents}/default/canon"
-        node_store = std.agents / store_dirname(agent_name) / "canon"
-        out[f"agent.{agent_name}.canon"] = (
-            store_canon if node_store.is_dir() else "{agent.default.canon}"
+        # ⚑ R1 (keyspec §2d *Default settings*): core's value is SEEDED AT
+        # ``agent.default`` — ``{meta.self.path}/canon``, the ACTIVE NODE's own store
+        # (one hop unrolled, as ``launch.templates.agent_template_defaults`` does) —
+        # and the node row only forwards to it, so a user's ``agent.default.canon``
+        # reaches a true agent and ``agent.<node>.canon`` still beats it.
+        # ⚑ NO STORE PROBE: a chapter whose source is absent is dropped silently
+        # (``canon_silent_dests``), so a node with no ``canon/`` binds nothing.
+        # ⚑ A PSEUDO-AGENT READS NO ``agent.default`` VALUE (§2d): a shell box keeps
+        # the shared literal it has always carried, so nothing it delivers changes.
+        out["agent.default.canon"] = (
+            "{config.agents}/default/canon"
+            if agent_name in ADDRESSABLE_PSEUDO_AGENTS else store_canon
         )
+        # ⚑ NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref never resolves through the
+        # pick, and the handbook bind below reads ``{agent.<active>.canon}``.
+        out[f"agent.{agent_name}.canon"] = "{agent.default.canon}"
         # ⚑ THE PSEUDO-AGENT ARM RIDES THE SAME GATE (D2): each addressable
         # pseudo-agent's tier is materialized wherever an agent context exists —
         # every production launch carries a named agent now, so the leaf ANSWERS in every snapshot (P)
         # while a blank-agent narrow resolve still emits no agent tier at all.
-        # Spelled as the FENCE LITERAL (== the default arm above), not the
+        # Spelled as the FENCE LITERAL (the shared default chapter), not the
         # one-hop indirection the per-node arm uses: the shell store ships no
         # canon dir, so the store branch would never fire for it anyway, and the
         # literal is what the manifest row pins.  The store branch is KEPT for

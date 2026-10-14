@@ -541,7 +541,8 @@ def test_a_pseudo_agent_tier_judges_like_a_real_one(name):
     assert valid(f"agent.{name}.label")
     assert valid(f"agent.{name}.access")
     assert valid(f"agent.{name}.env.TERM")
-    assert valid(f"meta.agent.{name}.name")
+    # §2d declares no ``meta.agent.default.*``; ``shell``'s fence keeps its own.
+    assert valid(f"meta.agent.{name}.name") == (name != "default")
     assert not valid(f"agent.{name}.zippity")
 
 
@@ -588,18 +589,23 @@ def test_the_shell_fence_declares_the_universal_leaves(key):
 @pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
 def test_a_pseudo_agent_keeps_its_meta_rows_and_the_categories(name):
     """Every ``meta.agent.<name>.*`` row the manifest spells stays a key, and the §2a
-    categories — declared at every agent scope by §2a, not by a §2d block — stay too."""
+    categories — declared at every agent scope by §2a, not by a §2d block — stay too.
+    ``default`` spells none (§2d)."""
     meta = _manifest_leaves(f"meta.agent.{name}.")
-    assert meta, name
+    assert bool(meta) == (name != "default"), name
     for leaf in sorted(meta):
         assert valid(f"meta.agent.{name}.{leaf}"), leaf
     for tail in ("env.FOO", "secret_path.FOO", "caches", "bindings.ro", "masks"):
         assert valid(f"agent.{name}.{tail}"), tail
 
 
-def test_the_default_fence_declares_its_path():
-    """§2d ``meta.agent.default.path`` (through ``{meta.agent.default.name}``) — a fence row."""
-    assert valid("meta.agent.default.path")
+@pytest.mark.parametrize("key", [
+    "meta.agent.default", "meta.agent.default.name", "meta.agent.default.path",
+])
+def test_the_default_tier_declares_no_meta_rows(key):
+    """§2d declares no ``meta.agent.default.*``: a core value needing a store root roots
+    at the ACTIVE node (``meta.self.path``), so the retired anchors are refused by name."""
+    assert "not a declared" in reason(key)
 
 
 def test_a_true_agent_keeps_the_generic_rows():

@@ -35,6 +35,7 @@ from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_categories import (
     DECLARATION_ROOT_REF, ENV_KEY_RE, FILE_SCOPES, SECRET_KEY_RE, SECRET_VAR_RE,
+    agent_declaration_root_ref,
 )
 from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (
@@ -422,7 +423,6 @@ KEY_OWNERS: dict[str, str] = {
     "meta.box.share_global": "box",
     "meta.box.share_workset": "box",
     "meta.box.container": "box",
-    "meta.agent.default.path": "agent",
     "meta.agent.shell.path": "agent",
     "meta.agent.shell.settings": "agent",
     "meta.agent.<agent>.path": "agent",
@@ -513,7 +513,7 @@ def path_key_anchor(canonical: str) -> "tuple[str, str]":
     # the prefix arms below would give it the right root under the wrong label.
     secret = _parse_agent_node_secret_key(canonical)
     if secret is not None:
-        return (DECLARATION_ROOT_REF["agent"].format(agent=secret[0]),
+        return (agent_declaration_root_ref(secret[0]),
                 DECLARATION_ROOT_LABEL)
     if _is_scope_secret_key(canonical):
         return DECLARATION_ROOT_REF[canonical.split(".", 1)[0]], DECLARATION_ROOT_LABEL
@@ -530,7 +530,7 @@ def path_key_anchor(canonical: str) -> "tuple[str, str]":
     # CLI spelling writes the any-agent tier, whose node is the reserved ``default``.
     parsed = _parse_persona_agent_key(canonical)
     node = parsed[0] if parsed is not None else AGENT_DEFAULT_SUB
-    return DECLARATION_ROOT_REF["agent"].format(agent=node), DEFAULT_ROOT_LABEL
+    return agent_declaration_root_ref(node), DEFAULT_ROOT_LABEL
 
 
 def agent_node_of(canonical: str) -> str:

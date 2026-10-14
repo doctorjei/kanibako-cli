@@ -342,11 +342,10 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     # (2) The CANON store root — the agent-handbook-chapter SOURCE.  ⚑ WHOLE-LEAF,
     # like (1): the ``agent.<node>.canon`` key names ``{config.agents}/<node>/canon``
     # and the chapter bind reads ``<that>/handbook`` through it, so the link and
-    # the key meet at the SAME dir or the persona falls back to the DEFAULT chapter
-    # while its harness ships its own.  ⚑ LINK ONLY WHAT EXISTS: the node key falls
-    # back to ``{agent.default.canon}`` while the node's ``canon`` is absent, and an
-    # unconditional link would trade that REAL default content for an EMPTY harness
-    # dir this shim just mkdir'd.  Every shipped harness carries
+    # the key meet at the SAME dir or the persona binds no chapter while its
+    # harness ships its own.  ⚑ LINK ONLY WHAT EXISTS: an unconditional
+    # link would point the chapter at an EMPTY harness dir this shim just mkdir'd.
+    # Every shipped harness carries
     # ``canon/handbook``, so a missing harness dir means a harness with no canon to
     # share.  Re-run heals: the shim runs every launch, so a later-installed
     # harness canon links then.  ⚑ NOT target-declared (the floor comes from

@@ -887,6 +887,14 @@ What a v1.7.2 user needs to know:
   `<box_dir>/canon/` is the box's *contribution* root whose `handbook/` is one chapter bound
   read-only at `~/canon/handbook/box`. A file placed in the wrong one is shadowed by the
   mounts and never read.
+- ⚑ **The shared `<data>/agents/default/canon/` no longer reaches a true agent** (a plugin
+  agent or a persona). Its handbook chapter comes from its own store, `<data>/agents/<agent>/canon/handbook/`
+  (`agent.default.canon` is `{meta.self.path}/canon`). Nothing errors: an agent with no
+  `canon/` of its own simply gets no agent chapter. To keep files you placed in
+  `agents/default/canon/handbook/`, copy them into each agent's
+  `<data>/agents/<agent>/canon/handbook/`, or point every agent back at one directory with
+  `kanibako system set canon=<dir>`. An agent's own
+  `agent.<agent>.canon` still wins over that setting.
 - An old box also keeps a stale `home/playbook/kanibako/**` stub tree on disk. It is not
   necessarily empty — on a box of any age it holds kanibako's own environment guide and
   helper scripts — but every file in it is kanibako-owned and delivered by the running

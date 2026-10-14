@@ -19,7 +19,11 @@ from typing import Final, Mapping
 
 from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.config import AGENT_META_FILE
-from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
+from kanibako.settings.settings_categories import (
+    ABSTRACT_CATEGORIES,
+    DECLARATION_ROOT_REF,
+    agent_declaration_root_ref,
+)
 from kanibako.settings.settings_resolve import match_braced, starts_bare_reference
 from kanibako.utils import logical_cwd
 
@@ -152,7 +156,7 @@ def category_root_ref(scope: str, category: str, *, agent: str | None = None) ->
                 f"the {scope!r} DECLARATION ROOT is DISCRIMINATED "
                 f"({root!r}); an agent name is required to build it (spec §2d)"
             )
-        root = root.format(agent=agent)
+        root = agent_declaration_root_ref(agent)
     return f"{root}/{agent_category_dirname(category)}"
 
 

@@ -123,6 +123,18 @@ DECLARATION_ROOT_REF: Final[Mapping[str, str]] = {
     "box": "{meta.box.path}",
 }
 
+
+def agent_declaration_root_ref(node: str) -> str:
+    """The agent row of :data:`DECLARATION_ROOT_REF` for *node*.
+
+    ⚑ ``agent.default`` HAS NO IDENTITY ANCHOR: keyspec §2d declares no
+    ``meta.agent.default.*``, so its root is the store path that retired anchor
+    resolved to — the same directory, spelled with no undeclared ``{key}``-ref.
+    """
+    if node == "default":
+        return "{config.agents}/default"
+    return DECLARATION_ROOT_REF["agent"].format(agent=node)
+
 _DELIVERY: dict[str, Delivery] = {
     "masks": MOUNT,
     "bindings.ro": MOUNT,

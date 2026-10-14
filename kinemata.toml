@@ -2508,8 +2508,7 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.kuid$' }
 
-# FACT: the agent-identity LITERAL rows -- the default fence's
-# `meta.agent.default.{name,path}` and the shell fence's
+# FACT: the agent-identity LITERAL rows -- the shell fence's
 # `meta.agent.shell.{path,name,settings,mode,auth.share_support}` -- carry the values
 # the identity and grammar floors emit when that node is the active one. `mode = {}` is
 # a map and needs `json`. (`TestValueAgentIdentity` keeps the spellings, the
@@ -2519,7 +2518,7 @@ name = "agent-identity-literals"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^meta\.agent\.(default\.(name|path)|shell\.(path|name|settings|mode|auth\.share_support))$' }
+where = { id_matches = '^meta\.agent\.shell\.(path|name|settings|mode|auth\.share_support)$' }
 
 # FACT: the rows whose `value:` is the `<computed>` placeholder are exactly the keys
 # `settings_launch._materialize_auth_active` writes, each a bool, on a bare store.
@@ -2685,13 +2684,13 @@ where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 name = "agent-seeded-layer"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
-section = ["category_default_entries", "agent.<agent>.seeded"]
+section = ["category_default_entries", "agent.default.seeded"]
 
 [[registry]]
 name = "agent-seeded-layer-bare"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
-section = ["category_default_entries", "agent.<agent>.seeded"]
+section = ["category_default_entries", "agent.default.seeded"]
 
 # FACT: `agent_template_defaults` on a BARE node -- the control beside
 # `agent-template-source`'s persona, where the key segment and the store dirname
@@ -2848,7 +2847,7 @@ name = "seed-layer-keys-standalone"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "category_default_entries"
-where = { id_matches = '^(system|agent\.<agent>)\.seeded$' }
+where = { id_matches = '^(system|agent\.default)\.seeded$' }
 
 # FACT: `meta.runtime.project_type`'s `choices:` are the box modes the code knows,
 # `paths.BoxMode`, and (`-launch`) the set the launch floor guards on,
@@ -4421,26 +4420,25 @@ authority = "declared"
 
 # ⚑ THE NODE IS A PERSONA, for the reason `agent-template-source` measured: a bare
 # agent spells its key segment and store dirname as one string and would hide a
-# split. Its store dir is created in a scratch `agents/` so the node arm takes the
-# STORE branch; the absent-store branch (`@agent.default.canon`, J-1 option (a))
-# is not reached here and stays with `test_seed_hostdest`'s
-# `test_a_node_without_its_own_canon_falls_back_to_the_default_tier`. The two hops are
+# split. Core seeds the node's own store at `agent.default.canon` (R1 + his C3
+# ruling, 189th) and the node row forwards to it, with or without a `canon/` dir
+# there; the scratch dir is kept so the view does not depend on that. The two hops are
 # `agent-template-source`'s, for the same row shape. The oracle prints every
 # SCALAR the producer returns; its `box.bindings.ro` arm is chapter binds, not
 # `keys:` rows.
 #   `# canon-defaults: 3 declared, 3 produced, in agreement, agreeing on
 #   default.`  rc=0
 # NEGATIVE CONTROLS:
-#   code, the node arm's `store_dirname(agent_name)` -> `agent_name`:
-#     `agent.gemma℘claude.canon: default declared
+#   code, the store value's `store_dirname(agent_name)` -> `agent_name`:
+#     `agent.default.canon: default declared
 #     '@config.agents/gemma+claude/canon', code produces
 #     '@config.agents/gemma℘claude/canon'`
 #   code, `agent.default.canon` -> `.../canon2`: `agent.default.canon: default
-#     declared '@config.agents/default/canon', code produces
-#     '@config.agents/default/canon2'`
+#     declared '@config.agents/gemma+claude/canon', code produces
+#     '@config.agents/gemma+claude/canon2'`
 #   manifest, `agent.shell.canon` -> `@config.agents/shell/canon`: `... code
 #     produces '@config.agents/default/canon'`
-# HOP CONTROL, `translate` removed: `agent.gemma℘claude.canon: default declared
+# HOP CONTROL, `translate` removed: `agent.default.canon: default declared
 # '@meta.agent.<agent>.path/canon', code produces '@config.agents/gemma+claude/canon'`.
 [[parity]]
 registry = "canon-defaults"
@@ -4717,9 +4715,9 @@ authority = "declared"
 # by this table.
 # `meta.agent.shell.mode = {}` compares as data under `json` (in `text` it is
 # `BLOCKED: declares meta.agent.shell.mode with a 'value' holding dict`).
-#   `# agent-identity-literals: 7 declared, 7 produced, in agreement, agreeing on
-#   value.`  rc=0 (5 of 5 before the fences' `meta.agent.default.path` and
-#   `meta.agent.shell.auth.share_support` rows joined, 2026-09-25)
+#   `# agent-identity-literals: 5 declared, 5 produced, in agreement, agreeing on
+#   value.`  rc=0 (7 of 7 until `meta.agent.default.{name,path}` retired, 189th:
+#   §2d declares no `meta.agent.default.*`)
 # NEGATIVE CONTROLS:
 #   code, the shell grammar `{}` -> `{"interactive": []}`: `meta.agent.shell.mode:
 #     value declared '{}', code produces '{"interactive":[]}'`
@@ -4744,12 +4742,11 @@ command = ["{python}", "-c", """
 import json, re
 from kanibako.settings.settings_launch import meta_agent_grammar_floor, meta_identity_floor
 floor = {}
-for node in ("default", "shell"):
-    floor.update(meta_identity_floor(
-        box_name="b", project_path="/p", inbox="/i", share_global="/g",
-        share_workset=None, box_settings="/s", agent_name=node,
-    ))
-    floor.update(meta_agent_grammar_floor(node, None))
+floor.update(meta_identity_floor(
+    box_name="b", project_path="/p", inbox="/i", share_global="/g",
+    share_workset=None, box_settings="/s", agent_name="shell",
+))
+floor.update(meta_agent_grammar_floor("shell", None))
 DROPPED = re.compile(r"meta\\.box\\..*")
 for key, value in sorted(floor.items()):
     if not DROPPED.fullmatch(key):
@@ -4759,7 +4756,7 @@ extract = '(?m)^kanibako-agent-identity: ([^\s=]+)=(.+)$'
 field = "value"
 format = "json"
 authority = "declared"
-translate = { pattern = '^\{config\.agents\}/\{meta\.agent\.(default|shell)\.name\}$', replacement = '{config.agents}/\1' }
+translate = { pattern = '^\{config\.agents\}/\{meta\.agent\.shell\.name\}$', replacement = '{config.agents}/shell' }
 
 # ⚑ THE MATERIALIZER RUN ON AN EMPTY STORE: its fail-closed arm writes all three
 # keys, and the oracle prints every leaf it wrote -- no name filter. A leaf whose
