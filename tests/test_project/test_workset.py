@@ -946,9 +946,10 @@ class TestWorksetWorkspacesResolved:
             resolve_workset_workspaces,
         )
 
-        # ⚑ INVERTED BY [R147]: this pair used to be spelled ``"pods"`` / ``"comms"``
-        # and to assert that a BARE relative anchored under the root.  Keeping the
-        # directory with the workset is still expressible — it just has to be SAID.
+        # ⚑ INVERTED BY keyspec §2a "A path key's stored value": this pair used to be
+        # spelled ``"pods"`` / ``"comms"`` and to assert that a BARE relative anchored
+        # under the root.  Keeping the directory with the workset is still expressible
+        # — it just has to be SAID.
         doc = {"workset": {"workspaces": "{meta.workset.path}/pods",
                            "channelroot": "{meta.workset.path}/comms"}}
         assert resolve_workset_workspaces(tmp_path, doc,
@@ -957,9 +958,9 @@ class TestWorksetWorkspacesResolved:
                 early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "comms"
 
     def test_resolver_bare_relative_repoint_is_refused(self, tmp_path, monkeypatch):
-        """[R147]: the anchor is ~50/50 between the workset root and the cwd, so the
-        seam refuses and NAMES BOTH readings rather than creating a data directory in
-        one of them."""
+        """keyspec §2a "A path key's stored value": the anchor is ~50/50 between the
+        workset root and the cwd, so the seam refuses and NAMES BOTH readings rather
+        than creating a data directory in one of them."""
         from kanibako.settings.settings_resolve import SettingsError
         from kanibako.project.workset import resolve_workset_channelroot
 
@@ -996,7 +997,8 @@ class TestWorksetWorkspacesResolved:
             )
 
     def test_a_null_workspaces_resolves_to_none_in_both_modes(self, tmp_path):
-        """[R177]: a present ``<None>`` is no dir, never the default leaf (Q106 review)."""
+        """keyspec §2h "the ordinary present-`None` rule": a present ``<None>`` is no dir,
+        never the default leaf (Q106 review)."""
         from kanibako.project.workset import resolve_workset_workspaces
 
         doc = {"workset": {"workspaces": None}}
@@ -1399,7 +1401,8 @@ class TestWorksetBoxesAndLogsResolved:
 
 
 class TestWorksetLogsPresentNone:
-    """A present ``<None>`` ``workset.logs`` is a VALUE, not an absence ([R177]).
+    """A present ``<None>`` ``workset.logs`` is a VALUE, not an absence
+    (keyspec §2h "the ordinary present-`None` rule").
 
     The companion ("The helper-log bind"): a ``null`` ``workset.logs`` makes the bind's
     source ``<None>`` and the bind is omitted.  So the key resolves to NO dir — never to
@@ -1476,7 +1479,8 @@ class TestWorksetLogsPresentNone:
         assert load_std_paths(load_config(config_file)).primary_logs is None
 
     def test_the_helper_table_keeps_the_log_formula_for_the_collapse(self, tmp_path):
-        """A ``<None>`` log keeps the FORMULA: the collapse omits it and [R185] warns.
+        """A ``<None>`` log keeps the FORMULA: the collapse omits it and keyspec §2a
+        "PER-ENTRY CASCADE MERGE" warns.
 
         Omitting it in the table builder was a silent second route (C5).
         """
@@ -1495,7 +1499,8 @@ class TestWorksetBoxesPresentNone:
     """A present ``<None>`` ``workset.boxes`` REFUSES, naming the key and the file (Q96).
 
     Every box's home and settings live under the box store, so a ``null`` store is not
-    "take the default" ([R177]) — that collapse put a connected box under ``<root>/boxes``.
+    "take the default" (keyspec §2h "the ordinary present-`None` rule") — that collapse
+    put a connected box under ``<root>/boxes``.
     """
 
     def test_a_null_boxes_refuses_by_name_in_every_mode(self, tmp_path):
@@ -1628,7 +1633,8 @@ class TestWorksetFiveDirKeysCarryNull:
 
 
 class TestWorksetWorkspacesPresentNone:
-    """A present ``<None>`` ``workset.workspaces`` = no workspace dir (Q96, [R177]).
+    """A present ``<None>`` ``workset.workspaces`` = no workspace dir
+    (Q96, keyspec §2h "the ordinary present-`None` rule").
 
     An in_tree member IS a workspace there, so creating one refuses by name; an external
     member keeps its own dir and still connects, without a discoverability link.
@@ -1784,9 +1790,10 @@ class TestWorksetIdentityIsTheGlobalRegistry:
     def test_the_registry_names_it_but_the_skeleton_finds_it(
         self, std, tmp_home, config,
     ):
-        """⚑⚑ [R139]: NAMING is registry-borne, FINDING is not.  Drop the global
-        registration and the same directory is still a workset root on disk — the
-        ancestor walk finds it by skeleton and re-imports it under its leaf name."""
+        """⚑⚑ system-design § "Detection & import": NAMING is registry-borne, FINDING is
+        not.  Drop the global registration and the same directory is still a workset
+        root on disk — the ancestor walk finds it by skeleton and re-imports it under
+        its leaf name."""
         from kanibako.project import registry_store
         from kanibako.settings.paths import detect_project_mode
 
@@ -1819,7 +1826,7 @@ class TestWorksetSkeletonMarker:
     """``is_workset_skeleton`` — the on-disk marker the ancestor walk looks for.
 
     ⚑ Presence-only and name-free: it answers *"is a workset here"*, never
-    *"what is it called"* ([R139]).
+    *"what is it called"* (system-design § "Detection & import").
     """
 
     def test_a_created_workset_root_is_a_skeleton(self, std, tmp_home):

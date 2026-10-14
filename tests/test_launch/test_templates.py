@@ -319,11 +319,11 @@ class TestTemplateSeedDefaults:
         Keyspec §2d's shell fence declares ``agent.shell.template | <None>``, and §2b says
         the pseudo-agent installs NO layer-2 template.  So the node arm is a PRESENT
         ``None`` — a supplied value, which beats the ``agent.default.template`` fallback
-        ([R177] rejected omitting it).  The ``agent.shell.seeded`` LAYER is still
-        declared (§2a declares ``<scope>.seeded`` at every scope): the ``None`` source
-        SKIPS it at resolve, and a user-set ``agent.shell.template`` seeds through it
-        (``TestLayeredHomeSeed`` pins both).  The default arm still answers, because
-        the agent tier exists for a shell box.
+        (keyspec §2d "Pseudo-agent(s)" rejects omitting it).  The ``agent.shell.seeded``
+        LAYER is still declared (§2a declares ``<scope>.seeded`` at every scope): the
+        ``None`` source SKIPS it at resolve, and a user-set ``agent.shell.template`` seeds
+        through it (``TestLayeredHomeSeed`` pins both).  The default arm still answers,
+        because the agent tier exists for a shell box.
         (Mutation: drop the ``GENERAL_SLOT`` branch and this goes RED with
         ``{config.agents}/shell/template``; OMIT the key instead and it goes RED on the
         missing ``None``; gate the layer on the default's VALUE and it goes RED on the
@@ -567,10 +567,11 @@ class TestLayeredHomeSeed:
         ``workset.registry``, ``workset.channelroot`` and the four workset-LOCAL
         ``workset.channels.*`` leaves.
 
-        A declared ``<None>`` is a SUPPLIED value ([R177]).  The floor used to OMIT them,
-        which is a different thing: an absent referent renders ``""`` inside an embedded
-        ``{key}``-ref without triggering the seeded-layer skip.  ``workset.channels.common``
-        is the one the MERGE also dropped — it ends in the ``common`` category token.
+        A declared ``<None>`` is a SUPPLIED value (keyspec §0 "it must RESOLVE").  The floor
+        used to OMIT them, which is a different thing: an absent referent renders ``""``
+        inside an embedded ``{key}``-ref without triggering the seeded-layer skip.
+        ``workset.channels.common`` is the one the MERGE also dropped — it ends in the
+        ``common`` category token.
         """
         from kanibako.commands.start import _resolve_launch_snapshot
         from kanibako.settings.kb_store import __MISSING__
@@ -702,8 +703,8 @@ class TestLayeredHomeSeed:
         home = primary_proj.shell_path
         assert (home / "base-only.txt").read_text() == "base"
         assert not (home / "planted.txt").exists()
-        # No §2d fallback either: the fence's ``<None>`` is a SUPPLIED value, and the
-        # default arm is a fallback that applies only where nothing was ([R177]).
+        # No §2d fallback either: the fence's ``<None>`` is a SUPPLIED value, and a
+        # pseudo-agent does not inherit from agent.default (keyspec §2d "Pseudo-agent(s)").
         assert not (home / "default-arm.txt").exists()
 
     def test_a_shell_node_launch_floors_a_present_none_shell_template(
@@ -712,9 +713,10 @@ class TestLayeredHomeSeed:
         """The MAIN launch resolve for a shell box floors ``agent.shell.template: None``.
 
         The spec declares it ``<None>`` — a SUPPLIED value, so the §2d pick lands on it
-        and never falls back to ``agent.default.template`` ([R177]).  The floor used to
-        carry ``{config.agents}/shell/template``; omitting the key instead let the pick
-        read the default arm back into ``meta.box.agent.template``.
+        and never falls back to ``agent.default.template`` (keyspec §2d
+        "Pseudo-agent(s)").  The floor used to carry ``{config.agents}/shell/template``;
+        omitting the key instead let the pick read the default arm back into
+        ``meta.box.agent.template``.
         ``agent.default.template`` still answers, so the ``None`` is the shell arm's
         alone, not a missing agent tier.
         """
@@ -959,11 +961,11 @@ class TestLayeredHomeSeed:
         """A user's ``agent.default.seeded: {"~/": [dir]}`` does NOT seed a shell box.
 
         The shell fence's ``agent.shell.template: <None>`` makes the shell arm's
-        ``~/`` layer source ``<None>``.  That is a SUPPLIED value, and a default is a
-        fallback that applies only where nothing was supplied ([R177]), so the §2d pick
-        must land on the shell arm's skipped layer, not fall back to the default arm's
-        entry.  Dropping the entry as ABSENT instead let the default arm's ``~/`` seed
-        the shell box.  The base-layer file is the positive control.
+        ``~/`` layer source ``<None>``.  That is a SUPPLIED value, and a pseudo-agent
+        does not inherit from ``agent.default`` (keyspec §2d "Pseudo-agent(s)"), so the
+        §2d pick must land on the shell arm's skipped layer, not fall back to the default
+        arm's entry.  Dropping the entry as ABSENT instead let the default arm's ``~/``
+        seed the shell box.  The base-layer file is the positive control.
         """
         from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
         from kanibako.targets.shell import ShellTarget
@@ -2473,10 +2475,10 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         skeleton dirs (seven directories in all) outside the workset root, and nothing
         refused — the skeleton loop never reached a guard.
 
-        ⚑ Rooted at ``meta.workset.path`` since [R147]; it read ``../escaped``
-        when it was written.  The escape is unchanged — it is the ANCHOR that now has to
-        be stated, and stating it is what lets this case still reach the scope guard
-        instead of dying earlier on an ambiguous value."""
+        ⚑ Rooted at ``meta.workset.path`` since keyspec §2a "A path key's stored value";
+        it read ``../escaped`` when it was written.  The escape is unchanged — it is the
+        ANCHOR that now has to be stated, and stating it is what lets this case still
+        reach the scope guard instead of dying earlier on an ambiguous value."""
         from kanibako.errors import TemplateScopeError
         from kanibako.launch.templates import install_workset_template
 

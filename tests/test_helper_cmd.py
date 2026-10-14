@@ -253,14 +253,16 @@ class TestRunSpawn:
         assert rc == 0  # the depth-0 budget is ignored; built-in defaults apply
 
     def test_spawn_section_in_layer1_file_is_REFUSED(self, helpers_env):
-        """A ``spawn:`` table in ``kanibako.cfg`` is refused BY NAME ([R158]).
+        """A ``spawn:`` table in ``kanibako.cfg`` is refused BY NAME
+        (keyspec §1 "holding anything but `config.*`").
 
         ⚑ STRENGTHENED 2026-09-19 with the declaration.  It used to assert rc=0 — the
         table bought nothing because ``run_spawn`` never opened the Layer-1 file at all.
         Reading the budget from ``{config.settings}`` means the spawn verb now loads that
-        file like every other verb, so [R158]'s refusal reaches it: *"a user running a
-        different image than their file says should learn it"*.  Silently ignoring was
-        the weaker half of that rule, kept only by an accident of which files were read.
+        file like every other verb, so the refusal (keyspec §1 "holding anything but
+        `config.*`") reaches it: a user running a different image than their file says
+        should learn it.  Silently ignoring was the weaker half of that rule, kept only
+        by an accident of which files were read.
         """
         from kanibako.errors import ConfigError
         from kanibako.settings.paths import xdg

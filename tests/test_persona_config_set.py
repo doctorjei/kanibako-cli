@@ -363,7 +363,7 @@ class TestPersonaGuards:
 
 
 # ---------------------------------------------------------------------------
-# the node is lowercase: a typed agent spelling FOLDS to it ([R173], keyspec §0)
+# the node is lowercase: a typed agent spelling FOLDS to it (keyspec §0)
 # ---------------------------------------------------------------------------
 
 class TestTypedAgentCaseReachesTheLowercaseNode:
@@ -404,7 +404,8 @@ class TestTypedAgentCaseReachesTheLowercaseNode:
         assert resolve_key(key) == key.replace("agent.Claude.", "agent.claude.", 1)
 
     def test_a_persona_segment_keeps_its_case(self):
-        # Only the HARNESS folds — a persona segment keeps the user's case ([R173]).
+        # Only the HARNESS folds — a persona segment keeps the user's case
+        # (keyspec §0 "An agent's canonical case is carried by its _name_").
         assert resolve_key("agent.Nav+Claude.model") == "agent.Nav℘claude.model"
 
     @pytest.mark.parametrize(("typed", "canonical"), [

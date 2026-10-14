@@ -133,7 +133,7 @@ class TestFindIdentifier:
 
 
 class TestAgentNodeCase:
-    """The agent NODE derivation — ``[R173]``, keyspec §0's ``⚑ NAMING RULES``.
+    """The agent NODE derivation — keyspec §0's ``⚑ NAMING RULES``.
 
     An agent has TWO spellings: the declared NAME keeps its case and lives in
     values, the NODE is lowercase and keys ``agent.<node>.*`` and
@@ -165,7 +165,7 @@ class TestAgentNodeCase:
         """``%tolower(…)%`` is a CASE change; ``casefold`` is a LETTER change.
 
         Keyspec §2d spells the store-path fold ``%tolower({meta.agent.<agent>.name})%``
-        (``[R176]``) and §0 says the node is the name *in lowercase*.
+        and §0 says the node is the name *in lowercase*.
         ``"Straße".casefold()`` is ``"strasse"`` — a different word — so a
         casefolded node would spell a plugin's store ``agents/strasse/`` where the
         spec says ``agents/straße/``.  The assertion discriminates the two

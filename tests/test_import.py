@@ -177,11 +177,11 @@ class TestStandaloneImport:
 # ---------------------------------------------------------------------------
 # NAMED (worksets).
 #
-# ⚑⚑ DETECTION AND NAMING ARE TWO QUESTIONS ([R139]).  A workset root records no name
-# anywhere on disk — its identity is the global registry's ``worksets:`` entry — but it
-# is still FOUND on disk, by its four-dir skeleton, and the name it is imported under is
-# its LEAF DIRECTORY basename: the same default ``workset create`` has always applied to
-# a workset created without ``--name``.
+# ⚑⚑ DETECTION AND NAMING ARE TWO QUESTIONS (system-design § "Detection & import").  A
+# workset root records no name anywhere on disk — its identity is the global registry's
+# ``worksets:`` entry — but it is still FOUND on disk, by its four-dir skeleton, and the
+# name it is imported under is its LEAF DIRECTORY basename: the same default ``workset
+# create`` has always applied to a workset created without ``--name``.
 # ---------------------------------------------------------------------------
 
 def _stamp_skeleton_onto(target: Path, tmp_home: Path, std) -> Path:

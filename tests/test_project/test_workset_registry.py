@@ -293,7 +293,8 @@ def test_resolve_expands_user_home_repoint(tmp_path: Path) -> None:
 
 
 def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path, monkeypatch) -> None:
-    """A BARE relative repoint is refused, naming both readings ([R147]).
+    """A BARE relative repoint is refused, naming both readings
+    (keyspec §2a "A path key's stored value").
 
     ⚑ INVERTED, NOT DELETED.  It used to assert ``== workset_root / "sub" /
     "reg.yaml"`` and called that "deterministic" — deterministic it was, but the

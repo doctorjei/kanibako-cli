@@ -104,7 +104,8 @@ class TestRegisterName:
         """🛑 The other half of the rule, and the one a fold silently breaks.
 
         Comparison folds; STORAGE never does.  A cure that lowercased on the way in is
-        exactly what ``[R172]`` retired, so the written key is asserted, not assumed.
+        exactly what keyspec §0 "CASE INSENSITIVE for collision purposes" retired, so
+        the written key is asserted, not assumed.
         """
         register_name(registry, "MixedCase", "/ws/root", section="worksets")
         assert read_names(registry)["worksets"] == {"MixedCase": "/ws/root"}
