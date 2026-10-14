@@ -596,7 +596,7 @@ class TestBootstrapNoneInRunContainer:
         self, start_mocks,
     ):
         """The tier-1 "not in the image" cure names the setting that supplied the
-        program — on a plain-shell box, the shell tier's own key."""
+        program — here a plain-shell box's own key."""
         from kanibako.commands.start import BootstrapChoice
         with start_mocks() as m:
             m.bootstrap_choice.side_effect = None
@@ -706,11 +706,9 @@ class TestEffectiveBootstrapResolution:
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
         assert _resolved_program(proj, sys_file, "claude") == "zellij"
         assert _resolved_program(proj, sys_file, "goose") == "zellij"
-        # ⚑ NOT for a plain-shell box: its tier SUPPLIES its own ``tmux`` (spec §2d
-        # fence), and a default is a fallback for where nothing was supplied
-        # (keyspec §2 "applies only where no value has been supplied").
-        # :class:`TestShellBootstrapIsTheTiersOwn` pins that side.
-        assert _resolved_program(proj, sys_file, "shell") == "tmux"
+        # A plain-shell box too: it inherits ``agent.default`` (spec §2d
+        # "Pseudo-agent(s)"). :class:`TestShellBootstrapInheritsAgentDefault` pins it.
+        assert _resolved_program(proj, sys_file, "shell") == "zellij"
 
     @pytest.mark.parametrize("written", [""])
     def test_a_true_agent_with_no_value_has_no_program(self, tmp_path, written):
@@ -808,13 +806,11 @@ class TestEffectiveBootstrapResolution:
 
 
 @pytest.mark.usefixtures("config_file")
-class TestShellBootstrapIsTheTiersOwn:
-    """A plain-shell box's ``bootstrap`` is the shell tier's OWN ``tmux`` (§2d fence).
+class TestShellBootstrapInheritsAgentDefault:
+    """A plain-shell box's ``bootstrap`` is ``agent.default``'s (§2d "Pseudo-agent(s)").
 
-    ⚑ Supplied by the ``agent_shell:`` floor, so it beats the ``agent.default``
-    fallback (keyspec §2d "Pseudo-agent(s)"): a user's ``agent.default.bootstrap`` no
-    longer reaches a plain-shell box, which inherited it before.
-    ``agent.shell.bootstrap`` does.
+    The shell fence states no ``bootstrap`` row, so the shell inherits core's ``tmux``
+    and a user's ``agent.default.bootstrap``; ``agent.shell.bootstrap`` beats both.
     """
 
     _proj = TestEffectiveBootstrapResolution._proj
@@ -823,13 +819,13 @@ class TestShellBootstrapIsTheTiersOwn:
         proj = self._proj(tmp_path)
         assert _resolved_program(proj, None, "shell") == "tmux"
 
-    def test_a_user_agent_default_does_not_reach_the_shell_box(self, tmp_path):
-        """The shell tier's ``tmux`` wins; a true agent takes the user's zellij."""
+    def test_a_user_agent_default_reaches_the_shell_box(self, tmp_path):
+        """The user's ``agent.default.bootstrap`` reaches a shell box and a true agent."""
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
-        assert _resolved_program(proj, sys_file, "shell") == "tmux"
+        assert _resolved_program(proj, sys_file, "shell") == "zellij"
         assert _resolved_program(proj, sys_file, "claude") == "zellij"
 
     def test_a_user_set_shell_bootstrap_wins(self, tmp_path):
@@ -852,7 +848,7 @@ class TestShellBootstrapIsTheTiersOwn:
         ) == "zellij"
 
     def test_a_user_null_on_the_shell_tier_refuses(self, tmp_path):
-        """``agent.shell.bootstrap: null`` has no meaning (its tier's default is tmux)."""
+        """``agent.shell.bootstrap: null`` has no meaning (its default is tmux)."""
         from kanibako.errors import ConfigError
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
@@ -1019,7 +1015,7 @@ class TestResolveBootstrapProgramFailSoft:
         """
         from kanibako.commands.start import BootstrapChoice, _resolve_bootstrap_program
         assert _resolve_bootstrap_program(str(project_dir), "shell") == BootstrapChoice(
-            "tmux", "shell",
+            "tmux", "shell", None, True,
         )
 
     def test_a_resolution_failure_falls_back_to_the_declared_default(self):
@@ -1255,7 +1251,7 @@ class TestAgentFileReachesTheShellResolves:
     def test_a_no_target_launch_honors_the_shell_files_allow_helpers(self, tmp_path):
         """A-1: ``kanibako shell`` / ``--entrypoint`` (no target) leaves helpers off
         when ``agents/shell/agent.yaml`` says ``allow_helpers: false``.  The control,
-        with no file, is the shell tier's own ``true``."""
+        with no file, is core's ``agent.default`` ``true``, which the shell inherits."""
         std = _focused_std()
         assert self._helpers_allowed(tmp_path, None) is True
         path = self._shell_file(std, {"allow_helpers": False})

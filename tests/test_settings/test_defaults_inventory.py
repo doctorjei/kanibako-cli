@@ -75,9 +75,6 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     # pre-snapshot route and still returns the same ``True``. What it stopped being is the
     # only carrier — the same shape ``workset.skip_kuid_check`` had one commit earlier.
     "core_defaults.py (canon producer)": "pinned",
-    # ⚑ The shell arm of the same producer (D2) — pinned against its output, exactly
-    # like the default arm above.
-    "core_defaults.py (canon producer, shell arm)": "pinned",
     # ⚑ ``kuid.py (SENTINEL)`` IS GONE (2026-08-29). ``workset.kuid`` moved to the anchor
     # floor, which emits ``kuid.SENTINEL`` by reference; both labels are "pinned", so the
     # class unions below are unchanged and the move is invisible to the provenance case —
@@ -153,8 +150,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 84, (
-            f"the manifest gives {len(declared)} rows a default, not the 84 measured"
+        assert len(declared) == 75, (
+            f"the manifest gives {len(declared)} rows a default, not the 75 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):
@@ -402,16 +399,15 @@ class TestEnvRows:
         re-derivation the old text demanded is NOT a removal — section 3 reports the
         live env floor a box gets, so the vars kanibako ships belong in it, and it is
         section 1 that grew the DECLARED KEY rows.
-        The keyspec §2d shell fence then declared ``agent.shell.env.TERM`` (a pseudo-agent
-        inherits nothing from ``agent.default``), the third, and the shell fence's
-        ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (``~/AGENTS.md``), the fourth.
-        What this pins is that the overlap is exactly those four keys: a FIFTH registry
+        The shell fence's ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (``~/AGENTS.md``)
+        is the third; a shell box inherits ``agent.default.env.TERM`` (§2d).
+        What this pins is that the overlap is exactly those three keys: a FOURTH registry
         env row would be a new ratification and must be read before it prints.
         """
         registry_env = [str(k) for k in manifest_doc()["keys"] if ".env." in str(k)]
         assert sorted(registry_env) == [
             "agent.default.env.TERM", "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
-            "agent.shell.env.TERM", "box.env.COLORTERM",
+            "box.env.COLORTERM",
         ]
         assert set(registry_env) <= {r.key for r in env_rows()[0]}
 
@@ -460,7 +456,7 @@ class TestEnvRows:
         assert plugins.consulted == () and plugins.declaring == ()
         assert [r.key for r in rows] == [
             "agent.default.env.TERM", "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
-            "agent.shell.env.TERM", "box.env.COLORTERM",
+            "box.env.COLORTERM",
         ]
         out = io.StringIO()
         print_defaults(out)
@@ -481,7 +477,7 @@ class TestEnvRows:
         assert plugins.consulted == ("broken",) and plugins.declaring == ()
         assert [r.key for r in rows] == [
             "agent.default.env.TERM", "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
-            "agent.shell.env.TERM", "box.env.COLORTERM",
+            "box.env.COLORTERM",
         ]
 
     def test_a_refused_plugin_shows_its_error_instead_of_no_rows(self, monkeypatch):

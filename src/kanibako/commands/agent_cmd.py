@@ -792,7 +792,7 @@ def _label_floor(agent_id: str) -> dict[str, object]:
         # ⚑ The built-in's tier declaration (D2): no descriptor to read, so the
         # pseudo-agent's own tier label IS the declaration — the same artifact the
         # launch folds, keeping `agent show` and the box in agreement.  No
-        # ``agent.default.label`` floor: only true agents inherit from it (§2d).
+        # ``agent.default.label`` floor: the fence row always answers first (§2d).
         return {f"agent.{agent_id}.label": core_defaults.pseudo_tier_default(agent_id, "label")}
     # ⚑ Core's row names the active agent (spec §2d: the agent's own name), so it is bound
     # to *agent_id* as the launch binds it (``fold_floor``).
@@ -895,8 +895,8 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
 
     Steps 2 and 3 are §2d's active-over-default pick, cascade first, exactly as
     ``settings_launch.effective_behavior`` makes it, each FLOORED by :func:`_label_floor`.
-    ⚑ The ``shell`` pseudo-agent has no step 3: only true agents inherit from
-    ``agent.default`` (§2d), so its label falls to its own ``agent.shell.label`` floor.
+    ⚑ The ``shell`` pseudo-agent has no step 3: its fence states ``agent.shell.label``
+    (§2d), so its own floor answers step 2 before ``agent.default`` is reached.
 
     ⚑ THE FLOOR IS PASSED IN, never baked into ``effective_value`` — its other caller (``reset``)
     must name NO built-in default, and that function's docstring says why.

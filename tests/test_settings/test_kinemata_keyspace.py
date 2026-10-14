@@ -120,13 +120,23 @@ def _pseudo_agent_spellings() -> list[str]:
 
   Those rows are §2d *"True agent(s)"* rows and a pseudo-agent is not one: its leaves
   are its own concrete rows plus the categories, so ``meta.agent.default.mode`` is not
-  a key.
+  a key. A pseudo-agent other than the default tier also inherits the default tier's
+  concrete leaves (§2d *"Pseudo-agent(s)"*), so ``agent.shell.access`` is one.
   """
   out: set[str] = set()
   for key in _KEYS:
     if "<agent>" in key:
       out.update(_instantiate(key, tuple(sorted(_CORE_NODES))))
-  return sorted(k for k in out - set(_KEYS) if not _names_a_category(k))
+  return sorted(
+    k for k in out - set(_KEYS) if not _names_a_category(k) and not _inherits_the_tier(k)
+  )
+
+
+def _inherits_the_tier(key: str) -> bool:
+  """Whether *key* names a non-default core node's leaf the default tier spells."""
+  head, _, rest = key.partition(".")
+  node, _, tail = rest.partition(".")
+  return head == _TIER_HEAD and node != _TIER_NODE and _TIER_PREFIX + tail in _KEYS
 
 
 def _names_a_category(key: str) -> bool:

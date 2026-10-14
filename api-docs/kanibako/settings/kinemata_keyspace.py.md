@@ -67,6 +67,7 @@ class KeyspaceRegistry:
     def _read_allowlist(self, pref: dict[str, Any]) -> tuple[list[re.Pattern[str]], list[re.Pattern[str]]]
     def _pref_declared(self, target: str) -> bool
     def _cross_declared(self, identifier: str) -> bool
+    def _inherited_row(self, identifier: str) -> str | None
     def _declared_plain(self, identifier: str) -> bool
     @cached_property
     def _detector(self) -> re.Pattern[str]

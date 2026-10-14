@@ -3111,8 +3111,8 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 # read-back cannot escape into the shared agent subtree.
 #
 # ⚑ The NO-AGENT box does NOT take the blank short-circuit — the launch passes
-# ``"shell"``, so the mirror holds the shell tier's own leaves and no ``agent.default``
-# value (§2d: only true agents inherit from ``agent.default``; :func:`_fallback_node`).
+# ``"shell"``, so the mirror holds the shell tier's own leaves over ``agent.default``'s
+# (§2d: shell inherits ``agent.default``; :func:`_fallback_node`).
 # PINNED in tests/test_settings/test_settings_launch.py; the llm-doc has the shape.
 
 
@@ -3132,8 +3132,7 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
         # ⚑ Leave meta.box.agent.* absent; do NOT fall back to agent.default — that is
         # the all-agents backstop, not an ACTIVE agent the box runs.
         return
-    # The PURE pick (agent.default ⊕ agent.<active>; the active tier alone for a
-    # pseudo-agent), which already carries any ``pref.agent.<agent>.*`` the box
+    # The PURE pick (agent.default ⊕ agent.<active>), which already carries any ``pref.agent.<agent>.*`` the box
     # requested (a pref is a cascade INPUT).
     effective = _agent_pick_node(snapshot, active_agent)
     _drop_non_mirror_keys(effective)
@@ -3167,7 +3166,7 @@ def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
     ⚑ The mirror is picked from the EXPANDED tree, where an active-tier leaf whose
     reference resolves absent is gone (spec §0), so the pick takes the fallback tier's leaf.
     The raw pick still names the active leaf; when it reads absent, the fallback tier's
-    key for the same leaf is read instead (none for a pseudo-agent, :func:`_fallback_node`).
+    key for the same leaf is read instead (:func:`_fallback_node`).
     """
     head = "meta.box.agent."
     sources: list[tuple[KeyStore, object]] = []
@@ -3345,8 +3344,6 @@ def behavior_pick(
     that must keep the two states apart (``start._persona_model_state``) reads it
     raw. The subtree counterpart is :func:`_agent_pick_node`, which deep-overlays
     the default slot, then the active slot, and materializes ``meta.box.agent.*``.
-    A pseudo-agent (``shell``) has no default slot, so its pick is ``"active"`` or
-    ``None`` (:func:`_fallback_node`).
     """
     agent_node = dict.get(snapshot, "agent", __MISSING__)
     if not isinstance(agent_node, KeyStore):
@@ -3409,8 +3406,8 @@ def effective_behavior(
     covered by a behavior-equivalence test, NOT silent.
 
     *keys*: when given, read exactly those; when ``None``, DISCOVER every scalar
-    behavior leaf under ``agent.<active>`` ∪ ``agent.default`` (``agent.<active>``
-    alone for a pseudo-agent, :func:`_fallback_node`). ⚑ DISCOVERY EXISTS
+    behavior leaf under ``agent.<active>`` ∪ ``agent.default`` (:func:`_fallback_node`).
+    ⚑ DISCOVERY EXISTS
     BECAUSE THE AGENT-LEAF SET IS PLUGIN-DECLARED (spec §0, "Agent specifics are
     PLUGIN-declared") — a leaf a shipped plugin declares and this reader has never
     heard of must still surface. It is NOT a pass-through for UNDECLARED keys: the
@@ -3677,16 +3674,12 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
     leaf declared by the ACTIVE slot came from ``agent.<active>``; otherwise from
     ``agent.default``, the only other tier that can have contributed it. No per-leaf
     provenance is threaded through :func:`_overlay_into` — the pick's own rule answers
-    it. A pseudo-agent's pick reads no default tier (:func:`_fallback_node`), so every
-    leaf it emits is ``agent.<active>``'s.
+    it, for a pseudo-agent too (:func:`_fallback_node`).
     """
     active_tier = (
         dict.get(agent_node, active_agent, __MISSING__)
         if isinstance(agent_node, KeyStore) else __MISSING__
     )
-    if pseudo_agent_fence(active_agent) is not None:
-        return _fixed_decl_scope_fn(f"agent.{active_agent}")
-
     def decl(category: str, name: str) -> str:
         node: object = active_tier
         for seg in (*category.split("."), name):
@@ -3703,7 +3696,7 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
 def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     """The PURE active-over-default agent pick = ``agent.default`` overlaid by
     ``agent.<active_agent>`` (the §2d value-pick), WITHOUT the box.agent.*
-    overlay. A pseudo-agent's pick is its own tier alone (:func:`_fallback_node`).
+    overlay.
 
     Returns a FRESH ``KeyStore`` shaped like a single (bare) agent scope node, each
     name holding the active slot's leaf where it set that name, else the
@@ -3729,17 +3722,17 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
 
 
 def _fallback_node(agent_node: KeyStore, active_agent: str) -> object:
-    """The tier the §2d pick falls back to for *active_agent*: ``agent.default``, or none.
+    """The tier the §2d pick falls back to for *active_agent*: ``agent.default``.
 
-    ⚑ ONLY TRUE AGENTS INHERIT FROM ``agent.default`` (keyspec §2d, *"Pseudo-agent(s)"*).
-    A pseudo-agent's block declares a value for every universal key and its other keys are
-    unset, so for ``shell`` this answers ``__MISSING__`` and the pick reads the shell tier
-    alone — no ``agent.default`` value, scalar or category entry, reaches a plain-shell box.
-    The one carrier of that rule for :func:`behavior_pick`, :func:`effective_behavior` and
-    :func:`_agent_pick_node`; the pseudo-agent set is ``settings_keyspace``'s fence table.
+    EVERY agent inherits ``agent.default`` (keyspec §2d *Default settings*), the ``shell``
+    pseudo-agent included: it takes core's and the settings files' ``agent.default``
+    values, never a plugin's (§2d *"Pseudo-agent(s)"*) — no plugin writes at
+    ``agent.default``, so the tier carries none. A row the shell fence states (``label``,
+    ``continue_mode``, ``model``, ``template``) sits at ``agent.shell`` and shadows it.
+    The one carrier of the fallback for :func:`behavior_pick`, :func:`effective_behavior`
+    and :func:`_agent_pick_node`. *active_agent* is unused and kept for those callers.
     """
-    if pseudo_agent_fence(active_agent) is not None:
-        return __MISSING__
+    del active_agent
     return dict.get(agent_node, "default", __MISSING__)
 
 

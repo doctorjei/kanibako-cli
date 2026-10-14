@@ -14,7 +14,9 @@ An agent NODE is judged, never assumed: it must be a CORE-OWNED node (one the
 manifest's ``keys:`` spell concretely, today ``default`` and ``shell``) or an
 agent an IN-TREE plugin registers (:func:`in_tree_agents`). A core-owned node is a
 pseudo-agent, and its leaves are its own concrete rows plus the §2a categories: a
-parametric ``<agent>`` row is a §2d "True agent(s)" row and does not reach it. This is the gate's
+parametric ``<agent>`` row is a §2d "True agent(s)" row and does not reach it. A
+pseudo-agent other than the default tier also inherits the default tier's concrete
+leaves (§2d "Pseudo-agent(s)": shell inherits ``agent.default``). This is the gate's
 view of OUR source, not runtime recognition: a user's own agent is recognized by
 its installed plugin and never meets this module.
 """
@@ -502,9 +504,25 @@ class KeyspaceRegistry:
       return self._pref_declared(target)
     return self._declared_plain(identifier)
 
+  def _inherited_row(self, identifier: str) -> str | None:
+    """The default-tier row a core-owned node's leaf inherits, else ``None``.
+
+    A pseudo-agent other than the default tier inherits ``agent.default`` (§2d
+    "Pseudo-agent(s)"), so a leaf its own rows do not spell is a key wherever the
+    default tier spells it concretely.
+    """
+    head, _, rest = identifier.partition(".")
+    node, _, tail = rest.partition(".")
+    if head != self._tier_head or node not in self._core_nodes or not tail:
+      return None
+    row = self._tier_prefix + tail
+    return row if row != identifier and row in self._concrete else None
+
   def _declared_plain(self, identifier: str) -> bool:
     """:meth:`declared` for an identifier outside the ``pref`` family."""
     if identifier in self._concrete or identifier in self._known:
+      return True
+    if self._inherited_row(identifier) is not None:
       return True
     if identifier in self._interiors:
       return True
@@ -527,6 +545,8 @@ class KeyspaceRegistry:
     if head == _PREF_SECTION and target:
       return self._pref_spec if self._pref_declared(target) else ()
     row = self._rows.get(identifier)
+    if row is None:
+      row = self._rows.get(self._inherited_row(identifier) or "")
     if row is not None:
       return _clauses(row)
     for shape in self._shapes:

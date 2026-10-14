@@ -139,11 +139,10 @@ def pseudo_tier_defaults() -> dict[str, str | None]:
     UNCONDITIONALLY (every snapshot carries every tier; only that pseudo-agent's pick
     reads it), so the fence defaults ANSWER for a box that already exists (P)
     whatever that box runs.  ⚑ Values are STRINGS, same convention, same reason —
-    except a fence ``<None>`` row (``model``, ``run_args``, …), which stays a PRESENT
-    ``None`` (``str()`` would ship the text ``"None"``).  Why every row must be
-    supplied: the ``agent_shell:`` header in ``core-defaults.yaml``.
-    ⚑ ``canon`` is NOT here — its arm is dynamic and lives in
-    :func:`canon_default_categories`.
+    except a fence ``<None>`` row (``model``, ``continue_mode``), which stays a PRESENT
+    ``None`` (``str()`` would ship the text ``"None"``) and shadows ``agent.default``.
+    Every key the fence states no row for comes from ``agent.default``
+    (``settings_launch._fallback_node``).
     """
     doc = _load_doc()
     return {
@@ -882,36 +881,26 @@ def canon_default_categories(
         # reaches a true agent and ``agent.<node>.canon`` still beats it.
         # ⚑ NO STORE PROBE: a chapter whose source is absent is dropped silently
         # (``canon_silent_dests``), so a node with no ``canon/`` binds nothing.
-        # ⚑ A PSEUDO-AGENT READS NO ``agent.default`` VALUE (§2d): a shell box keeps
-        # the shared literal it has always carried, so nothing it delivers changes.
+        # ⚑ THE SHELL'S CORE VALUE keeps the shared ``agents/default/canon`` chapter
+        # until its own store has a ``canon/``: nothing stamps core's chapter into the
+        # shell store (``launch.templates.ensure_agent_stores``), so the node arm would
+        # bind none.  It still sits at ``agent.default``, so a user's
+        # ``agent.default.canon`` reaches a shell box too (§2d "Pseudo-agent(s)").
+        shell_shared = (
+            agent_name in ADDRESSABLE_PSEUDO_AGENTS
+            and not (std.agents / store_dirname(agent_name) / "canon").is_dir()
+        )
         out["agent.default.canon"] = (
-            "{config.agents}/default/canon"
-            if agent_name in ADDRESSABLE_PSEUDO_AGENTS else store_canon
+            "{config.agents}/default/canon" if shell_shared else store_canon
         )
         # ⚑ NO VALUE, ONLY THE §2d FALLBACK: a ``{key}``-ref never resolves through the
         # pick, and the handbook bind below reads ``{agent.<active>.canon}``.
         out[f"agent.{agent_name}.canon"] = "{agent.default.canon}"
-        # ⚑ THE PSEUDO-AGENT ARM RIDES THE SAME GATE (D2): each addressable
-        # pseudo-agent's tier is materialized wherever an agent context exists —
-        # every production launch carries a named agent now, so the leaf ANSWERS in every snapshot (P)
-        # while a blank-agent narrow resolve still emits no agent tier at all.
-        # Spelled as the FENCE LITERAL (the shared default chapter), not the
-        # one-hop indirection the per-node arm uses: the shell store ships no
-        # canon dir, so the store branch would never fire for it anyway, and the
-        # literal is what the manifest row pins.  The store branch is KEPT for
-        # honesty — a user who creates the dir gets it bound, like any node.
-        for pseudo in sorted(ADDRESSABLE_PSEUDO_AGENTS):
-            pseudo_store = std.agents / store_dirname(pseudo) / "canon"
-            out[f"agent.{pseudo}.canon"] = (
-                f"{{config.agents}}/{store_dirname(pseudo)}/canon"
-                if pseudo_store.is_dir() else "{config.agents}/default/canon"
-            )
 
     for entry in _load_doc().get("canon", []):
         # A BLANK agent (an agent-less narrow resolve) has no agent tier at all, so an
-        # active-agent row binds no chapter.  A ``shell`` box TAKES the tier — its canon
-        # root is its own ``agent.shell.canon`` above (the fence literal), never a
-        # fallback to ``agent.default``.
+        # active-agent row binds no chapter.  A ``shell`` box takes the tier like any
+        # node: its ``agent.shell.canon`` above forwards to ``agent.default.canon``.
         ref = active_agent_ref(str(entry["meta_ref"]), agent_name)
         if ref is None:
             continue

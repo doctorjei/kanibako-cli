@@ -90,16 +90,15 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # ⚑ NO NODE-STORE PROBE: the shim guarantees the node's ``template`` entry, and
     # ``stage_layers`` is skip-if-absent where it does not exist.
     if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
-        # ⚑ A PSEUDO-AGENT READS NO ``agent.default`` VALUE (§2d), so the default arm
-        # keeps the shared store literal it has always carried for a shell box: the
-        # key answers, and nothing the shell delivers changes.
+        # ⚑ The shell's core ``agent.default.template`` keeps the shared store literal
+        # it has always carried; its own fence row below shadows it either way.
         defs["agent.default.template"] = (
             f"{{config.agents}}/default/{AGENT_TEMPLATE_STORE_REL}"
         )
         # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
         # ``agent.shell.template | <None>`` — a SUPPLIED value (keyspec §2d
-        # "Pseudo-agent(s)"; omitting the key is the rejected shape: a pseudo-agent has
-        # no ``agent.default`` fallback, so the key would answer nothing).  §2b: the tier
+        # "Pseudo-agent(s)"; omitting the key would read ``agent.default.template``
+        # instead, and the fence states ``<None>``).  §2b: the tier
         # installs NO layer-2 template; the layer itself stays declared, and a ``None``
         # source SKIPS it at resolve.
         defs[f"agent.{agent_id}.template"] = None
@@ -154,12 +153,11 @@ def template_seed_defaults(
         # ``None`` makes the entry ``None`` (spec §0), and the collapse skips a ``None``
         # seeded entry), and a USER-set ``agent.shell.template`` seeds from that store.
         # Gating on the default's value here dropped the user's value at create.
-        # ⚑ R1: a TRUE agent's layer is core's ``agent.default.seeded`` (§2d *Default
+        # ⚑ R1: every agent's layer is core's ``agent.default.seeded`` (§2d *Default
         # settings*, ``({self.template}/box/home)``), so a user's ``agent.default``
-        # entry replaces it and the agent's own goes on top.  A pseudo-agent has no
-        # ``agent.default`` fallback (§2d), so its layer stays on its own tier.
-        tier = agent_id if agent_id in ADDRESSABLE_PSEUDO_AGENTS else "default"
-        defs[f"agent.{tier}.seeded"] = _layer(f"{{agent.{agent_id}.template}}")
+        # entry replaces it and the agent's own goes on top — the shell's too (§2d
+        # "Pseudo-agent(s)": it inherits ``agent.default``).
+        defs["agent.default.seeded"] = _layer(f"{{agent.{agent_id}.template}}")
     if has_workset_channels(proj):
         # STANDALONE (no workset channels) omits the layer: its workset tier is <None>
         # (spec §2c), which the floor SUPPLIES as the source key's present ``None``.
@@ -643,7 +641,8 @@ def ensure_agent_stores(
             # core-shipped chapter still does.  ⚑ OVERRIDE, NOT ADDITIVE: a plugin's or
             # user's ``canon/`` is never merged into, and create-if-absent means a
             # user's files are never re-seeded over.  A pseudo-agent reads the shared
-            # chapter through its fence (``agent.shell.canon``), so it gets none here.
+            # chapter through its core ``agent.default.canon``
+            # (``core_defaults.canon_default_categories``), so it gets none here.
             if (
                 base is not None and name not in ADDRESSABLE_PSEUDO_AGENTS
                 and not (store / "canon").exists()

@@ -76,7 +76,6 @@ from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     is_terminal_category_key,
     leaf_name_reason,
-    pseudo_agent_fence,
     shown_key,
 )
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, literal_expr
@@ -103,6 +102,7 @@ from kanibako.settings.paths import (
 )
 from kanibako.agent_ref import (
     ENV_VAR_NAME,
+    ADDRESSABLE_PSEUDO_AGENTS,
     GENERAL_SLOT,
     agent_address_node,
     display_agent_ref,
@@ -874,10 +874,8 @@ def _bootstrap_choice(
 
     The program: where no tier supplies ``bootstrap`` the DECLARED
     ``agent.default.bootstrap`` floor (:func:`_bootstrap_default`) answers, through
-    the snapshot like any other value.  ⚑ A plain-shell box has NO such fallback (a
-    pseudo-agent reads its own tier only, ``settings_launch._fallback_node``): the
-    SHELL tier supplies its own ``agent.shell.bootstrap`` — see
-    ``core-defaults.yaml`` ``agent_shell:``.
+    the snapshot like any other value — for a plain-shell box too, which inherits
+    ``agent.default`` (``settings_launch._fallback_node``).
     ⚑ ``None`` MEANS NO PROGRAM, NEVER "USE THE DEFAULT".  The floor always supplies
     ``agent.default.bootstrap``, so an empty answer is never "unset": the §2d pick
     landed on a supplied ``<None>``, a user ``null``, or a terminal ``""`` (§2h keeps
@@ -984,12 +982,14 @@ def _access_null(setting_key: str) -> _NullRefused:
 def _declared_floor(key: str, agent_id: str) -> str | None:
     """*agent_id*'s core ``<key>`` floor; ``None`` for a ``<None>`` or absent row.
 
-    A pseudo-agent's floor is its own tier's, a true agent's ``agent.default``'s, as in
-    :func:`_declared_behavior_bool`. Unlike that read, this one does not raise. It is the
-    focused snapshot's floor; the plugin's row rides beside it (:func:`_plugin_floor`).
+    A pseudo-agent's floor is its own tier's row where its fence states one, otherwise
+    ``agent.default``'s, as in :func:`_declared_behavior_bool`. Unlike that read, this one
+    does not raise. It is the focused snapshot's floor; the plugin's row rides beside it
+    (:func:`_plugin_floor`).
     """
-    if pseudo_agent_fence(agent_id) is not None:
-        return core_defaults.pseudo_tier_defaults().get(f"agent.{agent_id}.{key}")
+    tier = core_defaults.pseudo_tier_defaults()
+    if f"agent.{agent_id}.{key}" in tier:
+        return tier[f"agent.{agent_id}.{key}"]
     return core_defaults.behavior_defaults().get(key)
 
 
@@ -1136,18 +1136,18 @@ def _declared_behavior_bool(key: str, agent_id: str) -> bool:
     """*agent_id*'s DECLARED BOOLEAN ``<key>`` floor, through the shared truth table.
 
     ⚑ A pseudo-agent box's floor is its OWN tier's (``agent.<agent_id>.<key>``,
-    :func:`core_defaults.pseudo_tier_default`), never ``agent.default.<key>``: only true
-    agents inherit from ``agent.default`` (keyspec §2d; ``settings_launch._fallback_node``).
+    :func:`core_defaults.pseudo_tier_default`) where its fence states that row, else
+    ``agent.default.<key>``, which it inherits (keyspec §2d; ``settings_launch._fallback_node``).
     ⚑ Fail-closed on an uncoercible value too: letting ``coerce_bool``'s ``None``
     through would read as FALSE at every consumer, i.e. a typo in the shipped file
     would silently disable a feature instead of naming itself.
     """
-    # ``pseudo_agent_fence``, the predicate ``settings_launch._fallback_node`` uses; it takes
-    # a NODE, already lowercase — the fold is where a NAME becomes one (keyspec §0 "An
-    # agent's canonical case is carried by its _name_").  A launch runs only an addressable
-    # pseudo-agent: ``default`` is reserved and refused as an agent name (§2d), and
-    # ``pseudo_tier_default`` raises for any name without a tier.
-    tier = agent_id if pseudo_agent_fence(agent_id) is not None else "default"
+    # *agent_id* is a NODE, already lowercase — the fold is where a NAME becomes one
+    # (keyspec §0 "An agent's canonical case is carried by its _name_").
+    tier = (
+        agent_id if f"agent.{agent_id}.{key}" in core_defaults.pseudo_tier_defaults()
+        else "default"
+    )
     raw = (
         core_defaults.pseudo_tier_default(agent_id, key) if tier == agent_id
         else _declared_behavior(key)
@@ -1208,8 +1208,8 @@ def _agent_scalar_pick(
     the sole intermediary ([[settings-must-map-to-keystore-key]]).
 
     *agent_id* is the launch-resolved active node-name (``"shell"`` for a
-    no-agent / shell box, whose own tier is the ONLY one it reads — a pseudo-agent
-    has no ``agent.default`` fallback,
+    no-agent / shell box, whose own tier holds only its fence rows and which falls back
+    to ``agent.default`` like any agent,
     :func:`~kanibako.settings.settings_launch._fallback_node`).
     *floor* is core's ``agent.default.<key>`` value; *agent_floor* the active
     plugin's declared row for *key*, if any (``agent.<active>.<key>``, [Q91]).
@@ -1298,11 +1298,10 @@ def _focused_agent_snapshot(
         behavior_floor={key: floor},
         agent_behavior_floor=agent_floor,
         # The SHELL TIER's own values (spec §2d fence), the same producer the main
-        # launch folds (``_resolve_launch_snapshot``).  ⚑ LOAD-BEARING: a shell pick
-        # has no ``agent.default`` fallback (``settings_launch._fallback_node``), so
-        # WITHOUT IT the pick finds NOTHING for *key* — the ``agent.default`` floor
-        # above is never read for a shell box.  Dormant for every other agent —
-        # only a shell pick reads ``agent.shell``.
+        # launch folds (``_resolve_launch_snapshot``).  ⚑ LOAD-BEARING for a fence
+        # row (``label``, ``continue_mode``, ``model``): without it a shell pick
+        # would fall back to the ``agent.default`` floor above for that key.
+        # Dormant for every other agent — only a shell pick reads ``agent.shell``.
         # The resolved ``system.*`` tier rides beside it, as in every box resolve.
         default_categories={
             **core_defaults.pseudo_tier_defaults(), **inputs.system_floor,
@@ -3697,9 +3696,8 @@ def _run_container(
     # ``access`` (single-route, [[settings-must-map-to-keystore-key]]) — via the
     # active agent + its ``agent.default.bootstrap`` / ``agent.<agent>.bootstrap``
     # cascade, the declared ``agent.default.bootstrap`` (``tmux``) answering where no
-    # tier supplies one.  A plain-shell box never reads the default tier (a
-    # pseudo-agent has no fallback, ``settings_launch._fallback_node``); the shell
-    # tier supplies its own (``tmux``, the fence).  ``None`` = no program (see
+    # tier supplies one — for a plain-shell box too, which inherits ``agent.default``
+    # (``settings_launch._fallback_node``).  ``None`` = no program (see
     # :func:`_bootstrap_choice`).  Resolved HERE (before the baseline probe /
     # bootstrap-wrap / reattach that consume it), NOT pre-agent up top.
     # ⚑ ONLY AN AGENT-MODE LAUNCH READS IT OFF ``agent_id``.  A launch that runs no
@@ -4700,8 +4698,7 @@ def _run_container(
         # path (agent_id == "shell") so the helper hub gate below sees the
         # effective value regardless of target.
         # ⚑ ABSENT and PRESENT-``None`` are two cases. An absent key (an agent-less
-        # / mocked target with no snapshot floor) takes the DECLARED value; a shell
-        # box's is ``agent.shell.allow_helpers``, not the default's. A present
+        # / mocked target with no snapshot floor) takes the DECLARED value. A present
         # ``None`` (a stored ``null``) has no meaning here and REFUSES
         # (:func:`_refuse_null_behavior`; the early check already refused what its
         # read sees).
@@ -7928,10 +7925,9 @@ def _resolve_launch_snapshot(
             core_defaults.canon_default_categories(std, agent_name or None),
             family="canon", origins=cat_origins,
         )
-        # The SHELL TIER's own values (spec §2d fence: label/access/allow_helpers/
-        # bootstrap, and the present-``None`` continue_mode/model/endpoint/run_args/
-        # transform).  ``template``
-        # rides ``agent_template_defaults`` below.
+        # The SHELL TIER's own values (spec §2d fence: ``label``, and the present-``None``
+        # ``continue_mode``/``model``; every other shell key inherits ``agent.default``).
+        # ``template`` rides ``agent_template_defaults`` below.
         # Folded UNCONDITIONALLY beside the default arm above, for the same reason
         # the template arms below are: a declared default must ANSWER for a box
         # that ALREADY EXISTS (P), whatever that box runs, and only a shell pick
@@ -8116,6 +8112,14 @@ def _resolve_launch_snapshot(
             # truthiness.
             behavior_floor = core_defaults.behavior_defaults()
             agent_behavior_floor = descriptor_floor(descriptors, plugin=target.name)
+    if (
+        behavior_floor is None and include_base_families
+        and agent_name in ADDRESSABLE_PSEUDO_AGENTS
+    ):
+        # ⚑ A PLAIN-SHELL box has no descriptors, but its pick falls back to
+        # ``agent.default`` like any agent's (§2d "Pseudo-agent(s)"), so core's
+        # ``agent.default`` floor must be there for it to read.  No plugin floor.
+        behavior_floor = core_defaults.behavior_defaults()
 
     # ``pref.*`` REQUESTS (spec §2h) — collected ONCE, with the inputs, so the
     # enrichment below names the same list the build applied.
@@ -10434,8 +10438,7 @@ def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
     realization of the same variable are both the agent scope's, and one would
     silently overwrite the other in the node below.  Checked against BOTH agent tiers
     — ``agent.<node>`` and ``agent.default`` — because the §2d pick merges them into
-    one effective node, so a value in either would be the one that vanished.  (A
-    pseudo-agent's pick has no ``agent.default`` tier, so none is checked for one.)
+    one effective node, so a value in either would be the one that vanished.
     """
     if not env:
         return
@@ -10463,8 +10466,8 @@ def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> "str | None":
     """The DISCRIMINATED key already declaring ``env.<var>`` at the agent scope, or ``None``.
 
     Both tiers, ACTIVE first: the §2d pick would let ``agent.<node>`` win, so that is
-    the key to name when both are present.  A pseudo-agent's pick reads its own tier
-    alone (``settings_launch._fallback_node``), so for one only that tier is checked.
+    the key to name when both are present; a pseudo-agent's pick reads both tiers too
+    (``settings_launch._fallback_node``).
     Reads via the UNBOUND ``dict`` protocol (S3) — a snapshot node answers attribute
     lookups with its own members.
     """
@@ -10473,11 +10476,7 @@ def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> "str | None":
     agent_node = dict.get(snapshot, "agent", None)
     if not isinstance(agent_node, KeyStore):
         return None
-    tiers = (
-        (agent_id,) if pseudo_agent_fence(agent_id) is not None
-        else (agent_id, "default")
-    )
-    for tier in tiers:
+    for tier in (agent_id, "default"):
         tier_node = dict.get(agent_node, tier, None)
         if not isinstance(tier_node, KeyStore):
             continue

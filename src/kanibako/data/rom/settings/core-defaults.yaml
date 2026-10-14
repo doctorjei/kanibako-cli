@@ -508,36 +508,22 @@ agent_default:
   run_args: null
   transform: null
 
-# The SHELL pseudo-agent's own tier values (spec §2d, "Pseudo-agent(s)" fence) —
-# the ONLY tier a plain-shell box resolves (only true agents inherit from
-# `agent.default`), installed UNCONDITIONALLY in every launch
-# snapshot's base floor beside the default arm above (P: a declared default must
-# answer for a box that already exists, whatever that box runs).  A dormant tier
-# for every other agent: the §2d pick reads `agent.<active>`, so these leaves
-# reach only a shell pick and never overlay a plugin agent's own tier.
+# The SHELL pseudo-agent's own tier values (spec §2d, "Pseudo-agent(s)" fence):
+# exactly the rows the fence states.  Every other key a shell box reads comes from
+# `agent.default` — core's values above and the settings files' — never a plugin's
+# (`settings_launch._fallback_node`); set `agent.shell.<key>` to change one for the
+# shell alone.  Installed UNCONDITIONALLY in every launch snapshot's base floor
+# (P: a declared default must answer for a box that already exists); a dormant tier
+# for every other agent, since only a shell pick reads `agent.shell`.
 # ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above, with the same
-# exception: a fence row declared `<None>` is written `null`, and the reader
-# keeps it a PRESENT `None`, never the string "None" and never an omission.
-# ⚑ EVERY ROW IS A SUPPLIED VALUE (keyspec §2d).  A shell pick never falls back to
-# `agent.default.*` (`settings_launch._fallback_node`), so a fence row missing
-# here would answer nothing at all.  That is why `bootstrap: "tmux"` is written
-# here although `agent_default:` carries the same `tmux`: it is the shell tier's
-# OWN value, and a user's `agent.default.bootstrap` does not reach a plain-shell
-# box (set `agent.shell.bootstrap` for that).  `template`, the fence's last
-# `<None>` row, is floored by its owner, `launch.templates.agent_template_defaults`.
-# `canon` is NOT here: its shell arm is dynamic (the store dir wins when it
-# exists) and lives in `core_defaults.canon_default_categories` beside the
-# default arm.
+# exception: a fence row declared `<None>` is written `null`, and the reader keeps it
+# a PRESENT `None`, which shadows the `agent.default` value below it.  `template`, the
+# fence's last `<None>` row, is floored by its owner,
+# `launch.templates.agent_template_defaults`.
 agent_shell:
   label: "Command Line Shell (shell)"
-  access: "full"
-  allow_helpers: "true"
-  bootstrap: "tmux"
   continue_mode: null
   model: null
-  endpoint: null
-  run_args: null
-  transform: null
 
 # ---------------------------------------------------------------------------
 # STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core
@@ -598,8 +584,7 @@ agent_shell:
 # levels are overlaid PER NAME (spec §2a), so a plugin descriptor or any settings
 # file overrides it for ONE agent and the rest keep inheriting.  The `{$TERM}`
 # dispatch and the `xterm` fallback are `settings_resolve._host_term`.
-# ⚑ `agent.shell` states it again because a pseudo-agent does not inherit
-# `agent.default` (spec §2d shell fence, `agent.shell.env.TERM | {$TERM}`).
+# A shell box inherits it like every agent (spec §2d "Pseudo-agent(s)").
 #
 # `KANIBAKO_DIRECTIVE_FINAL` (spec §2d shell fence, `~/AGENTS.md`): the file a
 # plain-shell launch renders the canon into.  Its presence in the resolved
@@ -610,7 +595,6 @@ env:
   agent.default:
     TERM: "{$TERM}"
   agent.shell:
-    TERM: "{$TERM}"
     KANIBAKO_DIRECTIVE_FINAL: "{$GUEST_HOME}/AGENTS.md"
   box:
     COLORTERM: "{$COLORTERM}"

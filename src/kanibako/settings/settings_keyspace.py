@@ -573,9 +573,8 @@ PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({
         meta_leaves=frozenset(),
         meta_auth_leaves=frozenset(),
     ),
-    # §2d **shell** — the plain shell. A pseudo-agent defines a value for every universal
-    # key, so its leaves are the same set as ``default``'s (``continue_mode``, ``model`` and
-    # ``endpoint`` are ``<None>`` there).
+    # §2d **shell** — the plain shell. Its leaves are the same set as ``default``'s: a key
+    # its fence states no row for still exists here and inherits ``agent.default``.
     "shell": PseudoAgentFence(
         leaves=frozenset({
             "label", "access", "continue_mode", "model", "endpoint", "allow_helpers",
@@ -1432,9 +1431,9 @@ def agent_declared_leaves(
 class AgentVocabulary(Collection[str]):
     """Every leaf legal on ONE agent: core's universal table, plus that agent's own.
 
-    ⚑ A PSEUDO-AGENT HAS NO UNIVERSAL TABLE: its core half is its own §2d fence
-    (:class:`PseudoAgentFence`), because the true-agent rows do not reach it, and it has
-    no plugin half.
+    ⚑ A PSEUDO-AGENT'S CORE HALF IS ITS OWN §2d FENCE (:class:`PseudoAgentFence`), and
+    it has no plugin half.  ``shell``'s fence lists the universal leaves, since it
+    inherits ``agent.default``.
 
     ⚑⚑ THE TIER IS THE PARTITION LINE
     (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"). A leaf established at

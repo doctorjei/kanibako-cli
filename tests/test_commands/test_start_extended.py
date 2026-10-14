@@ -3025,8 +3025,8 @@ class TestCheckLaunchBaselineUnit:
     def test_tier1_on_a_shell_box_names_the_shell_tier_key(
         self, tmp_path, monkeypatch, capsys
     ):
-        """A plain-shell box's ``tmux`` is the shell tier's own value, which
-        ``agent.default.bootstrap`` cannot change: the cure names its real key."""
+        """When a plain-shell box's ``tmux`` came from its own ``agent.shell.bootstrap``,
+        the cure names that key, not ``agent.default.bootstrap``."""
         from kanibako.commands import start as start_mod
 
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))

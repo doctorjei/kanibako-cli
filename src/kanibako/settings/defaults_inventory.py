@@ -144,11 +144,10 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
     ("core-defaults.yaml (agent_default:)", frozenset(
       f"agent.default.{leaf}" for leaf in core_defaults.behavior_defaults())),
-    # The shell tier's OWN values — the fence literals no other tier carries,
-    # its PRESENT-``None`` rows (``run_args``/``transform``) included.
-    # Derived off the emitter exactly like the default arm above, so a new
-    # `agent_shell:` leaf arrives here on its own. `canon` is NOT in this set:
-    # its shell arm is dynamic and is classified with its producer below.
+    # The shell tier's OWN values — the fence rows no other tier carries, its
+    # PRESENT-``None`` rows (``continue_mode``/``model``) included; every other shell
+    # key inherits ``agent.default``. Derived off the emitter exactly like the default
+    # arm above, so a new `agent_shell:` leaf arrives here on its own.
     ("core-defaults.yaml (agent_shell:)", frozenset(
       core_defaults.pseudo_tier_defaults())),
     # The ``env:`` table's own keys, intersected with the registry: the file may ship an
@@ -179,9 +178,6 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # 🛑 Do not re-add the label: an empty group raises out of :func:`key_rows`.
     # The one literal emitted by the canon bind producer (spec §2d).
     ("core_defaults.py (canon producer)", frozenset({"agent.default.canon"})),
-    # The shell arm of the same producer — the fence literal, unconditional (D2),
-    # beside the default arm above because the emitter spells both.
-    ("core_defaults.py (canon producer, shell arm)", frozenset({"agent.shell.canon"})),
     # ⚑ THE ``kuid.py (SENTINEL)`` LABEL IS GONE (2026-08-29) — not because the sentinel
     # moved, but because ``workset.kuid`` did: the anchor floor emits it now (as
     # ``kuid.SENTINEL``, by reference), and this partition must stay disjoint. One hop
@@ -212,15 +208,15 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # The §2d SHELL FENCE's ``agent.shell.template | <None>``, floored as a PRESENT
     # ``None`` by ``launch.templates.agent_template_defaults``.  ⚑ ``<None>`` IS A VALUE
-    # (keyspec §2d "Pseudo-agent(s)"): SUPPLIED by the tier itself (a pseudo-agent never falls
-    # back to ``agent.default.template``), so it has a carrier to name — which is why it
+    # (keyspec §2d "Pseudo-agent(s)"): SUPPLIED by the tier itself, shadowing
+    # ``agent.default.template``, so it has a carrier to name — which is why it
     # is not in the "nothing declares it" group below.  Its layer is declared and SKIPPED
     # at resolve (spec §2a).
     ("launch/templates.py (shell fence, present None)",
      frozenset({"agent.shell.template"})),
     # ``default: <None>`` rows with NO carrier — true ABSENCES.  ⚑ The shell fence's
-    # other ``<None>`` rows, ``agent.shell.{continue_mode,model,endpoint,run_args,
-    # transform}``, are NOT here: ``core-defaults.yaml``'s ``agent_shell:`` floors them as
+    # other ``<None>`` rows, ``agent.shell.{continue_mode,model}``, are NOT here:
+    # ``core-defaults.yaml``'s ``agent_shell:`` floors them as
     # PRESENT ``None``, so they arrive in that group above, derived off its emitter; so do
     # ``agent.default.{model,endpoint,run_args,transform}``, off ``agent_default:``.
     ("(nothing declares it — unset until you set it)", frozenset({
@@ -229,7 +225,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({
       "box.bindings.ro", "box.bindings.rw", "box.masks",
-      "agent.default.transform_settings", "agent.shell.transform_settings"})),
+      "agent.default.transform_settings"})),
     # The per-NODE arm of the same producer, spelled ONE ref hop differently from the
     # registry (``{meta.agent.<a>.path}`` IS ``{config.agents}/<a>``; both resolve to one
     # place). Labeled apart from the ``agent.default`` arm above because they are two
@@ -422,9 +418,9 @@ def bind_rows() -> list[DefaultRow]:
 # ⚑ THIS SECTION IS A REPORT ON THE LIVE ENV FLOOR, NOT A REGISTRY CLAIM.  The values
 # are read from the same two emitters the launch reads, so it lists what a box actually
 # gets — which is why it lists EVERY var, including the one the registry also carries.
-# ⚑⚑ THE REGISTRY ENUMERATES THREE env INSTANCES and no longer "deliberately lacks" them:
-# spec §2b declares ``box.env.COLORTERM`` and §2d ``agent.default.env.TERM`` and its
-# shell-fence twin ``agent.shell.env.TERM`` (all core-shipped defaults), so each is a
+# ⚑⚑ THE REGISTRY ENUMERATES ITS env INSTANCES and no longer "deliberately lacks" them:
+# spec §2b declares ``box.env.COLORTERM`` and §2d ``agent.default.env.TERM`` (both
+# core-shipped defaults; a shell box inherits the latter), so each is a
 # section-1 DECLARED KEY as well, printed
 # there with the SAME source label.  That overlap is the point — the two sections answer
 # different questions about one value, and dropping them from here would make "the

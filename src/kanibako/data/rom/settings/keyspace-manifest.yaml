@@ -1425,9 +1425,9 @@ keys:
   # belongs in that plugin's `behavior:` floor, reaching the keyspace through
   # agent.<agent>.<key>. ⚑ ALL THREE SHIP since 2026-09-15 (D8b); an agent whose plugin
   # declares none reads this fallback. The pseudo-agent
-  # `agent.shell.label | "Command Line Shell (shell)"` has no plugin and does not read
-  # this fallback; its carrier is the `agent.shell.*` block below (D2: a `shell` node
-  # the code now materializes — store dir, cascade slot, tier floor).
+  # `agent.shell.label | "Command Line Shell (shell)"` has no plugin; its fence row in
+  # the `agent.shell.*` block below shadows this fallback (D2: a `shell` node the code
+  # materializes — store dir, cascade slot, tier floor).
   # ⚑ NOT `meta.agent.<agent>.name`, which is the STORE DIR (a machine identity, RO); the
   # label only DEFAULTS to that value, and a user may set it.
   # ⚑ The agent FILE's non-key `name` field is GONE (D8b): `label` is the ONLY carrier of
@@ -1670,12 +1670,11 @@ keys:
   ## ---- agent.shell.* — the plain-shell tier (§2d `**shell**` fence) -------
   ## Transcribed, never paraphrased, from the spec fence. `set:` copies the
   ## agent.default twin per row; the VALUE column is the fence's tier value.
-  ## `agent.shell.bindings.{ro,rw}` mints NO row — bindings are declared by the
-  ## CATEGORY FAMILY (the agent.default fence's identical line carries no row
-  ## either; a second one would be the two-carriers defect). The fence is the shell
-  ## tier's COMPLETE list, because the §2d "True agent(s)" rows do not reach a
-  ## pseudo-agent; it gives every universal key a value, so `continue_mode`, `model`
-  ## and `endpoint` are rows here with the fence value `<None>`.
+  ## The fence lists only the rows the shell states for itself: every other key a
+  ## shell box reads inherits agent.default (core and settings files), never a
+  ## plugin (§2d "Pseudo-agent(s)"), through the generic agent.<agent>.<key> row.
+  ## A fence `<None>` row (`continue_mode`, `model`, `template`) is a PRESENT None
+  ## that shadows agent.default.
   agent.shell.label:
     scope: agent
     type: str
@@ -1684,15 +1683,6 @@ keys:
     note: "the plain-shell box's description (fence literal, NOT the all-agents
            fallback). Installed by the shell tier floor
            (`core-defaults.yaml agent_shell:`), so a shell pick reads it."
-    spec: "§2d (shell fence)"
-  agent.shell.access:
-    scope: agent
-    type: enum
-    choices: [restricted, editing, full]
-    set: cli+file
-    default: full
-    note: "permission TIER for a plain-shell box (fence literal). The VALUES stay
-           the universal enum — same realization rule as the twin."
     spec: "§2d (shell fence)"
   agent.shell.continue_mode:
     scope: agent
@@ -1708,55 +1698,6 @@ keys:
     default: null
     note: "model for a plain-shell box; null = none (fence <None>)."
     spec: "§2d (shell fence)"
-  agent.shell.endpoint:
-    scope: agent
-    type: str
-    set: cli+file
-    default: null
-    note: "backend endpoint URL for a plain-shell box; null = none (fence <None>)."
-    spec: "§2d (shell fence)"
-  agent.shell.allow_helpers:
-    scope: agent
-    type: bool
-    set: cli+file
-    default: true
-    note: "helper spawning for a plain-shell box (fence literal). Read off the
-           launch snapshot by the same gate that reads the twin."
-    spec: "§2d (shell fence)"
-  agent.shell.bootstrap:
-    scope: agent
-    type: str
-    set: cli+file
-    default: tmux
-    note: "the plain-shell box's multiplexer (fence literal), the shell tier's OWN
-           value: agent.default.bootstrap does not reach a plain-shell box. Floored
-           by `core-defaults.yaml agent_shell:`, whose header says why."
-    spec: "§2d (shell fence)"
-  agent.shell.run_args:
-    scope: agent
-    type: list
-    set: cli+file
-    default: null
-    note: "raw-argv passthrough escape hatch. ⚑ STORED AS A LIST; the CLI takes ONE
-           scalar string and normalizes it to a list before writing (keyspec §2d
-           agent.default.run_args).
-           Floored as a PRESENT None by the shell tier floor (fence <None>)."
-    spec: "§2d (shell fence)"
-  agent.shell.transform:
-    scope: agent
-    type: str
-    set: cli+file
-    default: null
-    note: "WHICH binary transform the shell box uses; null = none (fence <None>),
-           floored as a PRESENT None by the shell tier floor."
-    spec: "§2d (shell fence)"
-  agent.shell.transform_settings:
-    scope: agent
-    type: dict
-    set: file
-    default: {}
-    note: "binary-transform SETTINGS input for the shell tier (fence `{}`)."
-    spec: "§2d (shell fence)"
   agent.shell.template:
     scope: agent
     type: path
@@ -1765,26 +1706,6 @@ keys:
     default: null                 # fence <None> — installs NO layer-2 template (§2b)
     note: "no per-agent template SOURCE at the shell tier; the tier installs no
            layer-2 template because shell's IS EMPTY."
-    spec: "§2d (shell fence)"
-  agent.shell.canon:
-    scope: agent
-    type: path
-    owner: shared
-    set: cli+file
-    default: "{config.agents}/default/canon"
-    note: "the shell tier's CANON CONTRIBUTION ROOT is the all-agents fallback arm
-           itself (fence literal) — the pseudo-agent ships no canon of its own."
-    spec: "§2d (shell fence)"
-  agent.shell.env.TERM:
-    scope: agent
-    type: str
-    set: cli+file
-    default: "{$TERM}"
-    note: "the HOST's terminal type for a plain-shell box (fence row; `xterm`
-           when unset) — shipped in core-defaults.yaml's `env: agent.shell:`
-           table. Stated at the shell tier because a pseudo-agent does not
-           inherit agent.default.env.TERM (§2d). Same family contract as its
-           agent.default twin."
     spec: "§2d (shell fence)"
   agent.shell.env.KANIBAKO_DIRECTIVE_FINAL:
     scope: agent

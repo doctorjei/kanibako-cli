@@ -2391,16 +2391,15 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.default\.(model|endpoint|run_args|transform)$' }
 
-# FACT: the shell tier's `label`, `access` and `allow_helpers` are the
-# `agent_shell:` table's -- the half `shell-tier-fence` does not hold. The two views
-# split one table, and together they hold all of it. (`TestShellTierDefaults` keeps
-# the `type:` and `choices:` columns, for all six rows.)
+# FACT: the shell tier's `label` is the `agent_shell:` table's -- the half
+# `shell-tier-fence` does not hold. The two views split one table, and together
+# they hold all of it.
 [[registry]]
 name = "shell-tier-behavior"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^agent\.shell\.(label|access|allow_helpers)$' }
+where = { id_matches = '^agent\.shell\.label$' }
 
 # FACT: every `<scope>.env.<VAR>` row with a default is `core-defaults.yaml`'s
 # `env:` table, read by `core_defaults.env_default_categories` -- and nothing else:
@@ -2422,8 +2421,9 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^system\.helpers\.' }
 
-# FACT: the agent-tier CANON roots -- the node arm, the `default` fallback and the
-# shell fence arm -- are what `core_defaults.canon_default_categories` floors. The
+# FACT: the agent-tier CANON roots -- the node arm and the `default` fallback --
+# are what `core_defaults.canon_default_categories` floors. A shell box takes the
+# node arm too (it inherits `agent.default`, §2d "Pseudo-agent(s)"). The
 # node arm `agent.<agent>.canon` crosses its `@meta.agent.<agent>.path` hop with the
 # same two hops `agent-template-source` declares.
 [[registry]]
@@ -2431,7 +2431,7 @@ name = "canon-defaults"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^agent\.(<agent>|default|shell)\.canon$' }
+where = { id_matches = '^agent\.(<agent>|default)\.canon$' }
 
 # FACT: the workset CHANNEL root and its four workset-LOCAL leaves default to the
 # formulas the manifest declares, per arm. (`TestWorksetChannelDefaults` keeps the
@@ -3711,91 +3711,59 @@ field = "default"
 format = "json"
 authority = "declared"
 
-# FACT: a pseudo-agent node holds exactly the leaves its own §2d block lists --
-# the manifest's concrete `agent.<node>.<leaf>`, `meta.agent.<node>.<leaf>` and
-# `meta.agent.<node>.auth.<leaf>` rows -- and no leaf of the "True agent(s)" rows
-# (`agent.<agent>.<key> | agent.default.<key>`, `meta.agent.<agent>.*`), which do
-# not reach a pseudo-agent. `meta.agent.default.mode` is no key.
+# FACT: a pseudo-agent node holds exactly the meta leaves its own §2d block lists --
+# the manifest's concrete `meta.agent.<node>.<leaf>` and
+# `meta.agent.<node>.auth.<leaf>` rows -- and no leaf of the true-agent
+# `meta.agent.<agent>.*` rows; `meta.agent.default.mode` is no key. At the agent
+# tier, `default` holds exactly its concrete `agent.default.<leaf>` rows. The
+# `shell` node's agent leaves are not judged here: it inherits `agent.default`
+# (§2d "Pseudo-agent(s)"), so a leaf its fence states no row for is a key through
+# the generic `agent.<agent>.<key>` row, as for a true agent.
 # AUTHORITY: membership. The manifest rows, transcribed from the fences, against
 # `settings_keyspace.key_class` -- the production judge, not the fence table it
 # reads -- asked of every leaf a true agent or a fence knows.
-# ⚑ THE SELECTOR IS THE CONCRETE ROWS UNDER `agent.` AND `meta.agent.`, less the
-# categories (`agent.default.env.TERM`): today exactly the pseudo-agents', since
-# the core registry spells no plugin agent's rows. A concrete row for a true agent
-# would red here as produced by nothing.
+# ⚑ THE SELECTOR IS THE CONCRETE ROWS UNDER `agent.default.` AND `meta.agent.`, less
+# the categories (`agent.default.env.TERM`): today exactly the pseudo-agents', since
+# the core registry spells no plugin agent's rows. A concrete meta row for a true
+# agent would red here as produced by nothing.
 [[registry]]
 name = "pseudo-agent-leaves"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^(meta\.)?agent\.[a-z_]+\.(auth\.)?[a-z_]+$' }
+where = { id_matches = '^(meta\.agent\.[a-z_]+\.(auth\.)?[a-z_]+|agent\.default\.[a-z_]+)$' }
 
-# FACT: the §2d shell fence's `agent.shell.bootstrap` (`tmux`) and its `<None>` rows
-# `agent.shell.{continue_mode,model,endpoint,run_args,transform}` are SUPPLIED by the
-# shell tier's own floor, with the values the manifest declares -- never omitted, never
-# stringified.
+# FACT: the §2d shell fence's `<None>` rows `agent.shell.{continue_mode,model}` are
+# SUPPLIED by the shell tier's own floor as a PRESENT `None` -- never omitted (which
+# would let the §2d pick read `agent.default` instead), never stringified. Every key
+# the fence states no row for inherits `agent.default` (§2d "Pseudo-agent(s)").
 # AUTHORITY: `declared`. The manifest rows, sourced from the §2d fence, are the
 # expected values; `core-defaults.yaml`'s `agent_shell:` table, read by
 # `core_defaults.pseudo_tier_defaults`, is the code on trial.
-# CATCHES: a row OMITTED from `agent_shell:` -- the shape keyspec §2d
-# "Pseudo-agent(s)" rejects: a shell pick has no `agent.default` fallback (§2d),
-# so the fence row would answer nothing; a `<None>` row stringified to `"None"`;
-# a value that drifted from the fence; AND the manifest cell itself changed or
-# removed.
-# ⚑ A VALUE COMPARISON in kinemata `0.4.0`'s `format = "json"`: a declared `null`
-# must meet a printed `null`, which the `text` form cannot carry (measured for
-# `agent-template-source`, above). The oracle prints with `json.dumps`, for the
-# reason `shell-template-none`'s parity gives, above.
-# ⚑ SCOPE: these rows, not the whole `agent_shell:` table. Its other rows
-# (`label`, `access`, `allow_helpers`) are `shell-tier-behavior`'s, below, which
-# compares them in `text` form through a `translate` -- the floor ships
-# `allow_helpers` as the string `"true"` where the manifest writes the bool `true`,
-# and json compares data as written. So the oracle filters to the same three
-# leaves, and "and nothing else" holds within them.
+# ⚑ A VALUE COMPARISON in `format = "json"`: a declared `null` must meet a printed
+# `null`, which the `text` form cannot carry. The `label` row is
+# `shell-tier-behavior`'s, below; the two views split the table.
 [[registry]]
 name = "shell-tier-fence"
 kind = "yaml-mapping"
 source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^agent\.shell\.(bootstrap|continue_mode|model|endpoint|run_args|transform)$' }
+where = { id_matches = '^agent\.shell\.(continue_mode|model)$' }
 
-# Measured 2026-09-25, kinemata `0.4.1` (CI's pin), on `5c38aea4` plus the
-# shell-bootstrap working tree, run with `PYTHONPATH=<tree>/src`:
-#   `# shell-tier-fence: 3 declared, 3 produced, in agreement, agreeing on
-#   default.`  rc=0
-#   `check`'s `silent:` tally goes 498/606 to 501/609 -- by its 3 entries, the
-#   only line of `check` output that differs from the same tree with this block
-#   removed; `shape` and `undeclared` print byte-identical output.
-# NEGATIVE CONTROLS, each one edit in a fresh copy under /tmp run with
-# `PYTHONPATH=<copy>/src`, each rc=1. The first, third and fourth were re-run
-# under `0.4.1` on the tree above; the other three were last run under `0.4.0`
-# on `4e63ff63`:
-#   `bootstrap` alone OMITTED from `agent_shell:`:
-#     `agent.shell.bootstrap: declared, produced by nothing`
-#   the three rows OMITTED from `agent_shell:` (the `26db59aa` table):
-#     `agent.shell.bootstrap: declared, produced by nothing`, and the same for
-#     `run_args` and `transform`
-#   `bootstrap: null` in `agent_shell:` (the fence's former `<None>`):
-#     `agent.shell.bootstrap: default declared '"tmux"', code produces 'null'`
-#   the reader stringifying (`str(value)`, no `None` arm):
-#     `agent.shell.run_args: default declared 'null', code produces '"None"'`,
-#     and the same for `transform`
-#   manifest cell `agent.shell.bootstrap` back to `default: null`:
-#     `agent.shell.bootstrap: default declared 'null', code produces '"tmux"'`
-#   manifest cell `default: null` removed from `agent.shell.run_args`:
-#     `agent.shell.run_args: the declaration records no default, and the code
-#     produces 'null'`
-# VACUITY: `equal` reds a silent oracle as "produced by nothing" (the omission
-# controls above), so it needs no guard of its own.
+# NEGATIVE CONTROLS, each one edit in the worktree, rc=1 (measured 189-w-shelldef):
+#   `model` OMITTED from `agent_shell:`: `agent.shell.model: declared, produced by
+#     nothing`
+#   `continue_mode: "true"` in `agent_shell:` (2 disagreements):
+#     `agent.shell.continue_mode: default declared 'null', code produces '"true"'`
+# VACUITY: `equal` reds a silent oracle as "produced by nothing", so it needs no
+# guard of its own.
 [[parity]]
 registry = "shell-tier-fence"
 command = ["{python}", "-c", """
 import json
 from kanibako.settings.core_defaults import pseudo_tier_defaults
 for key, value in sorted(pseudo_tier_defaults().items()):
-    if key.rsplit(".", 1)[-1] in (
-        "bootstrap", "continue_mode", "model", "endpoint", "run_args", "transform",
-    ):
+    if key.rsplit(".", 1)[-1] in ("continue_mode", "model"):
         print(f"kanibako-shell-tier: {key}={json.dumps(value)}")
 """]
 extract = '(?m)^kanibako-shell-tier: ([^\s=]+)=(.+)$'
@@ -3805,11 +3773,11 @@ authority = "declared"
 
 # ⚑ MEMBERSHIP, judged by the product: the oracle prints each key `key_class`
 # accepts at each pseudo-agent, over every leaf the true-agent sets or any fence
-# knows, at the three tiers the selector reads.
-#   `# pseudo-agent-leaves: 32 declared, 32 produced, in agreement.`  rc=0
+# knows, at the three tiers the selector reads (the agent tier for `default` only).
+#   `# pseudo-agent-leaves: 18 declared, 18 produced, in agreement.`  rc=0
 # NEGATIVE CONTROLS, each one edit in a copy under /tmp run with
 # `PYTHONPATH=<copy>/src`, each rc=1:
-#   code, `frob` added to the shell fence: `agent.shell.frob: produced,
+#   code, `frob` added to `DECLARED_AGENT_LEAVES`: `agent.default.frob: produced,
 #     declared by nothing`
 #   code, `mode` added to the default fence's meta leaves:
 #     `meta.agent.default.mode: produced, declared by nothing`
@@ -3833,6 +3801,8 @@ tiers = {
 }
 for name in sorted(PSEUDO_AGENT_NAMES):
     for prefix, known in tiers.items():
+        if prefix == "agent.{}." and name != "default":
+            continue
         for leaf in sorted(known):
             key = prefix.format(name) + leaf
             if key_class(key, valid_agents=()).cls is KeyClass.KEY:
@@ -4346,26 +4316,20 @@ field = "default"
 format = "json"
 authority = "declared"
 
-# ⚑ THE ORACLE PRINTS EVERY ROW EXCEPT THE THREE `shell-tier-fence` HOLDS, the
+# ⚑ THE ORACLE PRINTS EVERY ROW EXCEPT THE TWO `shell-tier-fence` HOLDS, the
 # exact complement of that table's filter, so a new `agent_shell:` row lands here
-# and reds. The bool hop is `behavior-floor`'s, for its reason.
-#   `# shell-tier-behavior: 3 declared, 3 produced, in agreement, agreeing on
-#   default.`  rc=0
-# NEGATIVE CONTROLS:
-#   code, `label: "Box Shell"` -> `"Shell"`: `agent.shell.label: default declared
-#     'Box Shell', code produces 'Shell'`
-#   code, `allow_helpers: "true"` -> `"yes"`: `... declared 'true', code produces
-#     'yes'`
-#   code, a seventh row `model: "x"` in `agent_shell:`: `agent.shell.model:
+# and reds.
+# NEGATIVE CONTROLS (measured 189-w-shelldef), each rc=1:
+#   code, `label` -> `"Shell"`: `agent.shell.label: default declared 'Command Line
+#     Shell (shell)', code produces 'Shell'`
+#   code, a row `bootstrap: "tmux"` added to `agent_shell:`: `agent.shell.bootstrap:
 #     produced, declared by nothing`
 [[parity]]
 registry = "shell-tier-behavior"
 command = ["{python}", "-c", """
 from kanibako.settings.core_defaults import pseudo_tier_defaults
 for key, value in sorted(pseudo_tier_defaults().items()):
-    if key.rsplit(".", 1)[-1] not in (
-        "bootstrap", "continue_mode", "model", "endpoint", "run_args", "transform",
-    ):
+    if key.rsplit(".", 1)[-1] not in ("continue_mode", "model"):
         print(f"kanibako-shell-behavior: {key}={value}")
 """]
 extract = '(?m)^kanibako-shell-behavior: ([^\s=]+)=(.+)$'
@@ -4426,7 +4390,7 @@ authority = "declared"
 # `agent-template-source`'s, for the same row shape. The oracle prints every
 # SCALAR the producer returns; its `box.bindings.ro` arm is chapter binds, not
 # `keys:` rows.
-#   `# canon-defaults: 3 declared, 3 produced, in agreement, agreeing on
+#   `# canon-defaults: 2 declared, 2 produced, in agreement, agreeing on
 #   default.`  rc=0
 # NEGATIVE CONTROLS:
 #   code, the store value's `store_dirname(agent_name)` -> `agent_name`:
@@ -4436,8 +4400,6 @@ authority = "declared"
 #   code, `agent.default.canon` -> `.../canon2`: `agent.default.canon: default
 #     declared '@config.agents/gemma+claude/canon', code produces
 #     '@config.agents/gemma+claude/canon2'`
-#   manifest, `agent.shell.canon` -> `@config.agents/shell/canon`: `... code
-#     produces '@config.agents/default/canon'`
 # HOP CONTROL, `translate` removed: `agent.default.canon: default declared
 # '@meta.agent.<agent>.path/canon', code produces '@config.agents/gemma+claude/canon'`.
 [[parity]]

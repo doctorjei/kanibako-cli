@@ -157,7 +157,7 @@ class TestTheEarlyCheck:
         assert _refusal(proj, rules=[_RULES[key]]) is not None
 
     def test_a_shell_box_null_allow_helpers_is_refused(self, tmp_path):
-        """The shell tier's own value: a plain-shell or agent-less launch reads it too."""
+        """The shell's own key: a plain-shell or agent-less launch reads it too."""
         proj = _focused_box(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"shell": {"allow_helpers": None}}})
@@ -166,13 +166,16 @@ class TestTheEarlyCheck:
             _head(sys_file, "agent.shell.allow_helpers")
         )
 
-    def test_a_default_slot_null_does_not_reach_the_shell_tier(self, tmp_path):
+    def test_a_default_slot_null_reaches_the_shell_box(self, tmp_path):
+        """The shell inherits ``agent.default`` (§2d "Pseudo-agent(s)"), so a ``null``
+        there refuses a plain-shell launch too, naming the default-tier key."""
         proj = _focused_box(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"allow_helpers": None}}})
-        assert _refusal(
-            proj, sys_file, agent="shell", rules=[_ALLOW_HELPERS_NULL],
-        ) is None
+        msg = _refusal(proj, sys_file, agent="shell", rules=[_ALLOW_HELPERS_NULL])
+        assert msg is not None and msg.startswith(
+            _head(sys_file, "agent.default.allow_helpers")
+        )
 
 
 def _snapshot(system_file, cli_level=None):

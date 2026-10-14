@@ -60,8 +60,8 @@ AGENT_ENTRY_POINT_GROUP = "kanibako.agents"
 # dumps).  It OCCUPIES the ``agents/<node>/`` dir & the ``agent.<node>.*``
 # cascade POSITION as a real node-name does — which is why
 # ``_materialize_box_agent_mirror``'s blank short-circuit does not fire.  A
-# pseudo-agent reads its own tier ONLY: no ``agent.default`` value reaches a
-# no-agent launch (keyspec §2d; ``settings_launch._fallback_node``).
+# pseudo-agent inherits ``agent.default`` (core and settings files), never a
+# plugin (keyspec §2d; ``settings_launch._fallback_node``).
 # 🛑 IT IS A DECLARED PSEUDO-AGENT (keyspec §2d, "Pseudo-agent(s)"), & the
 # difference from the old ``"general"`` slot is not cosmetic: ``agent.shell.*``
 # is DECLARED, so a closed-keyspace resolve ACCEPTS it where it REFUSED

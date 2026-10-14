@@ -394,7 +394,6 @@ KEY_OWNERS: dict[str, str] = {
     "agent.default.template": "shared",
     "agent.default.canon": "shared",
     "agent.shell.template": "shared",
-    "agent.shell.canon": "shared",
     "agent.<agent>.template": "shared",
     "agent.<agent>.canon": "shared",
     "workset.workspaces": "workset",

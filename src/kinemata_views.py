@@ -1051,8 +1051,8 @@ NOT_EXPRESSIBLE = "not-expressible"
 
 #: The two cells whose value is what ABSENCE yields: no producer value is compared
 #: against them. ⚑ `true` and `false` are NOT among them: the fence spells
-#: a boolean `true`, and `spec_notation(True)` is `true`, so `agent.shell.allow_helpers
-#: | true` and `agent.goose.env.GOOSE_DISABLE_KEYRING | true` are STATED values.
+#: a boolean `true`, and `spec_notation(True)` is `true`, so
+#: `agent.goose.env.GOOSE_DISABLE_KEYRING | true` is a STATED value.
 ABSENCE_CELLS = (SPEC_NULL, SPEC_EMPTY)
 
 

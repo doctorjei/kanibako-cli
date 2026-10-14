@@ -844,9 +844,8 @@ class TestCoreStaticEnvDefaults:
     #: the emitter, so the emitted value is the guest path.
     _SHIPPED_ENV = {
         "agent.default": {"TERM": "{$TERM}"},
-        # A pseudo-agent does not inherit agent.default (§2d shell fence).
+        # The shell inherits agent.default's TERM (§2d "Pseudo-agent(s)").
         "agent.shell": {
-            "TERM": "{$TERM}",
             "KANIBAKO_DIRECTIVE_FINAL": "{$GUEST_HOME}/AGENTS.md",
         },
         "box": {"COLORTERM": "{$COLORTERM}"},
@@ -864,8 +863,7 @@ class TestCoreStaticEnvDefaults:
         overlaid PER NAME, so one agent can be given a different terminal type
         without the others restating it — which a box-scope declaration could not
         offer, and which a per-node declaration would force on every plugin.
-        The ``agent.shell`` row is the one per-node restatement, because the shell is a
-        pseudo-agent and reads no ``agent.default`` value (§2d).
+        A plain-shell box inherits it too: the shell reads ``agent.default`` (§2d).
         """
         doc = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")
         assert doc.get("env") == self._SHIPPED_ENV, (
@@ -882,7 +880,6 @@ class TestCoreStaticEnvDefaults:
                 )
         assert core_defaults.env_default_categories() == {
             "agent.default.env.TERM": "{$TERM}",
-            "agent.shell.env.TERM": "{$TERM}",
             "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/AGENTS.md",
             "box.env.COLORTERM": "{$COLORTERM}",
         }, "the emitter must hand back the file's declaration under its dotted key"

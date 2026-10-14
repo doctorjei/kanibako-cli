@@ -887,8 +887,8 @@ NULL_REFUSED_BEHAVIOR_KEYS = frozenset({
 def effective_behavior_default(node: str, key: str) -> "str | None":
     """*node*'s EFFECTIVE declared ``<key>`` default (spec §2d): what an unset key reads.
 
-    ``agent.default``'s own row for ``default``; a pseudo-agent's own tier row; for a true
-    agent, its plugin's declared ``agent.<node>.<key>`` row where it has one (claude's
+    ``agent.default``'s own row for ``default``; a pseudo-agent's own tier row where its
+    fence states one, else ``agent.default``'s (it has no plugin); for a true agent, its plugin's declared ``agent.<node>.<key>`` row where it has one (claude's
     ``transform`` is ``tweakcc`` over core's ``<None>``), else ``agent.default``'s.
     """
     from kanibako.settings import core_defaults
@@ -898,7 +898,8 @@ def effective_behavior_default(node: str, key: str) -> "str | None":
     if node == AGENT_DEFAULT_SUB:
         return core_defaults.behavior_defaults().get(key)
     if pseudo_agent_fence(node) is not None:
-        return core_defaults.pseudo_tier_defaults().get(f"agent.{node}.{key}")
+        tier = core_defaults.pseudo_tier_defaults()
+        return tier.get(f"agent.{node}.{key}", core_defaults.behavior_defaults().get(key))
     floor = _set_time_agent_tier(node, None, floor_only=True)[2] or {}
     if key in floor:
         return floor[key]

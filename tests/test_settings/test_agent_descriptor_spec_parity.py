@@ -314,7 +314,7 @@ class TestTheCellClassification:
                 "agent.goose.bootstrap",
                 "agent.goose.synced[~/.config/goose/secrets.yaml]",
             ]),
-            ("shell", ["agent.shell.canon"]),
+            ("shell", []),
         ],
     )
     def test_the_rows_no_claim_is_made_about(self, spec_mounted, node, expected):
@@ -334,7 +334,7 @@ class TestTheCellClassification:
 
     def test_a_sentinel_is_membership_and_a_boolean_is_stated(self):
         """`true` is the fence's boolean; only `<None>` and `{}` are what absence
-        yields, so `agent.shell.allow_helpers | true` is a value to compare."""
+        yields, so `agent.goose.env.GOOSE_DISABLE_KEYRING | true` is a value to compare."""
         assert kinemata_views.classify_spec_cell("k", kinemata_views.SPEC_NULL) \
             == kinemata_views.MEMBERSHIP
         assert kinemata_views.classify_spec_cell("k", kinemata_views.SPEC_EMPTY) \
@@ -376,7 +376,9 @@ class TestTheDescriptorSideIsTheRealWiring:
         from kanibako.settings.core_defaults import pseudo_tier_defaults
 
         assert pseudo_tier_defaults()["agent.shell.label"] == "Command Line Shell (shell)"
-        assert kinemata_views.agent_tier_defaults("shell")["agent.shell.access"] == "full"
+        shell = kinemata_views.agent_tier_defaults("shell")
+        assert "agent.shell.label" in shell
+        assert "agent.shell.access" not in shell  # inherited from agent.default (§2d)
 
     def test_the_guest_home_expansion_is_folded_back(self, spec_mounted):
         """⚑ WITHOUT THIS EVERY `env.KANIBAKO_DIRECTIVE_FINAL` ROW WOULD DISAGREE with a

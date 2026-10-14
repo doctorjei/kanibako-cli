@@ -320,12 +320,11 @@ class TestTemplateSeedDefaults:
 
         Keyspec §2d's shell fence declares ``agent.shell.template | <None>``, and §2b says
         the pseudo-agent installs NO layer-2 template.  So the node arm is a PRESENT
-        ``None`` — a supplied value, which beats the ``agent.default.template`` fallback
-        (keyspec §2d "Pseudo-agent(s)" rejects omitting it).  The ``agent.shell.seeded``
-        LAYER is still declared (§2a declares ``<scope>.seeded`` at every scope): the
+        ``None`` — a supplied value, which shadows the ``agent.default.template`` the
+        shell otherwise inherits (keyspec §2d "Pseudo-agent(s)").  The layer is core's
+        ``agent.default.seeded`` as for every agent (§2d *Default settings*): the
         ``None`` source SKIPS it at resolve, and a user-set ``agent.shell.template`` seeds
-        through it (``TestLayeredHomeSeed`` pins both).  The default arm still answers,
-        because the agent tier exists for a shell box.
+        through it (``TestLayeredHomeSeed`` pins both).
         (Mutation: drop the ``GENERAL_SLOT`` branch and this goes RED with
         ``{config.agents}/shell/template``; OMIT the key instead and it goes RED on the
         missing ``None``; gate the layer on the default's VALUE and it goes RED on the
@@ -340,9 +339,10 @@ class TestTemplateSeedDefaults:
         defs = template_seed_defaults(primary_proj, "shell")
         assert "agent.shell.template" in defs
         assert defs["agent.shell.template"] is None
-        assert defs["agent.shell.seeded"] == {
+        assert defs["agent.default.seeded"] == {
             "~/": ("{agent.shell.template}/box/home",),
         }
+        assert "agent.shell.seeded" not in defs
 
     def test_the_workset_source_key_is_the_floors_not_this_tables(self, primary_proj):
         """⚑⚑ Layer 3's SOURCE key is the floor's, not this table's (2026-08-29).  This
@@ -705,8 +705,8 @@ class TestLayeredHomeSeed:
         home = primary_proj.shell_path
         assert (home / "base-only.txt").read_text() == "base"
         assert not (home / "planted.txt").exists()
-        # No §2d fallback either: the fence's ``<None>`` is a SUPPLIED value, and a
-        # pseudo-agent does not inherit from agent.default (keyspec §2d "Pseudo-agent(s)").
+        # No §2d fallback either: the fence's ``<None>`` is a SUPPLIED value, which
+        # shadows the ``agent.default.template`` the shell otherwise inherits (§2d).
         assert not (home / "default-arm.txt").exists()
 
     def test_a_shell_node_launch_floors_a_present_none_shell_template(
@@ -996,17 +996,14 @@ class TestLayeredHomeSeed:
         assert (home / "agent-only.txt").read_text() == "agent"
         assert not (home / "workset-only.txt").exists()
 
-    def test_a_user_agent_default_seed_does_not_reach_a_shell_box(
+    def test_a_user_agent_default_seed_reaches_a_shell_box(
         self, std, config, primary_proj, tmp_path,
     ):
-        """A user's ``agent.default.seeded: {"~/": [dir]}`` does NOT seed a shell box.
+        """A user's ``agent.default.seeded: {"~/": [dir]}`` seeds a shell box.
 
-        The shell fence's ``agent.shell.template: <None>`` makes the shell arm's
-        ``~/`` layer source ``<None>``.  That is a SUPPLIED value, and a pseudo-agent
-        does not inherit from ``agent.default`` (keyspec §2d "Pseudo-agent(s)"), so the
-        §2d pick must land on the shell arm's skipped layer, not fall back to the default
-        arm's entry.  Dropping the entry as ABSENT instead let the default arm's ``~/``
-        seed the shell box.  The base-layer file is the positive control.
+        The shell inherits ``agent.default`` from core and the settings files (keyspec
+        §2d "Pseudo-agent(s)"), so the user's ``~/`` entry replaces core's at the same
+        destination and seeds the box.  The base-layer file is the positive control.
         """
         from kanibako.commands.start import _apply_init_seeds, _launch_seed_list
         from kanibako.targets.shell import ShellTarget
@@ -1028,10 +1025,10 @@ class TestLayeredHomeSeed:
             selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
         srcs = [seed.src for seed in _launch_seed_list(snapshot)]
-        assert str(user_home) not in srcs, srcs
+        assert str(user_home) in srcs, srcs
         home = primary_proj.shell_path
         assert (home / "base-only.txt").read_text() == "base"
-        assert not (home / "DEFAULT.txt").exists()
+        assert (home / "DEFAULT.txt").read_text() == "default arm"
 
     def test_a_whole_value_seed_source_naming_a_present_none_is_skipped(
         self, std, config, primary_proj,

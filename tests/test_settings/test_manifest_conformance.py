@@ -78,7 +78,12 @@ from kanibako.settings.config import (
     WORKSET_META_FILE,
 )
 from kanibako.settings.config_keys import _KEY_ROUTES
-from kanibako.settings.core_defaults import CORE_DEFAULTS_FILENAME, PACKAGED_SETTINGS_PARTS
+from kanibako.launch.templates import agent_template_defaults
+from kanibako.settings.core_defaults import (
+    CORE_DEFAULTS_FILENAME,
+    PACKAGED_SETTINGS_PARTS,
+    pseudo_tier_defaults,
+)
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.keyspace_manifest import (
     KEYSPACE_MANIFEST_FILENAME,
@@ -202,8 +207,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 128, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 128 this "
+        assert len(doc["keys"]) == 119, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 119 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -247,9 +252,7 @@ _BEHAVIOR_KEYS = (
 #: ``shell-tier-behavior`` and ``shell-tier-fence`` views, which split the table between
 #: them.  Kept for the ``type:`` column case below.
 _SHELL_TIER_KEYS = (
-    "agent.shell.label", "agent.shell.access", "agent.shell.allow_helpers",
-    "agent.shell.bootstrap", "agent.shell.continue_mode", "agent.shell.model",
-    "agent.shell.endpoint", "agent.shell.run_args", "agent.shell.transform",
+    "agent.shell.label", "agent.shell.continue_mode", "agent.shell.model",
 )
 
 #: (i-f) The workset CHANNEL family — ``workset.channelroot`` plus the six declared
@@ -379,26 +382,18 @@ class TestShellTierDefaults:
     """The ``agent.shell.*`` tier floor's ``type:`` column beside its values.
 
     The shell-tier twin of :class:`TestBehaviorDefaults`.  The VALUES are the
-    ``shell-tier-behavior`` (``label``/``access``/``allow_helpers``) and
-    ``shell-tier-fence`` (``bootstrap`` and the ``<None>`` rows) views'.  (The shell
-    ``canon`` arm is the ``canon-defaults`` view's, and ``access``'s ``choices:`` the
-    ``access-choices`` view's.)
+    ``shell-tier-behavior`` (``label``) and ``shell-tier-fence`` (the ``<None>`` rows)
+    views'.  Every other shell key inherits ``agent.default`` (§2d "Pseudo-agent(s)").
     """
 
     def test_the_manifest_types_the_shell_floor(self):
-        """The ``type:`` cell of each shell-tier row — the ONLY carrier of these nine, as
+        """The ``type:`` cell of each shell-tier row — the ONLY carrier of these three, as
         the behavior twin's docstring measures: ``key-types`` selects no ``agent.*`` row."""
         types = {k: _keys()[k].get("type") for k in _SHELL_TIER_KEYS}
         assert types == {
             "agent.shell.label": "str",
-            "agent.shell.access": "enum",
-            "agent.shell.allow_helpers": "bool",
-            "agent.shell.bootstrap": "str",
             "agent.shell.continue_mode": "bool",
             "agent.shell.model": "str",
-            "agent.shell.endpoint": "str",
-            "agent.shell.run_args": "list",
-            "agent.shell.transform": "str",
         }, types
 
 
@@ -848,7 +843,6 @@ NO_ORACLE_ABSENT: frozenset[str] = frozenset({
 #: bind arms are dest-keyed bindmaps).
 NO_ORACLE_EMPTY: frozenset[str] = frozenset({
     "box.bindings.ro", "box.bindings.rw", "box.masks", "agent.default.transform_settings",
-    "agent.shell.transform_settings",
 })
 
 #: ⚑ (E5) ``NO_ORACLE_REF_HOP`` IS GONE (2026-09-25).  Its two rows,
@@ -1789,13 +1783,13 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 84, (
-            f"the manifest gives {len(declared)} rows a default, not the 84 measured — "
+        assert len(declared) == 75, (
+            f"the manifest gives {len(declared)} rows a default, not the 75 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_split_is_the_measured_split(self):
-        """0 pinned, 76 carried, 8 exempted — stated so a silent migration between them reds.
+        """0 pinned, 68 carried, 7 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
         (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
@@ -1857,10 +1851,13 @@ class TestDefaultsCoverage:
         ``agent.shell.env.TERM`` row arrived carried by ``env-defaults``.
         ⚑ 0+75/8 → 0+76/8: ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (``~/AGENTS.md``)
         arrived carried by ``env-defaults``, through its ``~/`` ``translate`` hop.
+        ⚑ 0+76/8 → 0+68/7 (189-SH = b): shell inherits ``agent.default``, so the manifest
+        drops ``agent.shell.{access,allow_helpers,bootstrap,endpoint,run_args,transform,
+        canon,env.TERM}`` (carried) and ``agent.shell.transform_settings`` (E4).
         """
         assert len(PINNED_DEFAULT_KEYS) == 0
-        assert len(CARRIED_DEFAULT_KEYS) == 76
-        assert len(EXEMPT_DEFAULT_KEYS) == 8
+        assert len(CARRIED_DEFAULT_KEYS) == 68
+        assert len(EXEMPT_DEFAULT_KEYS) == 7
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
         assert not (PINNED_DEFAULT_KEYS & CARRIED_DEFAULT_KEYS), (
             f"pinned here AND compared by a kinemata view: "
@@ -1950,8 +1947,8 @@ class TestDefaultsCoverage:
         )
 
     def test_the_default_value_neither_cells_partition_the_registry(self):
-        """84 + 34 + 10 == 128, disjoint — no row carries both cells, none carries
-        neither unnoticed.  The 128 is the loader's own count, re-stated here as the
+        """75 + 34 + 10 == 119, disjoint — no row carries both cells, none carries
+        neither unnoticed.  The 119 is the loader's own count, re-stated here as the
         arithmetic the three coverage cases must sum to."""
         keys = _keys()
         defaulted = {
@@ -1968,7 +1965,7 @@ class TestDefaultsCoverage:
             f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
         )
         assert defaulted | valued | neither == {str(k) for k in keys}
-        assert (len(defaulted), len(valued), len(neither)) == (84, 34, 10)
+        assert (len(defaulted), len(valued), len(neither)) == (75, 34, 10)
 
 
 # --------------------------------------------------------------------------- #
@@ -1996,6 +1993,13 @@ PSEUDO_AGENT_ROWS: frozenset[str] = frozenset(
     )
     for leaf in leaves
 )
+
+#: The shell agent leaves its §2d block states NO row for — every fence leaf but the
+#: ones the code floors at ``agent.shell`` (``core_defaults.pseudo_tier_defaults`` and
+#: ``launch.templates.agent_template_defaults``).  They inherit ``agent.default``.
+SHELL_INHERITED_ROWS: frozenset[str] = frozenset(
+    f"agent.shell.{leaf}" for leaf in PSEUDO_AGENT_FENCES["shell"].leaves
+) - set(pseudo_tier_defaults()) - set(agent_template_defaults("shell"))
 
 #: ⚑ FINDING 4 IS CLOSED (2026-08-21) and its exemption is GONE, which is what the
 #: exemption's own anti-vacuity case demanded happen on a fix.  ``key_validity`` used to
@@ -2187,17 +2191,22 @@ class TestKeySetConformance:
         # And the derivations are not vacuous: each class actually has members.
         assert leftover & category_rows == {
             "box.bindings.ro", "box.bindings.rw", "box.masks", "box.env.COLORTERM",
-            "agent.default.env.TERM", "agent.shell.env.TERM",
-            "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
+            "agent.default.env.TERM", "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
         }
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",
         }
-        # Every fence row the scalar sets do not already cover is a manifest row.
-        assert PSEUDO_AGENT_ROWS - _code_scalar_keys() == leftover & PSEUDO_AGENT_ROWS, (
+        # Every fence row the scalar sets do not already cover is a manifest row, except
+        # the shell leaves its §2d block states no row for: those inherit
+        # ``agent.default`` through the generic row (§2d "Pseudo-agent(s)").
+        assert (
+            PSEUDO_AGENT_ROWS - _code_scalar_keys() - SHELL_INHERITED_ROWS
+            == leftover & PSEUDO_AGENT_ROWS
+        ), (
             f"pseudo-agent fence rows missing from the manifest: "
-            f"{sorted(PSEUDO_AGENT_ROWS - _code_scalar_keys() - leftover)}"
+            f"{sorted(PSEUDO_AGENT_ROWS - _code_scalar_keys() - SHELL_INHERITED_ROWS - leftover)}"
         )
+        assert not (leftover & SHELL_INHERITED_ROWS)
 
     def test_no_declaration_family_is_empty(self):
         """ANTI-VACUITY for both directions above (P15): an empty family is SILENT.

@@ -186,8 +186,8 @@ class TestRunInfo:
     def test_the_shell_label_ignores_a_users_agent_default_label(
         self, agent_env, config_file, capsys,
     ):
-        """🛑 §2d: *"Only true agents inherit from agent.default"* — ``agent info shell``
-        prints the shell's own fence label, never a user's ``agent.default.label``."""
+        """🛑 §2d shell fence: ``agent.shell.label`` is a fence row, so ``agent info shell``
+        prints it over a user's ``agent.default.label``, which the shell otherwise inherits."""
         from kanibako.commands.agent_cmd import run_info
         from kanibako.settings.config import load_config
         from kanibako.settings.config_io import dump_doc
