@@ -71,7 +71,7 @@ def active_agent_ref(ref: str, agent_name: str | None) -> str | None
 def active_behavior_floor(floor: Mapping[str, object] | None, agent_name: str | None) -> dict[str, object]
 def rom_must_exist_dests() -> frozenset[str]
 def canon_silent_dests() -> frozenset[str]
-def canon_default_categories(std: StandardPaths, agent_name: str | None) -> dict[str, object]
+def canon_default_categories(agent_name: str | None) -> dict[str, object]
 def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]
 def materialize_canon_skeleton(shell_path: Path, *, logger: 'logging.Logger | None'=None, quiet: bool=False) -> None
 def materialize_canon_skeleton_if_present(shell_path: Path, *, logger: 'logging.Logger | None'=None) -> None

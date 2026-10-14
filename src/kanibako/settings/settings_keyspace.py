@@ -573,13 +573,11 @@ PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({
         meta_leaves=frozenset(),
         meta_auth_leaves=frozenset(),
     ),
-    # §2d **shell** — the plain shell. Its leaves are the same set as ``default``'s: a key
-    # its fence states no row for still exists here and inherits ``agent.default``.
+    # §2d **shell** — the plain shell. Its leaves ARE ``default``'s (the same object, so a
+    # new universal leaf can never be refused here): a key its fence states no row for
+    # still exists and inherits ``agent.default``.
     "shell": PseudoAgentFence(
-        leaves=frozenset({
-            "label", "access", "continue_mode", "model", "endpoint", "allow_helpers",
-            "bootstrap", "run_args", "transform", "transform_settings", "template", "canon",
-        }),
+        leaves=DECLARED_AGENT_LEAVES,
         meta_leaves=frozenset({"name", "path", "settings", "mode", "exec"}),
         # ``meta.agent.shell.auth.share_support | false`` — the target of §2c's
         # ``meta.box.agent.auth.share_support`` mirror for a plain-shell box.

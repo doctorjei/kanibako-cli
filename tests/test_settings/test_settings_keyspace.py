@@ -570,8 +570,9 @@ def test_a_true_agent_leaf_is_refused_at_a_pseudo_agent(key):
     the pseudo-agents; the shell node is judged against the shell fence, which lists
     no ``frobnicate``.
 
-    The agent-tier fences themselves are compared with the manifest by the kinemata
-    view ``pseudo-agent-leaves``; these pin the spellings it does not print — the
+    The ``default`` agent tier is compared with the manifest by the kinemata view
+    ``pseudo-agent-leaves``, and the shell's agent tier IS that set
+    (:func:`test_every_universal_leaf_is_a_key_on_shell`); these pin the
     ``meta.agent`` tier.
     """
     assert "not a declared" in reason(key)
@@ -582,8 +583,20 @@ def test_a_true_agent_leaf_is_refused_at_a_pseudo_agent(key):
     "pref.agent.shell.model",
 ])
 def test_the_shell_fence_declares_the_universal_leaves(key):
-    """§2d's shell block gives every universal key a value (``<None>`` for these)."""
+    """The shell node holds every universal key: its fence rows (``<None>`` for
+    ``model``/``continue_mode``) and the ones it inherits from ``agent.default``."""
     assert valid(key)
+
+
+@pytest.mark.parametrize("leaf", sorted(DECLARED_AGENT_LEAVES))
+def test_every_universal_leaf_is_a_key_on_shell(leaf):
+    """§2d "Pseudo-agent(s)": shell inherits ``agent.default``, so every universal leaf is
+    settable on it, at the key and as a pref — a leaf added to
+    :data:`DECLARED_AGENT_LEAVES` can never be refused for shell.
+    (Mutation: drop ``"access"`` from the shell fence → RED.)"""
+    assert PSEUDO_AGENT_FENCES["shell"].leaves == DECLARED_AGENT_LEAVES
+    assert valid(f"agent.shell.{leaf}")
+    assert valid(f"pref.agent.shell.{leaf}")
 
 
 @pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))

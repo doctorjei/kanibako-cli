@@ -5480,10 +5480,8 @@ cascade, not a contest:
 kanibako system set agent.default.env.TERM=xterm-256color
 ```
 
-A plain-shell box is the exception: the `shell` pseudo-agent inherits nothing from `agent.default`
-(spec §2d), so it carries its own `agent.shell.env.TERM`, also `{$TERM}`, and
-`agent.default.env.TERM` does not reach it. Set `agent.shell.env.TERM` to change it there; on a
-plain-shell box the refusal below names `agent.shell.env.TERM` as kanibako's key.
+A plain-shell box inherits it too (spec §2d, "Pseudo-agent(s)"). To change it for plain-shell
+boxes alone, set `agent.shell.env.TERM`.
 
 **⚑ A `TERM` key at any OTHER scope now refuses the launch.** Because kanibako's declaration sits at
 agent scope, `box.env.TERM`, `workset.env.TERM`, and `system.env.TERM` are each a *second* scope
@@ -5709,8 +5707,7 @@ cp -a <data>/agents/general/template/. <data>/agents/shell/template/box/home/
 kanibako system set agent.shell.template={config.agents}/shell/template
 ```
 
-The `set` writes the key to the shell agent's settings file, `<data>/agents/shell/agent.yaml`.
-Setting it by hand in the system settings file, `<data>/global/settings.yaml`, works too:
+The `set` writes the key to the system settings file, `<data>/global/settings.yaml`:
 
 ```yaml
 # <data>/global/settings.yaml
@@ -5759,7 +5756,8 @@ kanibako system set agent.shell.model=<value>
 
 To keep any other `agent.default` value away from plain-shell boxes, set the shell's own key the
 same way, for example `kanibako system set agent.shell.bootstrap=tmux`. The command writes
-`<data>/agents/shell/agent.yaml`, which outranks `agent.default`.
+`agent.shell.bootstrap` into `<data>/global/settings.yaml`, and `agent.shell` outranks
+`agent.default` wherever each is written.
 
 **A plain-shell box's handbook chapter is `<data>/agents/shell/canon/handbook/`.** Like every
 agent's, its canon is its own store. `kanibako setup` stamps kanibako's chapter there once, and

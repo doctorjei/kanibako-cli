@@ -857,9 +857,7 @@ def canon_silent_dests() -> frozenset[str]:
     ) | {normalize_bind_dest(_rom_agent_chapter_dest())}
 
 
-def canon_default_categories(
-    std: StandardPaths, agent_name: str | None,
-) -> dict[str, object]:
+def canon_default_categories(agent_name: str | None) -> dict[str, object]:
     """Build the HANDBOOK binds + the agent-scope ``canon`` floor (spec §2c).
 
     ⚑ A MIXED table — the ``box.bindings.ro`` entries PLUS the agent scalars their ``{key}``-refs

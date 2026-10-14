@@ -3050,12 +3050,9 @@ def test_shell_canon_is_its_own_store_through_the_default_tier(tmp_path):
     """``agent.shell.canon`` forwards to ``agent.default.canon`` like any node (shell
     inherits ``agent.default``, §2d), and core's value there is the shell's own store
     (``{meta.self.path}/canon``), with or without a ``canon/`` dir in it."""
-    from types import SimpleNamespace
-
     from kanibako.settings.core_defaults import canon_default_categories
 
-    std = SimpleNamespace(agents=tmp_path / "agents")
-    out = canon_default_categories(std, "shell")
+    out = canon_default_categories("shell")
     assert out["agent.default.canon"] == "{config.agents}/shell/canon"
     assert out["agent.shell.canon"] == "{agent.default.canon}"
 

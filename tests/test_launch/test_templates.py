@@ -326,14 +326,14 @@ class TestTemplateSeedDefaults:
         ``None`` source SKIPS it at resolve, and a user-set ``agent.shell.template`` seeds
         through it (``TestLayeredHomeSeed`` pins both).
         (Mutation: drop the ``GENERAL_SLOT`` branch and this goes RED with
-        ``{config.agents}/shell/template``; OMIT the key instead and it goes RED on the
+        ``{agent.default.template}``; OMIT the key instead and it goes RED on the
         missing ``None``; gate the layer on the default's VALUE and it goes RED on the
         missing layer.)
         """
         from kanibako.launch.templates import agent_template_defaults
 
         assert agent_template_defaults("shell") == {
-            "agent.default.template": "{config.agents}/default/template",
+            "agent.default.template": "{config.agents}/shell/template",
             "agent.shell.template": None,
         }
         defs = template_seed_defaults(primary_proj, "shell")
@@ -715,12 +715,11 @@ class TestLayeredHomeSeed:
         """The MAIN launch resolve for a shell box floors ``agent.shell.template: None``.
 
         The spec declares it ``<None>`` — a SUPPLIED value, so the §2d pick lands on it
-        and never falls back to ``agent.default.template`` (keyspec §2d
-        "Pseudo-agent(s)").  The floor used to carry ``{config.agents}/shell/template``;
-        omitting the key instead let the pick read the default arm back into
-        ``meta.box.agent.template``.
-        ``agent.default.template`` still answers, so the ``None`` is the shell arm's
-        alone, not a missing agent tier.
+        which shadows the ``agent.default.template`` it otherwise inherits (keyspec §2d
+        "Pseudo-agent(s)"); omitting the key would let the pick read the default arm
+        back into ``meta.box.agent.template``.  ``agent.default.template`` still
+        answers — the shell's own store, as for every node — so the ``None`` is the
+        shell arm's alone, not a missing agent tier.
         """
         from kanibako.commands.start import _resolve_launch_snapshot
         from kanibako.settings.kb_store import __MISSING__
@@ -737,7 +736,7 @@ class TestLayeredHomeSeed:
         shell = dict.get(agent, "shell", {})
         assert dict.get(shell, "template", __MISSING__) is None, shell
         default = dict.get(agent, "default")
-        assert str(dict.get(default, "template")).endswith("/agents/default/template")
+        assert str(dict.get(default, "template")).endswith("/agents/shell/template")
         box_agent = dict.get(dict.get(dict.get(snapshot, "meta"), "box"), "agent")
         assert dict.get(box_agent, "template", __MISSING__) is None, box_agent
 

@@ -89,7 +89,7 @@ def test_core_writes_the_store_rows_at_agent_default():
 def test_a_user_agent_default_canon_reaches_an_agent_with_its_own_canon(tmp_path):
     """The case that used to lose the user's value: the node's own ``canon/`` exists."""
     (tmp_path / "agents" / "claude" / "canon").mkdir(parents=True)
-    floor = canon_default_categories(SimpleNamespace(agents=tmp_path / "agents"), "claude")  # type: ignore[arg-type]
+    floor = canon_default_categories("claude")
     assert floor["agent.default.canon"] == "{config.agents}/claude/canon"
     snap = _snap(tmp_path, {"agent": {"default": {"canon": "/USER/canon"}}}, floor)
     assert snapshot_leaf(snap, "meta.box.agent.canon") == "/USER/canon"
@@ -97,7 +97,7 @@ def test_a_user_agent_default_canon_reaches_an_agent_with_its_own_canon(tmp_path
 
 def test_without_a_user_value_an_own_canon_dir_is_still_bound(tmp_path):
     (tmp_path / "agents" / "claude" / "canon").mkdir(parents=True)
-    floor = canon_default_categories(SimpleNamespace(agents=tmp_path / "agents"), "claude")  # type: ignore[arg-type]
+    floor = canon_default_categories("claude")
     snap = _snap(tmp_path, {}, floor)
     assert snapshot_leaf(snap, "meta.box.agent.canon") == "/agents/claude/canon"
 

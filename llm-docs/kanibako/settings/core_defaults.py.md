@@ -646,7 +646,7 @@ SAME function that keys the arm (:func:`add_bind`), so the spellings cannot drif
 `canon_silent_dests()` plus the agent's best-effort dests, less `must_exist` (see
 `llm-docs/kanibako/commands/start.py.md`).
 
-```canon_default_categories(std: StandardPaths, agent_name: str | None) -> dict[str, object]```
+```canon_default_categories(agent_name: str | None) -> dict[str, object]```
 Build the HANDBOOK binds + the agent-scope `canon` floor (spec §2c).
 
 Returns a MIXED table — the terminal `box.bindings.ro` arm holding the five `~/canon/handbook/*`

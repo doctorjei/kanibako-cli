@@ -7922,7 +7922,7 @@ def _resolve_launch_snapshot(
         # may repoint — through the keys, which is the spelling §2c blesses.
         _merge_default_categories(
             default_categories,
-            core_defaults.canon_default_categories(std, agent_name or None),
+            core_defaults.canon_default_categories(agent_name or None),
             family="canon", origins=cat_origins,
         )
         # The SHELL TIER's own values (spec §2d fence: ``label``, and the present-``None``

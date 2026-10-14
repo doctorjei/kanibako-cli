@@ -4385,8 +4385,8 @@ authority = "declared"
 # ⚑ THE NODE IS A PERSONA, for the reason `agent-template-source` measured: a bare
 # agent spells its key segment and store dirname as one string and would hide a
 # split. Core seeds the node's own store at `agent.default.canon` (R1 + his C3
-# ruling, 189th) and the node row forwards to it, with or without a `canon/` dir
-# there; the scratch dir is kept so the view does not depend on that. The two hops are
+# ruling, 189th) and the node row forwards to it, with no store probe, so the oracle
+# reads no directory. The two hops are
 # `agent-template-source`'s, for the same row shape. The oracle prints every
 # SCALAR the producer returns; its `box.bindings.ro` arm is chapter binds, not
 # `keys:` rows.
@@ -4405,11 +4405,8 @@ authority = "declared"
 [[parity]]
 registry = "canon-defaults"
 command = ["{python}", "-c", """
-import pathlib, tempfile, types
 from kanibako.settings.core_defaults import canon_default_categories
-with tempfile.TemporaryDirectory() as agents:
-    (pathlib.Path(agents) / "gemma+claude" / "canon").mkdir(parents=True)
-    floor = canon_default_categories(types.SimpleNamespace(agents=pathlib.Path(agents)), "gemma℘claude")
+floor = canon_default_categories("gemma℘claude")
 for key, value in sorted(floor.items()):
     if not isinstance(value, dict):
         print(f"kanibako-canon-default: {key}={value}")
@@ -4818,18 +4815,19 @@ translate = { pattern = '^workset\.channels\.', replacement = "" }
 # with `FAIL: 1 disagreement(s)` unless it says otherwise, and the quoted finding
 # is the whole report.
 
-# ⚑ ONE IDENTIFIER FOR THREE ROWS: `translate_identifier` maps `agent.default.access`,
-# `agent.shell.access` and `agent.<agent>.access` onto the bare leaf `access` -- the
-# spelling `config_keys.is_access_key` answers -- and each row's cell is compared,
-# in order, against the one tuple (`ordered: 3 declared cell(s)`). The cost: a
-# finding names `access`, not the row; the declared order it quotes is the way back.
+# ⚑ ONE IDENTIFIER FOR TWO ROWS: `translate_identifier` maps `agent.default.access`
+# and `agent.<agent>.access` onto the bare leaf `access` -- the spelling
+# `config_keys.is_access_key` answers -- and each row's cell is compared, in order,
+# against the one tuple (`ordered: 2 declared cell(s)`). The shell has no row of its
+# own: it inherits `agent.default.access`. The cost: a finding names `access`, not
+# the row; the declared order it quotes is the way back.
 #   `# access-choices: 1 declared, 1 produced, in agreement, agreeing on choices.`
-#   `ordered: 3 declared cell(s) hold a list, compared in order`  rc=0
+#   `ordered: 2 declared cell(s) hold a list, compared in order`  rc=0
 # NEGATIVE CONTROLS:
-#   code, `ACCESS_TIERS` reordered `editing, restricted, full`: rc=1, `FAIL: 3
-#     disagreement(s)`, each `access: choices declared 'restricted', 'editing',
-#     'full' in this order, code produces 'editing', 'restricted', 'full' (the
-#     same values, reordered)`
+#   code, `ACCESS_TIERS` reordered `editing, restricted, full`: rc=1, two findings in
+#     this view, each `access: choices declared 'restricted', 'editing', 'full' in
+#     this order, code produces 'editing', 'restricted', 'full' (the same values,
+#     reordered)`
 #   manifest, `agent.<agent>.access` choices `restricted, full, editing`: one
 #     finding, `(the same values, reordered)` -- each row is compared
 # VACUITY, the `print` removed: rc=1, `access: declared, produced by nothing`.
@@ -5139,8 +5137,8 @@ translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.cla
 
 # ⚑ THE ACTIVE NODE IS THE SENTINEL `<active>`, the manifest's own discriminator:
 # the emitter substitutes whatever node it is handed into `@agent.<active>.canon`,
-# so handed the token it composes the declared cell. The `agents` store is a scratch
-# dir; the canon SCALARS the producer also returns are `canon-defaults`'. Every dest is
+# so handed the token it composes the declared cell. The canon SCALARS the
+# producer also returns are `canon-defaults`'. Every dest is
 # printed, and `translate` strips the manifest's `(…)` notation.
 #   `# handbook-binds: 5 declared, 5 produced, in agreement, agreeing on default.`
 #   rc=0
@@ -5156,11 +5154,9 @@ translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.cla
 [[parity]]
 registry = "handbook-binds"
 command = ["{python}", "-c", """
-import pathlib, tempfile, types
 from kanibako.settings.core_defaults import canon_default_categories
 from kinemata_views import guest_bind_arm
-with tempfile.TemporaryDirectory() as agents:
-    floor = canon_default_categories(types.SimpleNamespace(agents=pathlib.Path(agents)), "<active>")
+floor = canon_default_categories("<active>")
 for dest, (host_src, *_) in guest_bind_arm(floor, "bindings.ro"):
     print(f"kanibako-handbook-bind: {dest}={host_src}")
 """]

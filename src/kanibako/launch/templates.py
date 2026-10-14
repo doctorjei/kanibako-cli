@@ -89,12 +89,12 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # store path and takes the ``+`` dirname (``agent_config.store_dirname``).
     # ⚑ NO NODE-STORE PROBE: the shim guarantees the node's ``template`` entry, and
     # ``stage_layers`` is skip-if-absent where it does not exist.
+    defs["agent.default.template"] = (
+        f"{{config.agents}}/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
+    )
     if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
-        # ⚑ The shell's core ``agent.default.template`` keeps the shared store literal
-        # it has always carried; its own fence row below shadows it either way.
-        defs["agent.default.template"] = (
-            f"{{config.agents}}/default/{AGENT_TEMPLATE_STORE_REL}"
-        )
+        # The shell's core ``agent.default.template`` is its own store, as for every
+        # node; its fence row below shadows it.
         # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
         # ``agent.shell.template | <None>`` — a SUPPLIED value (keyspec §2d
         # "Pseudo-agent(s)"; omitting the key would read ``agent.default.template``
@@ -108,9 +108,6 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # ``{agent.<node>.template}`` — the layer-2 seed source, the handbook layer root,
     # and any user ref — would read absent whenever only ``agent.default`` holds it.
     # A user's or plugin's ``agent.<node>.template`` replaces it.
-    defs["agent.default.template"] = (
-        f"{{config.agents}}/{store_dirname(agent_id)}/{AGENT_TEMPLATE_STORE_REL}"
-    )
     defs[f"agent.{agent_id}.template"] = "{agent.default.template}"
     return defs
 

@@ -431,13 +431,6 @@ class TestReadOnlyIsDecidedByTokenNotEquality:
 # ===========================================================================
 
 
-class _Std:
-    """A minimal ``StandardPaths`` stand-in — only ``agents`` is read."""
-
-    def __init__(self, agents: Path) -> None:
-        self.agents = agents
-
-
 class TestCanonDefaultCategories:
     def test_declares_the_five_sibling_binds(self, tmp_path):
         """⚑ Re-derived for dest-keying (R-3/R-5/R-11, P6).
@@ -447,7 +440,7 @@ class TestCanonDefaultCategories:
         names are retired outright (R-10), so the destination is what identifies a
         chapter and the assertion is re-derived onto it rather than weakened.
         """
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
+        cats = core_defaults.canon_default_categories("claude")
         assert {k for k in cats if k.startswith("box.")} == {"box.bindings.ro"}
         assert set(cats["box.bindings.ro"]) == {
             f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md",
@@ -463,7 +456,7 @@ class TestCanonDefaultCategories:
 
     def test_sources_are_the_scope_canon_keys(self, tmp_path):
         arm = core_defaults.canon_default_categories(
-            _Std(tmp_path), "claude",
+            "claude",
         )["box.bindings.ro"]
         # Slot 0 is still the host_src; only the destination moved out of the tuple.
         assert arm[f"{GUEST_HOME}/canon/handbook/workset"][0] == (
@@ -483,7 +476,7 @@ class TestCanonDefaultCategories:
         can be swept for a leaked node segment rather than one entry checked.
         """
         arm = core_defaults.canon_default_categories(
-            _Std(tmp_path), "raiju℘claude",
+            "raiju℘claude",
         )["box.bindings.ro"]
         assert f"{GUEST_HOME}/canon/handbook/agent" in arm
         assert not [
@@ -494,11 +487,11 @@ class TestCanonDefaultCategories:
         """R1 + his C3 ruling: ``agent.default.canon`` is ``{meta.self.path}/canon`` —
         the ACTIVE NODE's own store, with or without a ``canon/`` dir there — and the
         node row only forwards, so a user's ``agent.default.canon`` reaches it."""
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
+        cats = core_defaults.canon_default_categories("claude")
         assert cats["agent.default.canon"] == "{config.agents}/claude/canon"
         assert cats["agent.claude.canon"] == "{agent.default.canon}"
         (tmp_path / "claude" / "canon").mkdir(parents=True)
-        again = core_defaults.canon_default_categories(_Std(tmp_path), "claude")
+        again = core_defaults.canon_default_categories("claude")
         assert again["agent.default.canon"] == "{config.agents}/claude/canon"
 
     def test_a_persona_store_canon_is_named_with_the_plus_spelling(self, tmp_path):
@@ -510,14 +503,14 @@ class TestCanonDefaultCategories:
         not there: the chapter's source is absent, it drops silently, and NOTHING
         reports an error.
         """
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), "raiju℘claude")
+        cats = core_defaults.canon_default_categories("raiju℘claude")
         assert cats["agent.default.canon"] == "{config.agents}/raiju+claude/canon"
         assert cats["agent.raiju℘claude.canon"] == "{agent.default.canon}"
 
     def test_a_shell_box_omits_the_agent_chapter_and_key(self, tmp_path):
         """A dangling embedded ref would coerce to ``""`` and yield the degenerate
         host path ``/handbook`` (spec §0) — so the entry is OMITTED, not emptied."""
-        cats = core_defaults.canon_default_categories(_Std(tmp_path), None)
+        cats = core_defaults.canon_default_categories(None)
         # ⚑⚑ Re-derived because the old form went VACUOUS, not merely stale: with
         # the ``canon_hb_agent`` NAME retired (R-10) there is no
         # ``box.bindings.ro.canon_hb_agent`` key for ANY box, so the assertion
@@ -619,7 +612,7 @@ class TestHandbookMountOrdering:
         reconcile used to hand a sorted list over instead, and that is the list this
         used to read."""
         arm = core_defaults.canon_default_categories(
-            _Std(tmp_path), "claude",
+            "claude",
         )["box.bindings.ro"]
         # Give every source a real dir/file so nothing is dropped at emission.
         # ⚑ Re-derived for dest-keying: the floor entry is ``dest -> (src, opts)``,
