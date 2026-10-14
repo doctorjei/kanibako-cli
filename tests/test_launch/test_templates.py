@@ -1981,6 +1981,35 @@ class TestEnsureAgentStores:
         ensure_agent_stores(std, ["claude"])
         assert chapter.read_text() == "MY CHAPTER"
 
+    def test_a_plugin_without_a_canon_gets_cores_agent_chapter(self, std, monkeypatch):
+        """``agent.default.canon`` is the node's OWN store (§2d), so core's shipped
+        chapter must land IN that store when the plugin ships no ``canon/`` — the
+        replacement for the retired shared ``agents/default/canon`` route."""
+        from kanibako.launch import templates
+
+        install_packaged_templates(std, [])
+        monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
+        templates.ensure_agent_stores(std, ["thirdparty"])
+        core = std.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md"
+        stamped = std.agents / "thirdparty" / "canon" / "handbook" / "SYS_AGENT.md"
+        assert stamped.read_text() == core.read_text()
+        stamped.write_text("MY CHAPTER")
+        templates.ensure_agent_stores(std, ["thirdparty"])
+        assert stamped.read_text() == "MY CHAPTER", "never re-seeded over a user's file"
+
+    def test_a_store_canon_is_never_merged_into(self, std, monkeypatch):
+        """OVERRIDE, not additive: a store that already has a ``canon/`` — a plugin's,
+        or a user's — gets no core file added to it."""
+        from kanibako.launch import templates
+
+        install_packaged_templates(std, [])
+        monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
+        own = std.agents / "thirdparty" / "canon" / "handbook"
+        own.mkdir(parents=True)
+        (own / "MINE.md").write_text("mine")
+        templates.ensure_agent_stores(std, ["thirdparty"])
+        assert sorted(p.name for p in own.iterdir()) == ["MINE.md"]
+
     def test_host_mold_reaches_every_store(self, std):
         """The mold is read AS IT STANDS at action time, so a user's customization
         reaches FUTURE stores (and this one, on its next self-heal)."""

@@ -636,6 +636,22 @@ def ensure_agent_stores(
             src = _packaged_agent_store(name)
             if src is not None:
                 copy_tree(src, store, scope="agent")
+            # (2b) CORE's agent chapter, for a store that has NO ``canon/`` at all once
+            # the mold and the plugin have stamped.  ``agent.default.canon`` is the
+            # node's OWN store (§2d ``{meta.self.path}/canon``), so the shared
+            # ``agents/default/canon`` no longer reaches a true agent; this is how the
+            # core-shipped chapter still does.  ⚑ OVERRIDE, NOT ADDITIVE: a plugin's or
+            # user's ``canon/`` is never merged into, and create-if-absent means a
+            # user's files are never re-seeded over.  A pseudo-agent reads the shared
+            # chapter through its fence (``agent.shell.canon``), so it gets none here.
+            if (
+                base is not None and name not in ADDRESSABLE_PSEUDO_AGENTS
+                and not (store / "canon").exists()
+            ):
+                copy_tree(
+                    base / PACKAGED_AGENT_DEFAULT / "canon", store / "canon",
+                    scope="agent", dest_root=store,
+                )
         # (3) the discoverable box-template skeleton (D7), under the AGENT store's
         # FIXED ``template/`` leaf — an agent store is not a workset, so nothing here
         # is repointable and ``workset.template`` has no say over it.
