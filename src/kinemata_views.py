@@ -699,7 +699,7 @@ def declares_no_floor_value(entry: Any) -> bool:
     ⚑ `null` ONLY, NOT a `<...>` PROSE placeholder: `box.images_store`'s
     `<runtime-probed podman graphroot>` describes a value the image floor supplies by
     design (`test_manifest_conformance`'s E2). ⚑ A row floored as a PRESENT `None`
-    ([R177]; `default-tier-none`, `shell-tier-fence`, `shell-template-none`,
+    (keyspec §0 "it must RESOLVE"; `default-tier-none`, `shell-tier-fence`, `shell-template-none`,
     `box-scalar-floor`) is selected too: those views compare its own carrier, and
     this one asks every floor at once.
     """

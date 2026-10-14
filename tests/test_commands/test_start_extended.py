@@ -3154,8 +3154,9 @@ class TestCheckLaunchBaselineUnit:
     def test_launch_and_shadow_issues_follow_a_repointed_state_root(self, tmp_path):
         """⚑ MUTATION PROOF (keyspec §2g system.state): both state-file paths must
         follow ``std.state``, the resolved ``system.state``, so a user who repoints that
-        key takes them with it.  Either a path composed from ``$XDG_STATE_HOME`` directly or one derived
-        from ``config.data`` would ignore *std* and fail these assertions.
+        key takes them with it.  Either a path composed from ``$XDG_STATE_HOME``
+        directly or one derived from ``config.data`` would ignore *std* and fail these
+        assertions.
         """
         from types import SimpleNamespace
 

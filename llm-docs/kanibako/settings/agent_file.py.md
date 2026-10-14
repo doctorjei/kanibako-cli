@@ -69,8 +69,8 @@ the agent whose file it is — `assemble_levels` builds BOTH tiers from the one 
 *path* is the file the table was read from, or `None` when the caller did not say. It travels with
 the table for the same reason *node* does: `settings_launch`'s read-time check
 (keyspec §2a "A path key's stored value") names the file a bare-relative value sits in, and the
-focused behavior reads in `commands/start.py` hand `build_launch_snapshot` a level without an
-`agent_path`.
+focused behavior reads in `commands/start.py` hand
+`build_launch_snapshot` a level without an `agent_path`.
 
 ## The root
 
@@ -673,8 +673,8 @@ as the cascade folds it, Q87) in TWO passes, each the launch's own verdict:
    (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"), measured to give the launch's §0
    audit's verdict on `agent.claude.bogus`, `agent.goose.bogus`, `agent.default.bogus`,
    `agent.Claude.bogus` and `agent.claude.self` (refused) and on `agent.nosuchharness.x`,
-   `agent.goose.provider` and `agent.claude+nav.bogus` (conceded). A category key holding a value is
-   judged like any key, so `env: 5` refuses and `caches: 'x'` is conceded, as the launch does.
+   `agent.goose.provider` and `agent.claude+nav.bogus` (conceded). A category key holding a value
+   is judged like any key, so `env: 5` refuses and `caches: 'x'` is conceded, as the launch does.
    ⚑ **`self:` takes the SAME partition**, so `self: {env: 5}` is judged too;
 2. every PATH, category contents included, through the launch's whole-snapshot audit
    (`settings_keyspace.undeclared_store_paths` over `settings_keyspace_probe.keyspace_verdict`, the

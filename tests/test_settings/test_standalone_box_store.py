@@ -1,4 +1,4 @@
-"""A STANDALONE box's store follows ``workset.boxes`` ([R177] key; spec §2c STANDALONE).
+"""A STANDALONE box's store follows ``workset.boxes`` (spec §2c STANDALONE).
 
 ``workset.boxes`` is a repointable workset key whose standalone value is the
 ``{meta.workset.path}/box_data`` DEFAULT — so ``box_data/`` names the store only while

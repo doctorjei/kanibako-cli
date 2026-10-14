@@ -312,11 +312,11 @@ def unfolded_node_derivations(tree: ast.Module) -> list[int]:
     ``agents/Shell/`` and ``agent.Shell.*`` from a value that was never a node.
 
     ⚑ **Folding the registry key is not enough, which is why this is a separate rule
-    from the two above.**  The sites measured (keyspec §2d meta.agent.<agent>.path) read
-    ``Target.name``, the class property — never the key the registry filed the class
-    under — so a registry keyed by node still wrote the declared case at launch.  One
-    more lived in ``commands/box/_parser.py`` and no measurement had named it; this is
-    what finds the next one.
+    from the two above.**  The sites the earlier measurement found (keyspec §2d
+    meta.agent.<agent>.path) read ``Target.name``, the class property — never the key
+    the registry filed the class under — so a registry keyed by node still wrote the
+    declared case at launch.  One more lived in ``commands/box/_parser.py`` and no
+    measurement had named it; this is what finds the next one.
 
     Three shapes reach the composer and all three are read: the argument itself, the
     argument by KEYWORD, and a LOCAL hoisted out of one earlier in the same scope.

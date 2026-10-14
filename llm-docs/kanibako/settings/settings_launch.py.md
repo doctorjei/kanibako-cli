@@ -728,9 +728,9 @@ expand time would have produced `comms/common`. The same is true of a relative `
 (keyspec §0 "it must RESOLVE"), as standalone's `<None>` arms are. A value the user sets in the
 primary workset's settings file is honored: it reaches the key through the settings cascade, which
 outranks the floor by merge level (the RAW spelling, as for named), and
-`project.workset.default_workset` composes member workspaces off the same repoint. The floor refuses a
-CALLER's primary value rather than ignoring it, so the per-mode rule has ONE carrier. Q82: "supplied
-as a present None; a value the user sets is honored".
+`project.workset.default_workset` composes member workspaces off the same repoint. The floor
+refuses a CALLER's primary value rather than ignoring it, so the per-mode rule has ONE carrier.
+Q82: "supplied as a present None; a value the user sets is honored".
 
 🛑 **`meta.box.workspace` IS NOT SPELLED AGAINST THIS KEY, AND MUST NOT BE.** `meta.box.workspace`
 is the construct-time `proj.project_path` literal, and it is the `host_src` of the `~/workspace`
@@ -763,18 +763,17 @@ workset.kuid              p/n      kuid.SENTINEL  ("00000")
 ⚑ **A STANDALONE `<None>` IS SUPPLIED, AND THE KUID IS NOT — two different arms.**
 `workset.registry`'s standalone arm is `<None>` — a lone box has no registry tier; `workset.template`'s
 is `<None>` too — a lone box has no template tier, and a workset template seeds FUTURE boxes, of which
-a standalone root will never have one (spec §2c STANDALONE). A declared `<None>` is INSTALLED like any
-declared default (keyspec §0 "it must RESOLVE"), so the floor emits
-both as a present `None`, as it does `workset.channelroot` and the four workset-LOCAL
-`workset.channels.*` leaves. ⚑ An OMITTED key is not the same thing: an embedded `@`-ref coerces an
-absent referent to `""` exactly as it does a `None`, but the seeded-layer skip (`settings_expand`)
-fires only on a PRESENT `None` — so if these were omitted, a user seed entry
-`{workset.template}/box/home` in a standalone box would render the HOST path `/box/home`.
-`workset.kuid`'s standalone arm is different in kind: the PROSE placeholder
-`<generated at creation>`, because `paths.establish_standalone` MINTS a real kuid into the box's own
-`workset.yaml` at create time (`paths.py::establish_standalone`, via `box_identity.standalone_kuid`).
-A floor literal there would shadow nothing on a finished box and FABRICATE an identity on a
-half-created one, so it stays NOT EMITTED.
+a standalone root will never have one (spec §2c STANDALONE). A declared `<None>` is INSTALLED like
+any declared default (keyspec §0 "it must RESOLVE"), so the floor emits both as a present `None`,
+as it does `workset.channelroot` and the four workset-LOCAL `workset.channels.*` leaves. ⚑ An
+OMITTED key is not the same thing: an embedded `@`-ref coerces an absent referent to `""` exactly
+as it does a `None`, but the seeded-layer skip (`settings_expand`) fires only on a PRESENT `None` —
+so if these were omitted, a user seed entry `{workset.template}/box/home` in a standalone box would
+render the HOST path `/box/home`. `workset.kuid`'s standalone arm is different in kind: the PROSE
+placeholder `<generated at creation>`, because `paths.establish_standalone` MINTS a real kuid into
+the box's own `workset.yaml` at create time (`paths.py::establish_standalone`, via
+`box_identity.standalone_kuid`). A floor literal there would shadow nothing on a finished box and
+FABRICATE an identity on a half-created one, so it stays NOT EMITTED.
 
 ⚑ **`workset.channels.common` depends on the MERGE's position rule.** It ends in the `common`
 category token; `settings_merge` asks `settings_keyspace.is_terminal_category_key`, which places a
@@ -1100,10 +1099,10 @@ So the floor's entries at
 (`merge([dotted_partial(internal), snapshot])`), before `expand`: a null or empty user arm, a user
 null at an internal dest, and a user entry repointing one all leave the internal bind as the floor
 spelled it, while the arm's STANDARD entries still follow the user (a null arm still omits them, with
-the lone-`<None>` warning (keyspec §2a "PER-ENTRY CASCADE MERGE")). A narrow resolve re-imposes only
-what its own floor carries (the image resolve: `storage.conf`). ⚑ A user ENTRY at an internal dest
-does not reach this silently: `refuse_read_time_faults` refuses it (below). The re-impose covers the
-NULL/empty arm, which names no internal dest and so is not refused.
+the lone-`<None>` warning (keyspec §2a "PER-ENTRY CASCADE MERGE")). A narrow resolve re-imposes
+only what its own floor carries (the image resolve: `storage.conf`). ⚑ A user ENTRY at an internal
+dest does not reach this silently: `refuse_read_time_faults` refuses it (below). The re-impose
+covers the NULL/empty arm, which names no internal dest and so is not refused.
 
 After `merge`, `expand` runs with `derive=post_expand_keys(snapshot, agent_name)`, so a reference to
 a key the two materializers write only afterwards resolves during expansion: a `meta.box.agent.*`
@@ -1182,9 +1181,9 @@ refuses by name, alongside the `config:`-table refusal. Its cure names the agent
 unless it is the `shell` slot) and, at the box tier, the box (*box_ref*).
 
 ⚑ **After the refusals, `_warn_lone_none_standard_binds` gives the lone-`<None>` warning** (spec
-§2a; companion "Delivery at launch"): a STANDARD bind is omitted by setting its entry AND its source
-key to `<None>`, and a settings file that sets only one gets one warning naming both keys and that
-file.
+§2a; companion "Delivery at launch"): a STANDARD bind is omitted by setting its entry AND its
+source key to `<None>`, and a settings file that sets only one gets one warning naming both keys
+and that file.
 - **Standard** = a floor entry in a dest-keyed arm whose source carries an `@`-ref — the
   core-defaults tables (incl. the `mode_meta_ref` vault rows, since the floor holds the per-mode
   expression), plugin binds ([Q95] 2), and the helper log, whose table emits its formula even for a
@@ -1249,7 +1248,7 @@ carrying BOTH a retired spelling and an ordinary undeclared key reports the reti
 the other on the next run. That is a deliberate trade against §0's own "name every entry" rule: the
 retirement message is worth more than the second line, and the second line is not lost.
 
-### The read-time path sweep — keyspec §2a "A path key's stored value" over every path key a file stores
+### The read-time path sweep — keyspec §2a over every path key a file stores
 
 `_refuse_ambiguous_path_values` refuses a BARE RELATIVE path value in any settings file, and names
 EVERY offending key, each with the file that carries it. The cure is a hand-edit, and naming one key
@@ -1286,10 +1285,10 @@ gap.
   resolve there is named by its own ref spelling.
 * ⚑⚑ **IT JUDGES THE WRITTEN LEVELS, NEVER THE MERGE.** keyspec §2a "A path key's stored value"
   governs STORED key values. The merge also carries values kanibako supplies itself: the floor, the
-  plugin descriptor defaults, the live persona values and the CLI level. A refusal telling a user to
-  fix a value no file of theirs holds would be a false message. The judged levels are the box file
-  and its prefs, the workset file and its prefs, the agent file (both agent slots), the system file,
-  and the site `base` file.
+  plugin descriptor defaults, the live persona values and the CLI level. A refusal telling a user
+  to fix a value no file of theirs holds would be a false message. The judged levels are the box
+  file and its prefs, the workset file and its prefs, the agent file (both agent slots), the system
+  file, and the site `base` file.
 * **Each level names its FILE.** Both agent levels are labeled with `agent_path`, the file they are
   read from, so a refusal about the file's root scalars names it as it names its categories. The
   file is ONE written level, so a value in it is judged once and refused once.

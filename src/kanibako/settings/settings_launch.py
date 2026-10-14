@@ -221,7 +221,7 @@ _SYSTEM_SHARE_ALLOWED_KEY = "system.auth.share_allowed"
 
 #: The shipped ``system.*`` SCALAR floor — installed at the BASE rung of EVERY resolve,
 #: unconditionally, so a whole-value ``{key}``-ref to one of these keys ANSWERS
-#: (keyspec §0 "it must RESOLVE"; the ``workset.channelroot`` defect R-35, "fix the CODE"). 
+#: (keyspec §0 "it must RESOLVE"; the ``workset.channelroot`` defect R-35, "fix the CODE").
 #: Every settings scope still outranks it by merge level, so a user's ``system:`` table wins
 #: by name.
 #:
@@ -629,7 +629,7 @@ def meta_agent_identity_floor(
     # written precisely to keep the name case-carrying — with a NO-OP. That is the
     # retired fold-to-store cure, re-spelled.
     # ⚑ ``with_harness``, so only the HARNESS moves: a persona segment is the
-    # user's and neither ruling reaches it.
+    # user's and neither rule reaches it.
     # ⚑ ``harness_of`` on the real name too, so the splice is IDEMPOTENT: a
     # caller handing over a whole ref (the node, or ``persona℘Kirobo``) gets the
     # same answer as one handing over the bare declared name. Without it,
@@ -1352,7 +1352,7 @@ _WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
 def _refuse_ambiguous_path_values(
     written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx,
 ) -> None:
-    """RAISE naming EVERY path key a settings file stores as a BARE RELATIVE (keyspec §2a "A path key's stored value", read time).
+    """RAISE naming EVERY path key a settings file stores as a BARE RELATIVE (read time).
 
     The generic read-time sweep: ``paths._refuse_bare_relative`` covers the
     Layer-1/Layer-2 keys and ``workset_dirkeys.resolve_workset_dir_key`` the workset

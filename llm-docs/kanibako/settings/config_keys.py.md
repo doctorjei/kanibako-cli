@@ -389,12 +389,12 @@ back a real bool (``set box.share_images false`` actually disables it). The trut
 in `config` (shared with the box.meta writer); see `config.coerce_bool`.
 
 **`path`** — a host PATH, the set-time half of keyspec §2a "A path key's stored value". It is
-**not** coerced: the file keeps the raw spelling, tokens and all (spec §0). What the type governs is
-the BARE-RELATIVE REFUSAL — `is_path_valued_key` reads this table, and `set_config_value`'s preamble
-refuses a value that does not say on its own where it points. The `system.*` and `config.*` rows are
-DERIVED from `bootstrap`' two declared-default tables (P13), so a path key added to either arrives
-here with no edit; the `workset.*` and `box.*` rows are spelled out because no live table enumerates
-them.
+**not** coerced: the file keeps the raw spelling, tokens and all (spec §0). What the type governs
+is the BARE-RELATIVE REFUSAL — `is_path_valued_key` reads this table, and `set_config_value`'s
+preamble refuses a value that does not say on its own where it points. The `system.*` and
+`config.*` rows are DERIVED from `bootstrap`' two declared-default tables (P13), so a path key
+added to either arrives here with no edit; the `workset.*` and `box.*` rows are spelled out because
+no live table enumerates them.
 
 ⚑ **The PARAMETRIC path keys are not spellable here** — `agent.<node>.{template,canon}`, the bare
 any-agent spelling the CLI serves for the same two leaves, and the whole `secret_path.<VAR>` family
@@ -708,9 +708,9 @@ canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘`` (``agent.navigator+claude.
 FOLDS its harness to node case (``agent.Shell.label`` -> ``agent.shell.label``,
 ``agent.Claude.model`` -> ``agent.claude.model``, keyspec §0 "An agent's canonical case is carried
 by its _name_") and SAYS SO: ``_typed_key_node`` logs one warning per typed spelling per command
-(Q87: a key from the command line is accepted loudly; the §0 check does not fold, so a capital built
-by code is refused there). A case change is detected by ``agent_ref.agent_segment_case``, so a
-separator-only canonicalization is not warned about. A ``pref.agent.<node>.…`` key is resolved by
+(Q87: a key from the command line is accepted loudly; the §0 check does not fold, so a capital
+built by code is refused there). A case change is detected by ``agent_ref.agent_segment_case``, so
+a separator-only canonicalization is not warned about. A ``pref.agent.<node>.…`` key is resolved by
 the same route (``_resolve_agent_key``) with its ``pref.`` kept, and the warning names the key as
 typed (``pref.agent.<Node>``). The tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``) is
 preserved verbatim. A malformed node is left RAW here — the set/reset persona branch surfaces the

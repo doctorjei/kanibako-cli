@@ -3341,10 +3341,11 @@ class TestStandaloneRootIsNotAPositionInThePath:
 
     def test_absolute_repoint_keeps_the_users_workspace_and_reports_it(self, env, capsys):
         """⚑⚑ system-design § "Box lifecycle" — the case a positional parent cannot
-        express AT ALL.  The parent of an absolute workspace is a directory the user never gave kanibako: lifting into it
-        EMPTIED the directory the user named, deleted it, and scattered its contents into
-        a sibling tree.  Nothing needs to move here — every other mode roots its workspace
-        at the project dir, and that dir may be anywhere."""
+        express AT ALL.  The parent of an absolute workspace is a directory the user
+        never gave kanibako: lifting into it EMPTIED the directory the user named,
+        deleted it, and scattered its contents into a sibling tree.  Nothing needs to
+        move here — every other mode roots its workspace at the project dir, and that
+        dir may be anywhere."""
         config, std, tmp_home = env
         elsewhere = tmp_home / "outside" / "work"
         root = _default_with_workset_keys(

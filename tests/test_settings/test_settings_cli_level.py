@@ -436,7 +436,7 @@ def test_a_plugin_leaf_is_NOT_a_key_on_a_DIFFERENT_agent(monkeypatch) -> None:
     """The partition line (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"): the
     vocabulary is per-agent, never a union.
 
-    Sourcing the map must not restore the flat cross-agent union the ruling killed
+    Sourcing the map must not restore the flat cross-agent union the partition killed
     — goose declaring ``provider`` does not make ``agent.claude.provider`` a key.
     """
     _vocabulary(

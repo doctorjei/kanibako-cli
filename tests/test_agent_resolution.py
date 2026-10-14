@@ -289,7 +289,7 @@ def test_a_typed_case_variant_reaches_the_agent_and_returns_the_NODE(monkeypatch
 
 
 def test_a_case_variant_folds_the_HARNESS_and_leaves_the_PERSONA_alone(monkeypatch):
-    """Only the harness segment is this ruling's to touch.
+    """Only the harness segment is this rule's to touch.
 
     keyspec §0 "An agent's canonical case is carried by its _name_" splits an
     agent into a case-carrying NAME and a lowercase NODE; a PERSONA has no

@@ -229,9 +229,10 @@ A path key's STORED value must say ON ITS OWN where it points
 anchored. `is_unambiguous_path_value` is that test and `ambiguous_path_value_error` is the wording
 every seam refuses with. Both live here so the rule has ONE predicate and ONE message wherever it
 fires: `config_interface._bare_relative_path_error` at set time, and three read-time seams —
-`paths._refuse_bare_relative` on the Layer-1/Layer-2 read, `workset_dirkeys.resolve_workset_dir_key`
-on the workset dir keys, and `settings_launch._refuse_ambiguous_path_values`, the launch snapshot's
-sweep over every path key a settings file stores.
+`paths._refuse_bare_relative` on the Layer-1/Layer-2 read,
+`workset_dirkeys.resolve_workset_dir_key` on the workset dir keys, and
+`settings_launch._refuse_ambiguous_path_values`, the launch snapshot's sweep over every path key a
+settings file stores.
 
 ### `is_unambiguous_path_value(value)`
 

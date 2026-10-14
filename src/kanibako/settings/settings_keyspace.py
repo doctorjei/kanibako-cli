@@ -1675,9 +1675,9 @@ def key_class(
     are real, exclusive of ``"default"`` which is always legal.
 
     ⚑⚑ *agent_leaf_map* IS THE LEAF VOCABULARY, HARNESS BY HARNESS, and the shape is
-    the rule (spec §0 L214-217): a leaf established at ``agent.default``
-    is UNIVERSAL, and every OTHER leaf is legal only on the agent or harness whose
-    plugin declared it. ``None`` means core's universal table alone.
+    the rule (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"): a leaf established
+    at ``agent.default`` is UNIVERSAL, and every OTHER leaf is legal only on the agent or
+    harness whose plugin declared it.  ``None`` means core's universal table alone.
     ⮕ **THE MAP CARRIES THE CONCESSION TOO, AND SPEAKS IT** — a
     :class:`ConcedingLeafMap` names the harnesses it could not read, and every other
     map concedes nothing. An agent whose plugin this machine cannot read has NO

@@ -1276,12 +1276,13 @@ Contracts the signature cannot carry:
   carries the NODE identity (full persona), NOT the harness, in the OUTSIDE spelling (`+`, via
   `display_agent_ref`), because an env var is a place a HUMAN looks. 🛑 **Readers CANONICALIZE, THEN
   derive**, through `agent_ref.agent_address_node` (a plain-shell box is stamped `shell`, which the
-  claimant grammar refuses; the harness folds to node case, keyspec §0 "An agent's canonical case is
-  carried by its _name_") — `harness_of` splits on `℘` alone, so deriving from the raw stamp returns
-  the whole string and `resolve_target` hunts a plugin that does not exist (in `stop.py`, under a
-  blanket catch: writeback stops SILENTLY). Emitted only when a TARGET resolved: `kanibako shell`
-  and an explicit-entrypoint launch resolve none and leave the variable unset, while a plain-shell
-  BOX (`system.agent: shell`, keyspec §2b) resolves `ShellTarget` and is stamped `shell`.
+  claimant grammar refuses; the harness folds to node case, keyspec §0
+  "An agent's canonical case is carried by its _name_") — `harness_of` splits on `℘` alone, so
+  deriving from the raw stamp returns the whole string and `resolve_target` hunts a plugin that
+  does not exist (in `stop.py`, under a blanket catch: writeback stops SILENTLY). Emitted only when
+  a TARGET resolved: `kanibako shell` and an explicit-entrypoint launch resolve none and leave the
+  variable unset, while a plain-shell BOX (`system.agent: shell`, keyspec §2b) resolves
+  `ShellTarget` and is stamped `shell`.
 * **`KANIBAKO_AGENT_MARKERS_DIR`** is UNCONDITIONAL: the supervised path and the warm-up panel watch
   both enumerate the dir every agent session's start hook writes its per-PID marker into, and the
   supervisor reads the SAME dir via `--agent-markers-dir`.

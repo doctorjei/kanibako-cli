@@ -1752,7 +1752,7 @@ suffixes = [".toml"]
 # folds its produced names the same way, for the same reason.
 
 # FACT: core ships exactly one built-in agent, `shell`, which owns the reserved
-# `shell` slot ([R175]: built-in is a category). The declaration
+# `shell` slot ([R175]: built-in is a category). This entry is the declaration
 # the `core-agent-names` parity compares against.
 # CATCHES (`check`): a `name` property returning `"shell"` outside its home,
 # i.e. a second class claiming the built-in's slot.

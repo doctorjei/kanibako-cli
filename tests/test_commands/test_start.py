@@ -708,8 +708,8 @@ class TestEffectiveBootstrapResolution:
         assert _resolved_program(proj, sys_file, "goose") == "zellij"
         # ⚑ NOT for a plain-shell box: its tier SUPPLIES its own ``tmux`` (spec §2d
         # fence), and a default is a fallback for where nothing was supplied
-        # (keyspec §2d "Pseudo-agent(s)").  :class:`TestShellBootstrapIsTheTiersOwn`
-        # pins that side.
+        # (keyspec §2 "applies only where no value has been supplied").
+        # :class:`TestShellBootstrapIsTheTiersOwn` pins that side.
         assert _resolved_program(proj, sys_file, "shell") == "tmux"
 
     @pytest.mark.parametrize("written", [""])

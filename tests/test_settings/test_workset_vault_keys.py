@@ -70,7 +70,7 @@ class TestVaultResolverFaces:
         self, tmp_path, early, monkeypatch,
     ):
         # ⚑ INVERTED BY keyspec §2a "A path key's stored value": this used to assert the value
-        # anchored under the workset root.  A vault is exactly the case the ruling is about — the
+        # anchored under the workset root.  A vault is exactly the case the rule is about — the
         # directory gets created and then holds the user's data.
         # Run from a link, as a shell does: only ``$PWD`` names the link.
         real, link = tmp_path / "run-real", tmp_path / "run-from"

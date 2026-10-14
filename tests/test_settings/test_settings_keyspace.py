@@ -1759,7 +1759,7 @@ def test_the_narrowing_does_not_touch_a_NAMED_agents_leaf():
     ⚑ **AND THE ``claude`` CASE ASSERTS THE OPPOSITE, WHICH IS THE WHOLE OF
     keyspec §0 "The leaf VOCABULARY is partitioned by TIER".**
     ``provider`` is goose's declaration, so it is a key on goose and on nothing else —
-    *"every other leaf is agent- or harness-specific, legal only on the agent (or
+    *"Every other leaf is legal ONLY on the agent (or
     harness) whose plugin declared it"*. Until 2026-08-30 the named tier judged against
     a FLAT CROSS-AGENT UNION and ``agent.claude.provider`` was a key; the two rows below
     are the same map read from both sides, which is what makes this a partition rather

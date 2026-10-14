@@ -37,9 +37,10 @@ def _isolate_config(tmp_path, monkeypatch) -> None:
     ⚑ ``XDG_DATA_HOME`` alone does not determine where a ``config.data`` dir resolves
     (CONVENTIONS P10 "derive from declared keys"), so an unisolated ``XDG_CONFIG_HOME``
     — or the site base under ``/etc`` — would let whatever config happens to be on the
-    box running the suite move it away from the one these tests write into.  The one class that needs this floor
-    (``TestFileDropDirectoriesAreNotADiscoveryRoute``) keeps an ``autouse`` wrapper so
-    the floor stays scoped to the tests that write plugin files.
+    box running the suite move it away from the one these tests write into.  The one
+    class that needs this floor (``TestFileDropDirectoriesAreNotADiscoveryRoute``)
+    keeps an ``autouse`` wrapper so the floor stays scoped to the tests that write
+    plugin files.
     """
     import kanibako.settings.config as cfg_mod
 
