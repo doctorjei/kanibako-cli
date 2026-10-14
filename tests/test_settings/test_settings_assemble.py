@@ -2478,9 +2478,10 @@ def test_the_two_spellings_refusal_text_is_unchanged(tmp_path: Path) -> None:
 
 
 def test_a_bare_relative_agent_file_canon_is_refused_once(tmp_path: Path) -> None:
-    # Step 5: the file reaches the cascade as one level, so the [R147] read-time sweep sees its
-    # ``canon`` once. The deleted record rung was a second written level holding the same
-    # value, and the launch printed the refusal twice.
+    # Step 5: the file reaches the cascade as one level, so the read-time sweep
+    # (keyspec §2a "A path key's stored value") sees its ``canon`` once. The deleted record rung
+    # was a second written level holding the same value, and the launch printed the
+    # refusal twice.
     with pytest.raises(SettingsError) as exc:
         _k4_snapshot(tmp_path, {"self": {"canon": "relcanon"}})
     assert str(exc.value).count("agent.claude.canon is set to 'relcanon'") == 1

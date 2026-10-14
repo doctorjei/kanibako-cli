@@ -40,9 +40,10 @@ def _sentinel(tmp_home: Path, key: str) -> str:
     # (``tests/conftest.py::tmp_home``: ``config``/``data``/``state``/``cache``/``home``/
     # ``project`` are its children), so nothing under ``repointed/`` is reached by nesting.
     # ⚑ AND IT MUST BE WRITABLE.  ``load_std_paths`` MATERIALIZES the bases it resolves,
-    # and since [R166] the state base is the resolved ``system.state`` rather than a leaf
-    # composed under ``$XDG_STATE_HOME`` — so an unwritable sentinel root now fails the
-    # consumer case on that mkdir instead of on the assertion it exists to make.
+    # and since keyspec §2g system.state the state base is the resolved ``system.state``
+    # rather than a leaf composed under ``$XDG_STATE_HOME`` — so an unwritable sentinel root
+    # now fails the consumer case on that mkdir instead of on the assertion it exists to
+    # make.
     return str(tmp_home / "repointed" / key.replace(".", "-"))
 
 

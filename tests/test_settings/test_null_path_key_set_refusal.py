@@ -2,9 +2,10 @@
 
 ``--null`` writes a present ``None`` and every reader spells it ``null``.  The ``system:``
 and ``config:`` path tiers REFUSE that spelling by name (``config._refuse_null_paths``), as
-does ``project.workset.resolve_workset_boxes`` for ``workset.boxes`` ([R177]) — so this door
-refuses a ``--null`` at any of those keys BEFORE the write, and the user learns it at the
-door they typed rather than at the next launch.
+does ``project.workset.resolve_workset_boxes`` for ``workset.boxes`` (keyspec §2h "the
+ordinary present-`None` rule") — so this door refuses a ``--null`` at any of those keys
+BEFORE the write, and the user learns it at the door they typed rather than at the next
+launch.
 
 ⚑ ONE CARRIER, CALLED — the anti-drift half of this file is
 ``TestTheRefusalCarriesTheLaunchsOwnReason``: a copied predicate at the set door is the
@@ -338,9 +339,10 @@ class TestWhatStaysLenient:
 
     def test_a_bare_relative_still_gets_r147_not_this_refusal(self, tmp_path):
         # ⚑ ORDER, PINNED. The value is a shape the launch refuses too, so the door must
-        # answer with [R147]'s two-readings message and NOT with the null refusal — the two
-        # name different files' worth of truth, and a user told "a null path key has no
-        # meaning" about the string 'comms' would be told something false.
+        # answer with the two-readings message (keyspec §2a "A path key's stored value") and NOT
+        # with the null refusal — the two name different files' worth of truth, and a user
+        # told "a null path key has no meaning" about the string 'comms' would be told
+        # something false.
         files = _files(tmp_path)
         message = _set("system.canon", "comms", files, ConfigLevel.system)
         assert message.startswith("Error:"), message

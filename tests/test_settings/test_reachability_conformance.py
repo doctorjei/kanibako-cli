@@ -606,7 +606,8 @@ class TestEveryDeclaredDefaultAnswers:
   """P, asserted directly: no key in the corpus dangles, in any mode.
 
   ⚑⚑ THIS CASE DID NOT EXIST UNTIL 2026-08-29, AND ITS ABSENCE IS THE WHOLE REASON THE
-  DEFECT CLASS SURVIVED.  ``[R143]`` ratified P and the spec carries it, but the only
+  DEFECT CLASS SURVIVED.  P was ratified and keyspec §0 "it must RESOLVE" carries it, but
+  the only
   P-side check in this file was ANTI-VACUITY — *something* answers.  D (demand) and F
   (family closure) were written as PROXIES while P was still going to be narrowed to a
   fallback; when P was ratified outright, the proxies stayed and the property itself was

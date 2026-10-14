@@ -35,9 +35,10 @@ carriers are now DERIVED from their declared table, so a key added later reaches
 with no edit here.  🛑 Do not repair a future failure by narrowing an assertion or by
 exempting a key — a red here means a carrier fell behind, and the carrier is what moves.
 
-⚑ Both halves rest on ``[R143]``: *"if it has a default value, yes, thay value should be
-placed in the keystore."*  A declared key carrying a default must resolve, universally —
-which is why no allowlist or discriminator appears anywhere below.
+⚑ Both halves rest on keyspec §0 "it must RESOLVE"; [Jei:2026-08-28]: *"if it has a
+default value, yes, thay value should be placed in the keystore."*  A declared key carrying
+a default must resolve, universally — which is why no allowlist or discriminator appears
+anywhere below.
 
 Indent note: 2 spaces, matching ``test_agent_select.py`` and the project style.
 """

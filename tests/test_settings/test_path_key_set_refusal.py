@@ -1,4 +1,5 @@
-"""[R147] at SET TIME — a bare relative path value is refused by every set route.
+"""keyspec §2a "A path key's stored value" at SET TIME — a bare relative path value is
+refused by every set route.
 
 The read-time half is pinned at its two seams (``test_system_paths.py``'s
 ``TestBareRelativeIsRefusedNotAnchored`` for the Layer-1/Layer-2 tables,
@@ -101,7 +102,8 @@ def run_from(tmp_path, monkeypatch) -> tuple[Path, Path]:
 def _assert_named_both_readings(
     message: str, key: str, value: str, run_from: tuple[Path, Path],
 ) -> None:
-    """The refusal is [R147]'s, not a generic complaint: both directories are named."""
+    """The refusal is the stored-value one (keyspec §2a "A path key's stored value"), not a
+    generic complaint: both directories are named."""
     assert message.startswith("Error:"), message
     assert key in message
     assert "BARE RELATIVE" in message
@@ -261,9 +263,10 @@ class TestTheLegalShapesAreAccepted:
         "~/comms",                    # home-rooted
         "{$XDG_DATA_HOME}/comms",     # an XDG base — parsed, never prefix-matched
         "{config.data}/comms",        # a reference to another key
-        # ``{meta.workset.path}/comms`` — the cure [R147] offers — needs the COMMAND's
-        # target to resolve, so it is pinned with a real working set below
-        # (``TestSetTimeResolvesTheCommandsTarget``), not with these bare files.
+        # ``{meta.workset.path}/comms`` — the cure keyspec §2a "A path key's stored value"
+        # offers — needs the COMMAND's target to resolve, so it is pinned with a real
+        # working set below (``TestSetTimeResolvesTheCommandsTarget``), not with these bare
+        # files.
     ])
     def test_workset_scope_accepts_it(self, value, config_file, tmp_path):
         # ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED for the ``@config.*`` cases:
@@ -430,9 +433,10 @@ class TestTheRuleDoesNotOVERREACH:
 
     def test_the_bind_source_predicate_is_UNCHANGED_by_this(self):
         """⚑ ``is_self_resolving`` rules on a bind SOURCE, where any ``{$VAR}`` is legal;
-        [R147]'s predicate rules on a user-typed path key.  The contrast is pinned in
-        ``test_agent_config.py``; this row exists so a reader of the SET-TIME file is
-        told the two are different rules before they "unify" them."""
+        the stored-value predicate (keyspec §2a "A path key's stored value") rules on a user-typed
+        path key.  The contrast is pinned in ``test_agent_config.py``; this row exists so a
+        reader of the SET-TIME file is told the two are different rules before they "unify"
+        them."""
         from kanibako.settings.agent_config import (
             is_self_resolving,
             is_unambiguous_path_value,

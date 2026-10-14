@@ -389,7 +389,7 @@ def test_the_union_forwards_what_the_collection_says_about_itself() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# the guard's LEAF VOCABULARY — [R150], spec §0                               #
+# the guard's LEAF VOCABULARY — spec §0                                       #
 # --------------------------------------------------------------------------- #
 
 
@@ -425,15 +425,16 @@ def test_a_plugin_declared_leaf_is_a_key_at_the_CLI_LEVEL(monkeypatch) -> None:
     §2d table. The guard took the vocabulary as a PARAMETER and no caller passed
     one, so every agent was judged against core alone and this was REFUSED — a §0
     breach in the STRICT direction, which is why nothing noticed: the failure mode
-    is a user being told no. ``[R150]``, and the twin gate
-    ``config_keys.agent_key_reason`` was fixed for exactly this.
+    is a user being told no. keyspec §0 "The leaf VOCABULARY is partitioned by TIER",
+    and the twin gate ``config_keys.agent_key_reason`` was fixed for exactly this.
     """
     _vocabulary(monkeypatch, {"goose": frozenset({"provider"})})
     guard_cli_level({"agent.goose.provider": "openai"}, active_agent="goose")
 
 
 def test_a_plugin_leaf_is_NOT_a_key_on_a_DIFFERENT_agent(monkeypatch) -> None:
-    """``[R150]``'s partition line: the vocabulary is per-agent, never a union.
+    """The partition line (keyspec §0 "The leaf VOCABULARY is partitioned by TIER"): the
+    vocabulary is per-agent, never a union.
 
     Sourcing the map must not restore the flat cross-agent union the ruling killed
     — goose declaring ``provider`` does not make ``agent.claude.provider`` a key.
@@ -459,8 +460,8 @@ def test_an_undeclared_leaf_is_still_refused_on_a_READABLE_agent(
 
 
 def test_an_UNREADABLE_agents_leaf_is_conceded_not_refused(monkeypatch) -> None:
-    """``[R150]``: *"a narrowing that refuses ``agent.goose.provider`` on a
-    claude-only machine has misread this"*.
+    """keyspec §0 "The leaf VOCABULARY is partitioned by TIER": a narrowing that refuses
+    ``agent.goose.provider`` on a claude-only machine has misread this.
 
     Where the plugin cannot be read there is no vocabulary to judge against, so the
     leaf is CONCEDED (spec §0). The active-agent union answers the NAME; the map's

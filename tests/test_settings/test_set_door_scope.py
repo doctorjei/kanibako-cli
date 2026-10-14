@@ -461,8 +461,8 @@ class TestWhatStaysRefused:
         r"""``@workset.nonexistent`` is text, so the floor's blindness must not open.
 
         ⚑ This is a GUARD, not a new behavior: the value never reaches the probe, because
-        the ``[R147]`` bare-relative refusal takes it first. What is pinned is that the
-        blindness rule did not open behind that guard.
+        the bare-relative refusal (keyspec §2a "A path key's stored value") takes it first. What is
+        pinned is that the blindness rule did not open behind that guard.
         """
         files = _files(tmp_path)
         message = _set(_CONTAINED_KEY, "@workset.nonexistent", files,

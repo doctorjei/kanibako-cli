@@ -2714,15 +2714,16 @@ class TestPathLeafDefaultsHaveOneCarrier:
 
         ⚑ THIS IS OWED, NOT THEORETICAL.  ``runtime/baseline.py`` composed its overlay
         from a hand-typed ``"/etc/kanibako"`` for as long as the constant existed — the
-        third of the three host-side spellings `[R157]` measures as one defect — and
-        ``bootstrap``'s own promise that these live "here and NOWHERE ELSE" was prose
-        until this assertion.
+        third of the three host-side spellings CONVENTIONS P10 "derive from declared keys"
+        measures as one defect — and ``bootstrap``'s own promise that these live "here and
+        NOWHERE ELSE" was prose until this assertion.
 
         ⚑ THE REMEDY DEPENDS ON THE SUBJECT, AND AN EXEMPTION IS NOT IT.  A HOST-side hit
         imports ``SITE_CONFIG_DIR``.  A GUEST-side one — an IN-IMAGE path that merely
         shares the spelling, as ``commands/image.py``'s ``/etc/kanibako/rig.yaml`` does —
-        must NOT: `[R157]` holds the two INDEPENDENT, and an import would couple a
-        container path to a host path.  🛑 Naming it in place does not work either — a
+        must NOT: CONVENTIONS P10 "derive from declared keys" holds the two INDEPENDENT,
+        and an import would couple a container path to a host path.  🛑 Naming it in place
+        does not work either — a
         guest constant is still a code literal outside the carrier, so THIS TEST REDS IT.
         The guest side needs its own DESIGNATED CARRIER, found the way the host one is:
         from where its constants are defined, never from a module list.  (Today every

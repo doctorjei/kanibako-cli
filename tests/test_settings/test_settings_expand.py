@@ -355,7 +355,7 @@ def test_embedded_absent_token_to_empty_keeps_key() -> None:
 
 
 def test_embedded_present_none_makes_the_whole_value_none() -> None:
-    # Spec §0 ([R186]): "An embedded reference to a present <None> makes the whole
+    # Spec §0: "An embedded reference to a present <None> makes the whole
     # value <None>." — the key SURVIVES as a present None, never as "x--z".
     # ⚑ The ref is BRACED for clarity; ``-`` is not a ref-name character (spec §0),
     # so bare ``@y-z`` would read the same.
@@ -1345,7 +1345,8 @@ def test_a_none_bind_source_is_skipped_not_mounted_at_the_collapse(src: str) -> 
 def test_the_side_table_names_the_null_refs_of_a_none_entry(src, refs) -> None:
     """E2: the refs that made an entry ``None`` are KEPT, keyed by the entry's path.
 
-    ``settings_launch`` names them in the [R185] warning.  An absent ref is not one.
+    ``settings_launch`` names them in the lone-``<None>`` warning (keyspec §2a
+    "PER-ENTRY CASCADE MERGE").  An absent ref is not one.
     """
     snap = KeyStore({
         "y": None,
@@ -1684,12 +1685,14 @@ def test_tilde_is_the_box_home_in_a_box_dest_and_the_host_home_in_a_host_src() -
 
 
 # --------------------------------------------------------------------------- #
-# [R147] — a path key that holds a bare relative must not reach a MOUNT        #
+# keyspec §2a "A path key's stored value" — a path key that holds a bare      #
+# relative must not reach a MOUNT                                             #
 # --------------------------------------------------------------------------- #
 
 
 def test_ref_to_a_bare_relative_path_key_is_refused_not_mounted() -> None:
-    """🛑 THE HOLE [R147] CLOSES, measured before the guard existed.
+    """🛑 THE HOLE keyspec §2a "A path key's stored value" CLOSES, measured before the guard
+    existed.
 
     ``box.canon: relcanon`` is self-resolving where it is DECLARED — the source is
     spelled ``@box.canon/handbook``, so ``_declared_source``'s parse-time refusal
@@ -1737,8 +1740,9 @@ def test_every_legal_path_value_reaches_the_mount_unrefused(canon, expected) -> 
     """🛑 THE GUARD MUST NOT OVER-FIRE, and this is the case that would prove it did.
 
     ⚑ It tests the EXPANDED value, never the stored spelling — which is the whole
-    reason [R147]'s four legal forms survive it: ``~``, ``$XDG_*`` (bare and braced)
-    and a ``{key}``-ref have all become an absolute path by the time the check runs.
+    reason the four legal forms (keyspec §2a "A path key's stored value") survive it: ``~``,
+    ``$XDG_*`` (bare and braced) and a ``{key}``-ref have all become an absolute path by
+    the time the check runs.
     A guard placed on the STORED string instead would refuse every row here.
     """
     snap = KeyStore({
