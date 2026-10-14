@@ -539,7 +539,7 @@ inside boxes. In order of likely impact:
 | `system.default_agent` (stored as `agent: default: default_agent:` in `global/settings.yaml`) | `system.agent` (same file, `system: agent:`) | **hard launch error** (below) |
 | `<scope>.shared.<name>` (the `shared` mount category) | `<scope>.common.<name>` | **hard refusal** at the resolve (see *An undeclared key in a settings file now stops the command, and the cure is a hand-edit*) |
 | `system.base_template` | `system.template` (and it now names a template ROOT — *Template and per-agent store moves*) | **hard refusal** at the resolve (see *An undeclared key in a settings file now stops the command, and the cure is a hand-edit*) |
-| `@meta.runtime.ws_settings` (reference target) | `{meta.workset.settings}` | plain text, silently (below) |
+| `@meta.runtime.ws_settings` (reference target) | `{meta.workset.settings}` | plain text: a bare-relative path refusal in a path value, silent elsewhere (below) |
 | settable `box.agent.*` mirror (a `box: agent:` **table**) | read-only `meta.box.agent.*` read-back; write via `pref.agent.<agent>.<key>` | **hard launch error** (below); write verbs refuse with the pref cure |
 | `auto_approve` (the boolean permission switch) | `access` — a tier, `restricted` \| `editing` \| `full` | **hard launch error** of its own, mapping your stored boolean to a tier (below) |
 
@@ -1219,8 +1219,9 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   it again; nothing was removed.
 - **`@meta.runtime.ws_settings`** in any settings file: replace with `{meta.workset.settings}`
   (identical resolved value). **This one is inside a value, not a key path**, and it names no key
-  now, so it is plain text: kanibako keeps the characters as written and nothing refuses. It is
-  the quietest of the four. Grep for it — you will not be told.
+  now, so it is plain text. In a path value (a bind source or a path key) it is refused as a
+  bare-relative path; anywhere else, such as an env value, it is kept as written without a word.
+  Grep for it.
 
 ### 2.12 The upgrade gate: nothing new appears until `kanibako setup` runs
 
@@ -3954,7 +3955,7 @@ is now resolved through its own key.
 | `workset.channels.broadcast`, `.mailboxes`, `.share_global` | Nothing. The value was accepted, written to `workset.yaml`, and read back by `kanibako workset get`, and no path moved | The value is used |
 | `workset.channels.chat`, `.share` | The mount followed your override; the rest of kanibako did not | Mount, seeded files, and the `meta.box.*` addresses agree |
 | `workset.channels.common` | Honored | Unchanged |
-| `workset.channelroot` | Honored, but a settings file referencing `@workset.channelroot` got nothing back | The launch resolves it, so the reference works |
+| `workset.channelroot` | Honored, but a settings file referencing `@workset.channelroot` got nothing back | The launch resolves it, so `{workset.channelroot}` works |
 
 **What to do.**
 
