@@ -241,9 +241,9 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
       becomes a symlink -> ``agents/<harness>/template``.
     * ``canon`` — the agent-handbook-chapter SOURCE store:
       ``agents/<node>/canon`` becomes a symlink -> ``agents/<harness>/canon``, so
-      the ``agent.<node>.canon`` key answers the harness's chapter instead of
-      falling back to the default's.  Laid only when the harness's dir already
-      EXISTS: with nothing to share the default fallback is the right answer.
+      the node's own store (``agent.default.canon`` = ``{meta.self.path}/canon``)
+      answers the harness's chapter.  Laid only when the harness's dir already
+      EXISTS: with nothing to share, the persona binds no agent chapter.
     * ``common`` — the whole live-BIND dir: ``agents/<node>/common`` becomes a
       symlink -> ``agents/<harness>/common``, sharing every leaf at once,
       declared or not.  TARGET-DECLARED, so laid only when the target declares a
@@ -285,10 +285,11 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     ``stage_layers``' per-entry ``is_symlink()`` refusal (§2a source-symlink,
     exfiltration) never sees it and the box gets bytes, not a dangling link.
     ⚑ AND IT IS NOT TARGET-DECLARED, unlike the categories — hence it is laid BEFORE
-    the no-target return: ``launch.templates.agent_template_defaults`` emits a
-    store-path node arm for every TRUE agent id (the ``shell`` pseudo-agent's arm is a
-    present ``None``, and a bare node returns before any link is laid), whether or not the
-    harness's plugin is installed on this host.
+    the no-target return: ``launch.templates.agent_template_defaults`` emits, for every
+    TRUE agent id, the node's store path at ``agent.default.template`` and the forwarder
+    ``agent.<node>.template = "{agent.default.template}"`` (the ``shell`` pseudo-agent's
+    arm is a present ``None``, and a bare node returns before any link is laid), whether
+    or not the harness's plugin is installed on this host.
 
     PRECONDITION: call at persona-dir MATERIALIZATION, BEFORE mount assembly /
     category source resolution, so the symlink pre-dates any real-dir
