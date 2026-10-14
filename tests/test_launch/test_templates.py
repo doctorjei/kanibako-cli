@@ -3053,6 +3053,65 @@ class TestPlanTemplateRefresh:
         assert all(p.name != "USER.md" for p in added + overwritten + kept)
 
 
+class TestPlanCountsTheAgentStoreStamp:
+    """The preview counts what :func:`ensure_agent_stores` would ADD, so setup never
+    says "up to date" over a store the action would stamp — and never over-counts one
+    the action leaves alone (absent-only, seed once)."""
+
+    _CHAPTER = ("canon", "handbook", "SYS_AGENT.md")
+
+    def test_a_deleted_shell_store_is_work_and_the_action_restamps_it(self, std):
+        install_packaged_templates(std, ["shell"])
+        shutil.rmtree(std.agents / "shell")
+        added, overwritten, kept = plan_template_refresh(std, ["shell"])
+        chapter = std.agents.joinpath("shell", *self._CHAPTER)
+        assert added == [chapter]
+        assert (overwritten, kept) == ([], [])
+        install_packaged_templates(std, ["shell"])
+        assert chapter.is_file()
+        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+
+    def test_a_canonless_plugin_store_is_work(self, std, monkeypatch):
+        from kanibako.launch import templates
+
+        monkeypatch.setattr(templates, "_packaged_agent_store", lambda name: None)
+        install_packaged_templates(std, ["thirdparty"])
+        assert plan_template_refresh(std, ["thirdparty"]) == ([], [], [])
+        shutil.rmtree(std.agents / "thirdparty" / "canon")
+        added, _overwritten, _kept = plan_template_refresh(std, ["thirdparty"])
+        assert added == [std.agents.joinpath("thirdparty", *self._CHAPTER)]
+
+    def test_an_empty_canon_dir_is_present_and_never_added_to(self, std):
+        install_packaged_templates(std, ["shell"])
+        shutil.rmtree(std.agents / "shell" / "canon")
+        (std.agents / "shell" / "canon").mkdir()
+        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+        install_packaged_templates(std, ["shell"])
+        assert list((std.agents / "shell" / "canon").iterdir()) == []
+
+    def test_a_canon_symlink_is_never_followed(self, std, tmp_path):
+        install_packaged_templates(std, ["shell"])
+        shutil.rmtree(std.agents / "shell" / "canon")
+        elsewhere = tmp_path / "elsewhere"
+        (std.agents / "shell" / "canon").symlink_to(elsewhere)  # dangling
+        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+        install_packaged_templates(std, ["shell"])
+        assert not elsewhere.exists()
+
+    def test_a_missing_mold_file_is_work_but_a_differing_one_is_not_kept(self, std):
+        install_packaged_templates(std, ["shell"])
+        mold_file = std.template / "agent" / "common" / "MOLD.md"
+        mold_file.parent.mkdir(parents=True)
+        mold_file.write_text("from the mold")
+        added, _overwritten, kept = plan_template_refresh(std, ["shell"])
+        assert sorted(added) == sorted(
+            std.agents / n / "common" / "MOLD.md" for n in ("default", "shell")
+        )
+        install_packaged_templates(std, ["shell"])
+        (std.agents / "shell" / "common" / "MOLD.md").write_text("mine")
+        assert plan_template_refresh(std, ["shell"]) == ([], [], [])
+
+
 class TestRefreshEquivalenceTiers:
     """J-3 item 2: three tiers, REPORTING ONLY — byte-equal and EQUIVALENT are both
     "current" and go unreported; only a real difference is named."""

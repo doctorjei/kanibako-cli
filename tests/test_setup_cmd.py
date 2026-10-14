@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 
 from kanibako import __version__
 from kanibako.commands import setup_cmd
@@ -791,6 +792,22 @@ def test_template_step_tty_add_only_does_not_ask(tmp_home, config_file, monkeypa
     outcome = setup_cmd._run_template_refresh(_ns())
     assert outcome is setup_cmd.TemplateStep.REFRESHED
     assert _staged_marker(_resolve_std()).is_file()
+
+
+def test_template_step_restamps_a_deleted_agent_store(
+    tmp_home, config_file, monkeypatch, capsys
+):
+    """A store deleted after install is ADD work, not "up to date": the step stamps
+    core's chapter back (no consent needed — nothing is overwritten)."""
+    _stage_templates()
+    std = _resolve_std()
+    shutil.rmtree(std.agents / "shell")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", _boom_input)
+    outcome = setup_cmd._run_template_refresh(_ns())
+    assert outcome is setup_cmd.TemplateStep.REFRESHED
+    assert "up to date" not in capsys.readouterr().out
+    assert (std.agents / "shell" / "canon" / "handbook" / "SYS_AGENT.md").is_file()
 
 
 def test_template_step_non_tty_kept_only_completes_and_keeps(

@@ -640,7 +640,7 @@ def ensure_agent_stores(
             # user's files are never re-seeded over.  The ``shell`` pseudo-agent's store
             # is stamped the same way: it inherits ``agent.default.canon`` (§2d), so its
             # chapter is its own store's too.
-            if base is not None and not (store / "canon").exists():
+            if base is not None and _core_chapter_due(store):
                 copy_tree(
                     base / PACKAGED_AGENT_DEFAULT / "canon", store / "canon",
                     scope="agent", dest_root=store,
@@ -652,6 +652,26 @@ def ensure_agent_stores(
             (store / AGENT_TEMPLATE_STORE_REL / rel).mkdir(parents=True, exist_ok=True)
         touched.append(name)
     return touched
+
+
+def _core_chapter_due(store: Path, *earlier: Path | None) -> bool:
+    """True when :func:`ensure_agent_stores` would stamp core's agent chapter (2b).
+
+    ⚑ THE ONE TEST, read by the action and by :func:`plan_template_refresh`, so the
+    preview cannot call a store current that the action would stamp.  The action asks
+    AFTER the mold and the plugin have stamped; the plan asks BEFORE, so it passes those
+    sources as *earlier*: a ``canon/`` file either of them would copy creates the dir
+    first and the chapter is then skipped.
+    ⚑ PRESENT MEANS ``lexists``: a ``canon`` symlink — dangling or not — is never
+    followed and never stamped through, and a present-but-empty dir is never added to.
+    """
+    canon = store / "canon"
+    if canon.is_symlink() or canon.exists():
+        return False
+    return not any(
+        src is not None and any(is_copyable_file(e) for e in (src / "canon").rglob("*"))
+        for src in earlier
+    )
 
 
 def _assert_stamp_leaf_in_root(
@@ -1285,19 +1305,29 @@ def plan_template_refresh(
     overwritten: list[Path] = []
     kept: list[Path] = []
 
-    def _classify(src_file: Path, target: Path, *, user_owned: bool) -> None:
+    def _classify(
+        src_file: Path, target: Path, *, user_owned: bool, absent_only: bool,
+    ) -> None:
         if not target.exists():
-            added.append(target)
+            if target not in added:  # the mold may have claimed it first.
+                added.append(target)
+        elif absent_only:
+            pass  # not a SHIPPED file: a difference is the user's, never "kept".
         elif not _equivalent(src_file, target):
             (kept if user_owned else overwritten).append(target)
         # else: current (byte-equal or equivalent) -> unreported.
 
-    def _walk(src: Path | None, dest: Path, *, user_owned: bool) -> None:
+    def _walk(
+        src: Path | None, dest: Path, *, user_owned: bool, absent_only: bool = False,
+    ) -> None:
         if src is None or not src.is_dir():
             return
         for entry in sorted(src.rglob("*")):
             if entry.is_file() and not entry.is_symlink():
-                _classify(entry, dest / entry.relative_to(src), user_owned=user_owned)
+                _classify(
+                    entry, dest / entry.relative_to(src),
+                    user_owned=user_owned, absent_only=absent_only,
+                )
 
     base_src = _packaged_base_template()
     if base_src is not None:
@@ -1320,10 +1350,21 @@ def plan_template_refresh(
             base_src / PACKAGED_AGENT_DEFAULT, std.agents / "default", user_owned=True,
         )
 
-    for agent_name in agent_names:
-        agent_src = _packaged_agent_store(agent_name)
-        if agent_src is None:
-            continue
-        _walk(agent_src, std.agents / agent_name, user_owned=True)
+    # The agent STORES, in :func:`ensure_agent_stores`' order.  ⚑ A file the mold or
+    # core's chapter would ADD counts as work (``absent_only``): neither is the store's
+    # shipped copy, so a store that differs from them is the user's, not "kept".
+    mold = std.template / AGENT_MOLD_DIRNAME
+    for name in ["default", *agent_names]:
+        store = std.agents / name
+        _walk(mold, store, user_owned=True, absent_only=True)
+        if name == "default":
+            continue  # its packaged content is walked above, with the handbook.
+        agent_src = _packaged_agent_store(name)
+        _walk(agent_src, store, user_owned=True)
+        if base_src is not None and _core_chapter_due(store, mold, agent_src):
+            _walk(
+                base_src / PACKAGED_AGENT_DEFAULT / "canon", store / "canon",
+                user_owned=True, absent_only=True,
+            )
 
     return added, overwritten, kept
