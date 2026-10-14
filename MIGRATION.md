@@ -5687,9 +5687,9 @@ cd <data>/agents && rmdir general/template no_agent/template general no_agent 2>
 ```
 
 If you edited both files, merge them by hand first: they were two spellings of one box's
-settings, and the survivor holds the union. If you edited neither, there is nothing to move
-— `kanibako setup` writes an empty `shell/agent.yaml` on its next run, and the two old
-directories can simply be deleted.
+settings, and the survivor holds the union. If you edited neither, there is nothing to move,
+and the two old directories can simply be deleted. `kanibako setup` creates the
+`<data>/agents/shell/` store with its `canon/` and `template/` directories, but no `agent.yaml`.
 
 **Template files for a plain-shell box.** In v1.7.2 a new plain-shell box was also seeded from
 `<data>/agents/general/template/` (or `<data>/agents/no_agent/template/`), if you had created one.
