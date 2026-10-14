@@ -608,8 +608,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The built-in plain-shell target is named `shell`, not `no_agent`.** `--agent no_agent`
   is now `--agent shell`, and the `kanibako.agents` entry point is gone — the target is
-  seeded directly by discovery instead ([R175]: the built-in is a category, not a
-  carve-out). The old spelling is refused, never translated ([R174]). The D6 reservation
+  seeded directly by discovery instead (the built-in is a category, not a
+  carve-out). The old spelling is refused, never translated. The D6 reservation
   still refuses `shell` (and `default`) as a plugin, persona or harness name. A shell box
   resolves its target like any other agent's, but the built-in installs no binds, creds,
   or layer-2 template — the tier exists and `agent.shell.*` resolves, which is the whole

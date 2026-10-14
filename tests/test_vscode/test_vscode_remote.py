@@ -275,8 +275,8 @@ def test_state_dir_defaults_under_the_state_key_when_no_config():
 
 
 def test_state_dir_follows_a_repointed_system_state(tmp_path):
-    """[R166]: the connection store derives from ``system.state``, so setting that key
-    moves it."""
+    """keyspec §2g system.state: the connection store derives from ``system.state``, so
+    setting that key moves it."""
     _write_store_config(tmp_path / "custom_store", state=tmp_path / "elsewhere" / "state")
     assert vr._vscode_remote_state_dir() == (
         tmp_path / "elsewhere" / "state" / "vscode-remote"
@@ -284,8 +284,9 @@ def test_state_dir_follows_a_repointed_system_state(tmp_path):
 
 
 def test_state_dir_ignores_a_repointed_config_data(tmp_path):
-    """[R166] MUTATION PROOF: state has no relationship to ``config.data``.  The retired
-    behavior put this under ``$XDG_STATE_HOME/custom_store``."""
+    """MUTATION PROOF (keyspec §2g system.state): state has no relationship to
+    ``config.data``.  The retired behavior put this under
+    ``$XDG_STATE_HOME/custom_store``."""
     _write_store_config(tmp_path / "custom_store")
     assert vr._vscode_remote_state_dir() == (
         Path(os.environ["XDG_STATE_HOME"]) / "kanibako" / "vscode-remote"

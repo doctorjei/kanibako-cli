@@ -465,8 +465,9 @@ class TestPrepareHost:
         m_auth.assert_called_once()
         env = m_auth.call_args.kwargs.get("env")
         assert env is not None and env.get("DISABLE_AUTOUPDATER") == "1"
-        # [R168]: the OAuth session jar is STATE and ``browser_state`` locates it from
-        # ``system.state`` itself, so the binary is the ONLY thing this hand-off carries.
+        # keyspec §2g system.state: the OAuth session jar is STATE and ``browser_state``
+        # locates it from ``system.state`` itself, so the binary is the ONLY thing this
+        # hand-off carries.
         # A data directory threaded back through here is the retired shape.
         assert m_auth.call_args.args == (str(install.binary),)
         assert "data_path" not in m_auth.call_args.kwargs
@@ -641,7 +642,8 @@ class TestGenerateAgentConfig:
         assert cfg.state == {}
         # ⚑ ``None``, the ABSENT state: a generated file says nothing about the argv, so
         # the any-agent ``agent.default.run_args`` still reaches this agent's launch. An
-        # explicit ``[]`` here would seed an OPT-OUT into every new claude store (`[R169]`).
+        # explicit ``[]`` here would seed an OPT-OUT into every new claude store
+        # (keyspec §2d agent.default.run_args).
         assert cfg.run_args is None
         assert cfg.env == {}
 

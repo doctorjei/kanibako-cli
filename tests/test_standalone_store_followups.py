@@ -291,7 +291,8 @@ class TestTheRootSweepKeepsTheStore:
         assert not (new.workspace_path / "store").exists()
         assert (new.workspace_path / "file.txt").read_text() == "mine", (
             "the sweep still consolidates what it is for")
-        # ⚑ [R144]: a keep that cannot name the path as the user's is just a leak.
+        # ⚑ system-design § "Box lifecycle": a keep that cannot name the path as the
+        # user's is just a leak.
         err = capsys.readouterr().err
         assert str(store) in err and "workset.boxes" in err
 

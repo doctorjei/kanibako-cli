@@ -35,9 +35,9 @@ def _isolate_config(tmp_path, monkeypatch) -> None:
     """Pin the CONFIG side of the retired user plugin dir, ``config.data``/plugins.
 
     ⚑ ``XDG_DATA_HOME`` alone does not determine where a ``config.data`` dir resolves
-    ([R155]), so an unisolated ``XDG_CONFIG_HOME`` — or the site base under ``/etc`` —
-    would let whatever config happens to be on the box running the suite move it away
-    from the one these tests write into.  The one class that needs this floor
+    (CONVENTIONS P10 "derive from declared keys"), so an unisolated ``XDG_CONFIG_HOME``
+    — or the site base under ``/etc`` — would let whatever config happens to be on the
+    box running the suite move it away from the one these tests write into.  The one class that needs this floor
     (``TestFileDropDirectoriesAreNotADiscoveryRoute``) keeps an ``autouse`` wrapper so
     the floor stays scoped to the tests that write plugin files.
     """
@@ -359,7 +359,8 @@ class TestReservedPseudoAgentNameIsRefused:
 
 
 class TestTheRegistryIsKeyedByNode:
-    """``[R173]``: an agent's NAME keeps its case, its NODE is always lowercase.
+    """keyspec §0 "An agent's canonical case is carried by its _name_": an agent's NAME
+    keeps its case, its NODE is always lowercase.
 
     The node is what the ``agents/<node>/`` store dir and the ``agent.<node>.*``
     cascade slot are spelled from, so a plugin calling itself ``Shell`` must not
@@ -427,7 +428,8 @@ class TestTheRegistryIsKeyedByNode:
 
 
 class TestACaseCollidingSecondPluginIsRefused:
-    """``[R173]``: two plugins collapsing to one node is a COLLISION, not a race.
+    """keyspec §0 "An agent's canonical case is carried by its _name_": two plugins
+    collapsing to one node is a COLLISION, not a race.
 
     Discovery order within a tier is arbitrary — entry points come back in whatever
     order the metadata yields — so letting the later one win means the box's agent

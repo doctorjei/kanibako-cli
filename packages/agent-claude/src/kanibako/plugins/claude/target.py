@@ -676,8 +676,8 @@ class ClaudeTarget(Target):
 
         ⚑ *data_path* is the ABC's parameter and this plugin reads none of it: the
         OAuth session store it used to locate derives from ``system.state`` itself
-        ([R168]), so the jar is ``kanibako.browser_state``'s to find.  Do not thread
-        it back through the auth call.
+        (keyspec §2g system.state), so the jar is ``kanibako.browser_state``'s to
+        find.  Do not thread it back through the auth call.
         """
         # Anchor to the contract launcher; never let $PATH choose the binary we
         # exec on the host.

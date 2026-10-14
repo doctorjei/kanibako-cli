@@ -10,7 +10,7 @@ class TestShellTarget:
         self.target = ShellTarget()
 
     def test_name(self):
-        # ⚑ ``shell`` — the §2d pseudo-agent's OWN slot ([R174]/[R175], Q22).
+        # ⚑ ``shell`` — the §2d pseudo-agent's OWN slot ([R175], Q22).
         # The class and module were renamed with it (the scrub row's
         # different-sized rename); the registry/store/cascade spelling is what
         # moved first.
