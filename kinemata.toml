@@ -4296,8 +4296,8 @@ authority = "declared"
 #     'true', code produces 'false'`
 #   code, a sixth row `model: "x"` in `agent_default:`: `model: produced,
 #     declared by nothing`
-#   manifest, `agent.default.label` -> `Agent Description`: `label: default
-#     declared 'Agent Description', code produces 'Agent Description (None)'`
+#   manifest, `agent.default.label` -> `Agent Description (None)`: `label: default
+#     declared 'Agent Description (None)', code produces '{meta.agent.<active>.name}'`
 # HOP CONTROLS: without `translate`, rc=1, `FAIL: 2 disagreement(s)`, e.g.
 # `allow_helpers: default declared 'True', code produces 'true'`; without
 # `translate_identifier`, rc=1, `FAIL: 10 disagreement(s)`, every row once each way.

@@ -67,6 +67,8 @@ def kickoff_default_categories(descriptor: 'PluginDescriptor | None'=None) -> Bi
 def assert_canon_bind_seed_disjoint(bind_dests: Iterable[str], seed_rels: Iterable[str]) -> None
 def rom_default_categories() -> BindArmTable
 def rom_agent_default_categories(target: 'Target') -> BindArmTable
+def active_agent_ref(ref: str, agent_name: str | None) -> str | None
+def active_behavior_floor(floor: Mapping[str, object] | None, agent_name: str | None) -> dict[str, object]
 def rom_must_exist_dests() -> frozenset[str]
 def canon_silent_dests() -> frozenset[str]
 def canon_default_categories(std: StandardPaths, agent_name: str | None) -> dict[str, object]

@@ -18,7 +18,7 @@ from __future__ import annotations
 import copy
 import importlib.resources
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -766,9 +766,43 @@ def rom_agent_default_categories(
 # The HANDBOOK binds + the <scope>.canon keys (spec §2c/§2b/§2d/§2g).
 # ===========================================================================
 
-# The ACTIVE-AGENT placeholder in the declarative ``canon:`` rows — a literal that cannot
-# occur in a real key (``<``/``>`` are not key characters), so the substitution cannot collide.
+# The ACTIVE-AGENT placeholder in the declarative ``canon:`` rows and ``agent_default:`` values —
+# a literal that cannot occur in a real key (``<``/``>`` are not key characters), so the
+# substitution cannot collide.  Substituted only by :func:`active_agent_ref`.
 CANON_ACTIVE_AGENT_TOKEN = "<active>"
+
+
+def active_agent_ref(ref: str, agent_name: str | None) -> str | None:
+    """*ref* with :data:`CANON_ACTIVE_AGENT_TOKEN` replaced by the active node *agent_name*.
+
+    ``None`` when *ref* carries the token and there is no agent (a BLANK, agent-less narrow
+    resolve): the row has no agent tier to name, so its caller drops it.
+    """
+    if CANON_ACTIVE_AGENT_TOKEN not in ref:
+        return ref
+    if not agent_name:
+        return None
+    return ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
+
+
+def active_behavior_floor(
+    floor: Mapping[str, object] | None, agent_name: str | None,
+) -> dict[str, object]:
+    """*floor* (:func:`behavior_defaults`' shape) bound to the active node *agent_name*.
+
+    A row whose value names the active agent (``label``'s ``{meta.agent.<active>.name}``,
+    spec §2d: the agent's own name) is spelled for *agent_name*, and dropped when there is
+    none (:func:`active_agent_ref`); every other row passes through unchanged.
+    """
+    out: dict[str, object] = {}
+    for key, value in (floor or {}).items():
+        if isinstance(value, str):
+            bound = active_agent_ref(value, agent_name)
+            if bound is None:
+                continue
+            value = bound
+        out[key] = value
+    return out
 
 
 def rom_must_exist_dests() -> frozenset[str]:
@@ -863,14 +897,13 @@ def canon_default_categories(
             )
 
     for entry in _load_doc().get("canon", []):
-        ref = str(entry["meta_ref"])
-        if CANON_ACTIVE_AGENT_TOKEN in ref:
-            if not agent_name:
-                continue  # BLANK agent (an agent-less narrow resolve): no agent
-                # tier at all, so no chapter bind.  A ``shell`` box TAKES the
-                # tier — its canon root is its own ``agent.shell.canon`` above
-                # (the fence literal), never a fallback to ``agent.default``.
-            ref = ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
+        # A BLANK agent (an agent-less narrow resolve) has no agent tier at all, so an
+        # active-agent row binds no chapter.  A ``shell`` box TAKES the tier — its canon
+        # root is its own ``agent.shell.canon`` above (the fence literal), never a
+        # fallback to ``agent.default``.
+        ref = active_agent_ref(str(entry["meta_ref"]), agent_name)
+        if ref is None:
+            continue
         add_bind(
             out, str(entry["category"]), str(entry["box_dest"]), ref,
             str(entry["options"]),

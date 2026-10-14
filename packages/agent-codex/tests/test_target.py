@@ -453,7 +453,7 @@ class TestGenerateAgentConfig:
         """D8b: ``AgentConfig`` has no ``name``; the description is ``agent.codex.label``.
 
         ⚑ NON-VACUITY: the string is the one spec §2d states, so a plugin that stopped
-        declaring it would read the all-agents ``Agent Description (None)`` backstop.
+        declaring it would read the all-agents backstop, the agent's own name.
         """
         import dataclasses
 

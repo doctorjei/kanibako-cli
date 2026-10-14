@@ -39,6 +39,10 @@ _PRIVATE_AUTH = AuthSource(
 )
 
 
+#: The label line each display verb prints, keyed by verb.
+_LABEL_LINE = {"run_info": "Label:        {}\n", "run_show": "  label = {}\n"}
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -265,7 +269,7 @@ class TestRunInfo:
         assert run_info(argparse.Namespace(agent_id="claude")) == 0
         out = capsys.readouterr().out
         assert "Claude Code" in out, out
-        assert "Agent Description (None)" not in out, out
+        assert _LABEL_LINE["run_info"].format("claude") not in out, out
 
     @pytest.mark.parametrize("verb", ("run_info", "run_show"))
     def test_a_null_label_refuses_naming_the_file_and_key(self, agent_env, verb):
@@ -375,7 +379,35 @@ class TestRunInfo:
             seen[which] = (rc, captured.out, captured.err)
         assert seen["defaults_file"] == seen["python"]
         assert seen["python"][0] == 0
-        assert "Agent Description (None)" in seen["python"][1], seen["python"][1]
+        assert _LABEL_LINE[verb].format("claude") in seen["python"][1], seen["python"][1]
+
+    @pytest.mark.parametrize("verb", ("run_info", "run_show"))
+    @pytest.mark.parametrize("settings_read", (True, False), ids=("resolved", "unread"))
+    def test_a_plugin_less_agent_is_labeled_by_its_name(
+        self, agent_env, capsys, monkeypatch, verb, settings_read,
+    ):
+        """keyspec §2d: ``agent.default.label`` defaults to the agent's own name
+        (``meta.agent.<agent>.name``), so an agent whose plugin cannot be read shows its
+        name — through the cascade, and through the floor when the settings do not read."""
+        from kanibako.commands import agent_cmd
+        from kanibako.settings import config_interface
+        from kanibako.settings.settings_resolve import SettingsError
+
+        def _no_plugin(*_args, **_kwargs):
+            raise KeyError("no plugin")
+
+        monkeypatch.setattr("kanibako.targets.get_target", _no_plugin)
+        if not settings_read:
+            def _refuse(*_args, **_kwargs):
+                raise SettingsError("the system file does not read")
+
+            monkeypatch.setattr(config_interface, "effective_value", _refuse)
+        capsys.readouterr()
+        run = getattr(agent_cmd, verb)
+        assert run(argparse.Namespace(agent_id="claude", effective=False)) == 0
+        out = capsys.readouterr().out
+        assert _LABEL_LINE[verb].format("claude") in out, out
+        assert "<active>" not in out, out
 
     def test_a_system_label_resolves_through_a_meta_anchor(
         self, agent_env, config_file, capsys,

@@ -31,6 +31,7 @@ def _agent_key_gate(agent_id: str, key: str, *, path: 'Path', verb: str) -> str 
 def _agent_write_vocab_error(agent_id: str, key: str, *, verb: str) -> str | None
 def _label_floor(agent_id: str) -> dict[str, object]
 def _refuse_null_label(std: 'StandardPaths', agent_id: str) -> None
+def _default_label_text(agent_id: str, ref: str) -> str
 def _agent_label(std: 'StandardPaths', agent_id: str) -> str
 def _category_resets(cfg: AgentConfig) -> dict[str, object]
 def _stored_rows(table: 'Mapping[str, object]', prefix: str='') -> list[tuple[str, str]]

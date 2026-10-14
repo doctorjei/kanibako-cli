@@ -5118,7 +5118,7 @@ their own descriptions, and those are what `kanibako agent info` reads once the 
 | claude | `Claude Code` | `Claude Code` |
 | codex | `OpenAI Codex CLI` | `Codex CLI` |
 | goose | `Goose` | `Goose Harness` |
-| any other | its plugin's `display_name` | its plugin's `label`, or `Agent Description (None)` |
+| any other | its plugin's `display_name` | its plugin's `label`, or the agent's own name |
 
 The two that moved are the spec's own strings. If you had **changed** the line to something of your
 own, set it as the key instead — which writes to the same file, under the same `self:` root:
@@ -8094,8 +8094,8 @@ behavior:
     default: "My Agent"
 ```
 
-Declare nothing and your agent reads `agent.default.label`, whose shipped value is
-`Agent Description (None)` — honest, and visibly a placeholder. `Target.display_name` is unchanged
+Declare nothing and your agent reads `agent.default.label`, whose shipped value is the agent's
+own name (`meta.agent.<agent>.name`). `Target.display_name` is unchanged
 and still yours; it is the harness's own name, not a settings value. **Users of your plugin are
 affected too** — see *An agent's description is a settings key, and the agent file's `name:` is
 gone* above for the one-line edit they owe each agent file.

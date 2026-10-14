@@ -327,13 +327,17 @@ def _behavior_snapshot(agent, *, floor, agent_self, agent_path, box_path, system
     box/system settings files (discriminated agent tables, read via assemble).
 
     *agent_self* is written under ``self:`` at *agent_path*, the file's root scalars,
-    which ride the file's own ``agent.<active>`` level."""
+    which ride the file's own ``agent.<active>`` level. The agent's identity floor rides
+    too, as at every launch: core's ``label`` floor names ``meta.agent.<active>.name``."""
+    from kanibako.settings.settings_launch import meta_agent_identity_floor
+
     _write_yaml(agent_path, {"self": dict(agent_self or {})})
     snap = build_launch_snapshot(
         agent_name=agent, ctx=_ctx(agent, None),
         system_path=system_path, agent_path=agent_path,
         workset_path=None, box_path=box_path,
         behavior_floor=floor,
+        meta_identity=meta_agent_identity_floor(agent, None, True),
     )
     return snap
 
@@ -528,7 +532,7 @@ def test_box_config_effective_display_matches_launch_behavior_read(
         "allow_helpers": "true",
         "continue_mode": "true",
         "bootstrap": "tmux",
-        "label": "Agent Description (None)",
+        "label": "claude",
     }
     # ...and it MATCHES the live launch behavior read over the same inputs.
     assert display == launch_read

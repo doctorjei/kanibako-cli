@@ -204,7 +204,7 @@ behavior:
   # Harness"`), and the ONLY thing `agent info` / `agent show` print as this agent's
   # name.  ⚑ NOT `meta.agent.goose.name`, which is the store DIRECTORY and is RO.
   # Without this row the core all-agents backstop wins and every goose install
-  # reads "Agent Description (None)".
+  # reads its own name, "goose".
   - key: label
     description: "Human-readable description of this agent"
     default: "Goose Harness"

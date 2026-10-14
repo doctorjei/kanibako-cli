@@ -231,7 +231,7 @@ descriptor:
 behavior:
   # The agent's human-readable DESCRIPTION -- `agent.codex.label` (spec §2d), and
   # what `kanibako agent info` prints.  Declare one or your agent reads the
-  # all-agents fallback, `Agent Description (None)`.
+  # all-agents fallback, the agent's own name.
   - key: label
     description: "Human-readable description of this agent"
     default: "Codex CLI"

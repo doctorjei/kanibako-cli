@@ -794,8 +794,12 @@ def _label_floor(agent_id: str) -> dict[str, object]:
         # launch folds, keeping `agent show` and the box in agreement.  No
         # ``agent.default.label`` floor: only true agents inherit from it (§2d).
         return {f"agent.{agent_id}.label": core_defaults.pseudo_tier_default(agent_id, "label")}
+    # ⚑ Core's row names the active agent (spec §2d: the agent's own name), so it is bound
+    # to *agent_id* as the launch binds it (``fold_floor``).
     floor: dict[str, object] = {
-        f"agent.{AGENT_DEFAULT_SUB}.label": core_defaults.behavior_default("label"),
+        f"agent.{AGENT_DEFAULT_SUB}.label": core_defaults.active_agent_ref(
+            core_defaults.behavior_default("label"), agent_id,
+        ),
     }
     try:
         descriptors = get_target(harness_of(agent_id))().setting_descriptors()
@@ -854,6 +858,21 @@ def _refuse_null_label(std: "StandardPaths", agent_id: str) -> None:
     refusal = _refuse_null_behavior(snapshot, agent_id, _LABEL_NULL, written=written)
     if refusal is not None:
         raise ConfigError(refusal)
+
+
+def _default_label_text(agent_id: str, ref: str) -> str:
+    """*ref*, core's bound ``agent.default.label`` floor, as text with no settings to resolve it.
+
+    The floor is ``{meta.agent.<agent_id>.name}`` (spec §2d: the agent's own name), so this
+    reads the agent's name off its own identity floor, the one the launch folds.  A floor
+    naming no such ref is already text.
+    """
+    from kanibako.settings.settings_launch import meta_agent_identity_floor
+
+    name_key = f"meta.agent.{agent_id}.name"
+    if ref != f"{{{name_key}}}":
+        return ref
+    return str(meta_agent_identity_floor(agent_id, None, False)[name_key])
 
 
 def _agent_label(std: "StandardPaths", agent_id: str) -> str:
@@ -933,7 +952,11 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     if agent_id not in ADDRESSABLE_PSEUDO_AGENTS:
         doors += (("agent", AGENT_DEFAULT_SUB),)
     own = f"agent.{agent_id}.label"
-    fallback = str(floor[own] if own in floor else floor[f"agent.{AGENT_DEFAULT_SUB}.label"])
+    fallback = (
+        str(floor[own]) if own in floor else _default_label_text(
+            agent_id, str(floor[f"agent.{AGENT_DEFAULT_SUB}.label"]),
+        )
+    )
     try:
         inputs = resolve_inputs(
             subject=ResolveSubject.SYSTEM, std=std, agent_name=agent_id,

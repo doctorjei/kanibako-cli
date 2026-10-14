@@ -193,7 +193,7 @@ behavior:
   # CLI"`), and the ONLY thing `agent info` / `agent show` print as this agent's
   # name.  ⚑ NOT `meta.agent.codex.name`, which is the store DIRECTORY and is RO.
   # Without this row the core all-agents backstop wins and every codex install
-  # reads "Agent Description (None)".
+  # reads its own name, "codex".
   - key: label
     description: "Human-readable description of this agent"
     default: "Codex CLI"

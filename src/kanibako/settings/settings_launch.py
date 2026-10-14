@@ -2243,8 +2243,11 @@ def fold_floor(
     # per-agent descriptor rung ``agent_partial`` is NOT the carrier for this: it sits
     # ABOVE ``system``, and routing behavior floors through it would promote a plugin
     # default over a user's system-tier setting.
+    # ⚑ Core's rows that name the active agent (``label``, spec §2d: the agent's own name)
+    # are bound to *agent_name* here, the one place they land.
     for tier, tier_floor in (
-        ("default", behavior_floor), (agent_name, agent_behavior_floor),
+        ("default", core_defaults.active_behavior_floor(behavior_floor, agent_name)),
+        (agent_name, agent_behavior_floor),
     ):
         for key, val in (tier_floor or {}).items():
             floor[f"agent.{tier}.{key}"] = val

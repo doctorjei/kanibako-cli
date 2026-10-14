@@ -1428,17 +1428,18 @@ keys:
   # `agent.shell.label | "Command Line Shell (shell)"` has no plugin and does not read
   # this fallback; its carrier is the `agent.shell.*` block below (D2: a `shell` node
   # the code now materializes — store dir, cascade slot, tier floor).
-  # ⚑ NOT `meta.agent.<agent>.name`, which is the STORE DIR (a machine identity, RO).
+  # ⚑ NOT `meta.agent.<agent>.name`, which is the STORE DIR (a machine identity, RO); the
+  # label only DEFAULTS to that value, and a user may set it.
   # ⚑ The agent FILE's non-key `name` field is GONE (D8b): `label` is the ONLY carrier of
   # an agent's description now, and a stored `name:` refuses the launch by name.
   agent.default.label:
     scope: agent
     type: str
     set: cli+file
-    default: "Agent Description (None)"
-    note: "the all-agents FALLBACK description; a plugin's own label overrides it by
-           the ordinary §2d cascade. The default is DELIBERATELY self-describing —
-           an agent that declares none reads as having none."
+    default: "{meta.agent.<active>.name}"
+    note: "the all-agents FALLBACK description, the agent's own name (<active> is the
+           active node, bound where the floor lands);
+           a plugin's own label overrides it by the ordinary §2d cascade."
     spec: "§2d"
   # R-41: `access` supersedes the boolean auto_approve (tombstoned in not_keys.renamed
   # with its value mapping). The pre-07-06 code-only `access` spelling (retired at

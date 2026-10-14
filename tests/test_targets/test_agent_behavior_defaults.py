@@ -72,7 +72,7 @@ _TARGETS = {
 #: ⚑ ``label`` LEADS EVERY ROW SINCE D8b (2026-09-15).  The agent's human-readable
 #: description is a declared §2d key now, and its floor is the plugin's own declaration —
 #: it is what ``kanibako agent info`` prints.  Drop a plugin's row and that agent reads the
-#: all-agents backstop, ``Agent Description (None)``, which is the display regression
+#: all-agents backstop, the agent's own name (``claude``), which is the display regression
 #: shipping these three rows exists to prevent.
 #: ⚑ ``UNSET`` = the row sets no value and the key inherits ``agent.default`` (Q105).
 _SHIPPED: dict[str, list[tuple[str, object]]] = {

@@ -484,7 +484,7 @@ class TestCoreBehaviorDefaults:
         "allow_helpers": "true",
         "continue_mode": "true",
         "bootstrap": "tmux",
-        "label": "Agent Description (None)",
+        "label": "{meta.agent.<active>.name}",
         "model": None,
         "endpoint": None,
         "run_args": None,

@@ -306,7 +306,7 @@ class TestBuildEffectiveState:
             "allow_helpers": "true",
             "continue_mode": "true",
             "bootstrap": "tmux",
-            "label": "Agent Description (None)",
+            "label": "claude",
         }
 
     def test_agent_overrides_default(self, tmp_path):

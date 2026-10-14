@@ -494,14 +494,15 @@ images:
 # ⚑ Its value set is CLOSED (`settings_keyspace.ACCESS_TIERS`): a spelling outside
 # `restricted | editing | full` is REFUSED at read, never treated as permissive.
 # `label` (spec §2d) is the agent's human-readable description.  The value here is the
-# ALL-AGENTS fallback the spec declares verbatim; each plugin's `behavior:` floor
-# overrides it for its own agent by the ordinary §2d cascade.
+# ALL-AGENTS fallback, the agent's own name (spec §2d): `<active>` is the
+# active node, bound by `core_defaults.active_behavior_floor` where the floor lands.
+# Each plugin's `behavior:` floor overrides it for its own agent by the ordinary §2d cascade.
 agent_default:
   access: "full"
   allow_helpers: "true"
   continue_mode: "true"
   bootstrap: "tmux"
-  label: "Agent Description (None)"
+  label: "{meta.agent.<active>.name}"
   model: null
   endpoint: null
   run_args: null

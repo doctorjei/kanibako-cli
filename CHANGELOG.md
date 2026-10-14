@@ -3376,8 +3376,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had no place for one. `label` is an ordinary agent-scope key and behaves like every other
   one: `agent.default.label` is the all-agents fallback, a per-agent `agent.<agent>.label` overrides
   it by the ordinary cascade, and you set either with `kanibako agent set` or by hand in a settings
-  file. The shipped fallback is `Agent Description (None)`, deliberately self-describing so that an
-  agent with no label of its own reads as having none. `kanibako system defaults` lists it
+  file. The shipped fallback is the agent's own name (`meta.agent.<agent>.name`), so an agent with
+  no label of its own reads as its name. `kanibako system defaults` lists it
   with the file that declares it, and `kanibako box show --effective` shows it among a box's agent
   settings. **`kanibako agent info` and `agent show` read it**, resolved through the cascade —
   they printed the agent file's `name` field, which was not a key and is now gone (below) — and
