@@ -272,8 +272,9 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
     """An IN-ROOT repoint (``vault_ro: {meta.workset.path}/store/ro``) is the USER'S folder:
     the box's own ``workset.yaml`` nominated it, so purge KEEPS it and NAMES it.
 
-    ⚑ The repoint used to read ``store/ro``; [R147] refuses a bare relative, so the
-    workset-root anchor it always meant is now stated. Same directory, same case.
+    ⚑ The repoint used to read ``store/ro``; keyspec §2a "A path key's stored value"
+    refuses a bare relative, so the workset-root anchor it always meant is now stated.
+    Same directory, same case.
     ⚑ This case used to assert the folder was DELETED — see the file header for the ruling."""
 
     def test_purge_keeps_an_in_root_repoint_and_names_it(

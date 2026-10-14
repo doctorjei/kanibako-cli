@@ -471,7 +471,8 @@ class TestWorksetChannelFloorLeaf:
         the whole family was absent for as long as no floor installed those two in ANY
         mode, so it read as a mode rule when it was really an outage.
         The four LOCAL leaves and the channel ROOT carry the ``<None>`` §2c declares for
-        standalone — SUPPLIED as a present ``None``, not omitted ([R177]).
+        standalone — SUPPLIED as a present ``None``, not omitted (keyspec §0 "it must
+        RESOLVE").
         """
         floor = _workset_anchor(std, standalone_proj)
         with_a_path = {

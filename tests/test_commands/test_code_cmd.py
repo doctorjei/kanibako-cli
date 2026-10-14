@@ -893,8 +893,9 @@ def test_box_agent_node_canonicalizes_the_stamp(stamp):
 
     ⚑ BOTH SPELLINGS: ``+`` is what this version stamps, ``℘`` what an
     already-running older box carries — the back-compat guarantee, pinned.
-    ⚑ AND A NODE IS LOWERCASE ([R173]): a capitalized harness in the stamp folds,
-    the persona segment keeps its case.
+    ⚑ AND A NODE IS LOWERCASE (keyspec §0 "An agent's canonical case is carried by
+    its _name_"): a capitalized harness in the stamp folds, the persona segment keeps
+    its case.
     """
     from kanibako.commands.code_cmd import _resolve_box_agent_node
 

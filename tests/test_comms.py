@@ -7,7 +7,8 @@ class TestCommsConfig:
     def test_default_comms_path(self, tmp_path):
         """With NO stored path set-values, the channel root is ``{config.data}/channels``.
 
-        ⚑ NO SET-VALUES, SPELLED AS THE EMPTY MAPPING (R153, 2026-08-31).  This built a
+        ⚑ NO SET-VALUES, SPELLED AS THE EMPTY MAPPING (keyspec §1 "holding anything but
+        `config.*`", 2026-08-31).  This built a
         ``KanibakoConfig()`` for the sole purpose of passing its ``config_paths`` — a
         Layer-1 field on a Layer-2 SETTINGS object, and always ``{}``.  The cure is
         ``cli._ensure_initialized``'s: pass the ``{}`` under its own name.
@@ -21,7 +22,8 @@ class TestCommsConfig:
     def test_comms_from_the_settings_file(self, tmp_path):
         """A ``system.channelroot`` repoint takes effect — read from the SETTINGS file.
 
-        🛑 NOT FROM ``kanibako.cfg`` (R153, 2026-08-31).  Spec §1 gives Layer 1
+        🛑 NOT FROM ``kanibako.cfg`` (keyspec §1 "holding anything but `config.*`",
+        2026-08-31).  Spec §1 gives Layer 1
         the ``config.*`` bootstrap paths ALONE, and §2g declares ``system.channelroot`` a
         Layer-2 ``system.*`` settings key, so the bootstrap file cannot carry
         it and now REFUSES it.  This case planted it there and read it back through

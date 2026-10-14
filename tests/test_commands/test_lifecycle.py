@@ -3027,8 +3027,9 @@ class TestConsolidateResolvesTheRootsOwnKeys:
     def test_in_root_repoint_keeps_the_directory_that_holds_the_arm(self, env, capsys):
         """``vault_ro: {meta.workset.path}/store/ro`` makes the root child ``store`` — a
         name no list holds.  The ANCESTOR test is what keeps it; an equality test would
-        sweep it.  ⚑ The repoint carries the ``{key}``-ref because [R147] refuses a bare
-        relative; the directory it names is the same one ``store/ro`` used to reach."""
+        sweep it.  ⚑ The repoint carries the ``{key}``-ref because keyspec §2a "A path
+        key's stored value" refuses a bare relative; the directory it names is the same
+        one ``store/ro`` used to reach."""
         root = _default_with_workset_keys(
             env, "inroot",
             {"vault_ro": "{meta.workset.path}/store/ro",
@@ -3051,8 +3052,9 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         assert (root / "workspace" / "file.txt").read_text() == "mine"
 
     def test_a_repointed_keep_is_reported_and_names_the_key(self, env, capsys):
-        """[R144] — a keep that cannot name the path as the user's is just a leak.  The
-        DEFAULT layout's keeps stay silent; only what the user repointed is announced."""
+        """system-design § "Box lifecycle" — a keep that cannot name the path as the
+        user's is just a leak.  The DEFAULT layout's keeps stay silent; only what the
+        user repointed is announced."""
         root = _default_with_workset_keys(
             env, "reported", {"vault_ro": "{meta.workset.path}/store/ro"},
         )
@@ -3112,8 +3114,9 @@ class TestConsolidateResolvesTheRootsOwnKeys:
     def test_a_workspaces_key_at_the_root_consolidates_nothing(self, env):
         """``workspaces: {meta.workset.path}`` means the workspace already IS the root —
         there is nothing to consolidate, and moving each child onto itself would raise.
-        ⚑ It used to be spelled ``.``, which [R147] refuses along with every other bare
-        relative; the ``{key}``-ref names the same directory and names it unambiguously."""
+        ⚑ It used to be spelled ``.``, which keyspec §2a "A path key's stored value"
+        refuses along with every other bare relative; the ``{key}``-ref names the same
+        directory and names it unambiguously."""
         root = _default_with_workset_keys(
             env, "atroot", {"workspaces": "{meta.workset.path}"},
         )
@@ -3337,8 +3340,8 @@ class TestStandaloneRootIsNotAPositionInThePath:
             std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
     def test_absolute_repoint_keeps_the_users_workspace_and_reports_it(self, env, capsys):
-        """⚑⚑ [R144] — the case a positional parent cannot express AT ALL.  The parent of
-        an absolute workspace is a directory the user never gave kanibako: lifting into it
+        """⚑⚑ system-design § "Box lifecycle" — the case a positional parent cannot
+        express AT ALL.  The parent of an absolute workspace is a directory the user never gave kanibako: lifting into it
         EMPTIED the directory the user named, deleted it, and scattered its contents into
         a sibling tree.  Nothing needs to move here — every other mode roots its workspace
         at the project dir, and that dir may be anywhere."""

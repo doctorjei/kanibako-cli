@@ -590,8 +590,9 @@ class TestEffectiveListingsReadTimeRefusals:
         self, config_file, tmp_home, workset, capsys, run_listing, with_share,
         tmp_path, monkeypatch,
     ):
-        """[R147] at read time: a bare relative stored path is refused, naming the key,
-        the file that carries it and BOTH directories it could mean."""
+        """keyspec §2a "A path key's stored value" at read time: a bare relative stored
+        path is refused, naming the key, the file that carries it and BOTH directories
+        it could mean."""
         # Run from a link, as a shell does: only ``$PWD`` names the link.
         real, link = tmp_path / "run-real", tmp_path / "run-from"
         real.mkdir()
@@ -632,8 +633,8 @@ class TestEffectiveListingsReadTimeRefusals:
         self, config_file, tmp_home, workset, capsys, monkeypatch
     ):
         """The preview is the launch's resolve (``build_launch_snapshot``), so it reads
-        the site base file, and a bare-relative path value there ([R147]) refuses,
-        naming the key and that file.
+        the site base file, and a bare-relative path value there (keyspec §2a "A path
+        key's stored value") refuses, naming the key and that file.
 
         ⚑ MUTATION: restore the preview's old hand assembly (``assemble_levels`` with
         an absent ``base_path``) → rc 0 and the base path is not named.

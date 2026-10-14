@@ -6,7 +6,7 @@ declares its own settings file (``meta.agent.shell.settings``), which is the fil
 ``kanibako agent <verb> shell`` edits (§2a: a config verb writes the file of the
 scope it names).  §2d reserves the pseudo-agent names against CLAIMANTS — *"MUST be
 refused to any agent, persona, or harness"* — so ``shell`` inside a composite ref,
-and ``default`` anywhere a ref selects an agent, stay refused ([R178]).
+and ``default`` anywhere a ref selects an agent, stay refused.
 
 Driven through :func:`kanibako.cli.main` on an isolated HOME/XDG tree
 (``tmp_home``): the argparse tree, flag relevance and the command handler all run,
@@ -73,7 +73,8 @@ class TestCreateSelectsTheShellPseudoAgent:
     def test_the_selection_resolves_to_the_shell_node_for_any_case(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        """``Shell`` is the same identifier ([R172]); the NODE it resolves to is lowercase."""
+        """``Shell`` is the same identifier (keyspec §0 "CASE INSENSITIVE for collision
+        purposes"); the NODE it resolves to is lowercase."""
         from kanibako.settings.agent_select import select_agent
         from kanibako.settings.config import load_config, user_config_file
         from kanibako.settings.paths import resolve_project
@@ -101,8 +102,8 @@ class TestCreateSelectsTheShellPseudoAgent:
     def test_a_CLAIM_on_a_pseudo_agent_name_is_still_refused(
         self, ref, segment, config_file, tmp_home, credentials_dir, capsys,
     ):
-        """§2d's reservation is untouched: a persona cannot ride a pseudo-agent
-        ([R178]), and ``default`` is the any-agent tier, not an agent to select."""
+        """§2d's reservation is untouched: a persona cannot ride a pseudo-agent, and
+        ``default`` is the any-agent tier, not an agent to select."""
         path = tmp_home / "refused"
         path.mkdir()
         assert _kb("create", str(path), "--agent", ref) == 1
@@ -196,7 +197,8 @@ class TestAgentVerbsAddressTheShellTier:
 
 class TestAgentVerbsStillRefuseAClaim:
     """CONTROLS, outside the class above so they need no shell box: they held before
-    the fix and must hold after it — a composite naming ``shell`` is a claim ([R178])."""
+    the fix and must hold after it — a composite naming ``shell`` is a claim
+    (keyspec §2d "Pseudo-agent(s)")."""
 
     @pytest.mark.parametrize("ref", ["nav+shell", "shell+claude"])
     def test_a_composite_ref_naming_shell_is_still_refused(

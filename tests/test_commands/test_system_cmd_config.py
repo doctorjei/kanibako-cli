@@ -2023,8 +2023,9 @@ class TestSystemStateSetRefusal:
     def test_a_handwritten_bare_relative_value_stays_recoverable_by_the_cli(
         self, config_file, tmp_home, capsys,
     ):
-        """[R147]'s read-time refusal names the defect AND leaves the doors open:
-        a clean refusal is recoverable, a traceback was not."""
+        """The read-time refusal (keyspec §2a "A path key's stored value") names the
+        defect AND leaves the doors open: a clean refusal is recoverable, a traceback
+        was not."""
         ssp = self._settings_file(config_file)
         dump_doc(ssp, {"system": {"state": "rel/dir"}})
         capsys.readouterr()

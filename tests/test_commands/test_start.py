@@ -708,14 +708,15 @@ class TestEffectiveBootstrapResolution:
         assert _resolved_program(proj, sys_file, "goose") == "zellij"
         # ⚑ NOT for a plain-shell box: its tier SUPPLIES its own ``tmux`` (spec §2d
         # fence), and a default is a fallback for where nothing was supplied
-        # ([R177]).  :class:`TestShellBootstrapIsTheTiersOwn` pins that side.
+        # (keyspec §2d "Pseudo-agent(s)").  :class:`TestShellBootstrapIsTheTiersOwn`
+        # pins that side.
         assert _resolved_program(proj, sys_file, "shell") == "tmux"
 
     @pytest.mark.parametrize("written", [""])
     def test_a_true_agent_with_no_value_has_no_program(self, tmp_path, written):
         """``agent.claude.bootstrap: ""`` is NO program, never the default.
 
-        §2h keeps a terminal ``""`` distinct from unset ([R177]); it used to fall back
+        §2h keeps a terminal ``""`` distinct from unset; it used to fall back
         to ``tmux``.  The launch reads it as no bootstrap (``_is_no_bootstrap``).  A
         ``null`` refuses instead (``test_start_access_null.py``).
         """
@@ -790,7 +791,8 @@ class TestEffectiveBootstrapResolution:
         assert _resolved_program(proj, sys_file, "goose") == "zellij"
 
     def test_a_bare_relative_in_the_agent_file_names_that_file(self, tmp_path):
-        """[R147]'s read-time refusal names the agent file this focused read loaded."""
+        """The read-time refusal (keyspec §2a "A path key's stored value") names the
+        agent file this focused read loaded."""
         # Mutation: label the ``agent.<active>`` level with no path in
         # ``assemble_cascade``'s written list → the refusal names no file.
         from kanibako.commands.start import _bootstrap_choice
@@ -810,8 +812,9 @@ class TestShellBootstrapIsTheTiersOwn:
     """A plain-shell box's ``bootstrap`` is the shell tier's OWN ``tmux`` (§2d fence).
 
     ⚑ Supplied by the ``agent_shell:`` floor, so it beats the ``agent.default``
-    fallback ([R177]): a user's ``agent.default.bootstrap`` no longer reaches a
-    plain-shell box, which inherited it before.  ``agent.shell.bootstrap`` does.
+    fallback (keyspec §2d "Pseudo-agent(s)"): a user's ``agent.default.bootstrap`` no
+    longer reaches a plain-shell box, which inherited it before.
+    ``agent.shell.bootstrap`` does.
     """
 
     _proj = TestEffectiveBootstrapResolution._proj
@@ -3470,7 +3473,8 @@ class TestAgentConfigIntegration:
             assert cli_args[-2:] == ["--verbose", "--foo"]
 
     def test_the_any_agent_default_run_args_reaches_the_launch(self, start_mocks):
-        """`[R169]`: ``agent.default.run_args`` is a REAL default, read at launch.
+        """keyspec §2d agent.default.run_args: ``agent.default.run_args`` is a REAL
+        default, read at launch.
 
         The per-agent file sets none, so what reaches the argv is the any-agent rung —
         the one a launch could not see at all before the cascade was wired, because the
@@ -4352,9 +4356,10 @@ class TestRuntimeRootReachesTheHelperHub:
 
 
     def test_a_null_logs_starts_the_hub_without_a_log(self, start_mocks, tmp_path):
-        """A present-``<None>`` ``workset.logs`` names no log ([R177], companion "The
-        helper-log bind"): the hub starts with NO message log and the helper table
-        still carries the socket bind, minus the log bind."""
+        """A present-``<None>`` ``workset.logs`` names no log (keyspec §2h "the
+        ordinary present-`None` rule", companion "The helper-log bind"): the hub starts
+        with NO message log and the helper table still carries the socket bind, minus
+        the log bind."""
         from kanibako.channels import hub_daemon as hub_daemon_mod
         from kanibako.settings import core_defaults
 
@@ -13404,7 +13409,8 @@ class TestACommandAtALiveBox(_RunningBoxDriver):
 
 
 class TestReattachComparesNodesNotSpellings(_RunningBoxDriver):
-    """A live box's stamp and ``--agent`` are compared as NODES ([R173]).
+    """A live box's stamp and ``--agent`` are compared as NODES (keyspec §0 "An
+    agent's canonical case is carried by its _name_").
 
     The launch stamps the lowercase node (``agent_node_case(target.name)``), and
     ``--agent Claude`` names that same agent, so it must reattach rather than be told
