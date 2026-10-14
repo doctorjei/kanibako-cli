@@ -4177,9 +4177,9 @@ def _emit_bind(
 
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
     """``expand_expr`` lookup for :func:`resolve_box_dest`, which escapes every ``@``
-    first, so no ``@``-ref reaches it; it raises rather than silently emit ``""``.
+    first, so no ``{key}``-ref reaches it; it raises rather than silently emit ``""``.
     """
-    raise SettingsError(f"unexpected @-reference in a box_dest: {ref!r}")
+    raise SettingsError(f"unexpected reference in a box_dest: {ref!r}")
 
 
 def resolve_box_scalars(

@@ -1500,7 +1500,7 @@ class TestHelperDefaultCategories:
         # expressible since PHASE R added the braced @{...} form — the braces keep
         # the ``.jsonl`` suffix out of the ref name, which the greedy bare form
         # would swallow.  The .exists() gate still keys off the probed log; only the
-        # emitted host_src is the @-ref chain.
+        # emitted host_src is the {key}-ref chain.
         # ⚑ Re-derived for dest-keying: the dest is the map key now.
         assert cats["box.bindings.ro"] == {
             "/home/agent/.kanibako/state/helpers.jsonl": (
@@ -1608,7 +1608,7 @@ class TestHelperDefaultCategories:
         # ⚑ Not the same thing: the real ``workset_anchor_floor`` materializes
         # ``workset.logs`` as the FORMULA ``{meta.workset.path}/logs``, so this test
         # does NOT exercise the anchor chain — it pins the LAST link, that the bind's
-        # own @-ref resolves back to the same path the ``.exists()`` gate probed.
+        # own {key}-ref resolves back to the same path the ``.exists()`` gate probed.
         # The anchor chain itself is covered by ``test_categories_live`` and the
         # three-mode before/after probe.
         ctx = ResolveCtx(
@@ -1646,7 +1646,7 @@ class TestHelperDefaultCategories:
         assert sock_mount.box_dest == (
             "/home/agent/.kanibako/state/hub"
         )
-        # And the log bind's @-ref chain resolves back to the probed log path —
+        # And the log bind's {key}-ref chain resolves back to the probed log path —
         # the formula and the .exists()-gated literal must agree (PHASE R).
         log_mount = next(
             e for e in winners

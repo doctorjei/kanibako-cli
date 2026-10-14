@@ -4,7 +4,7 @@ Keyspec §2c declares ``workset.auth.path`` (``{meta.workset.path}/auth`` for pr
 named, ``<None>`` for standalone) and ``meta.box.auth.workset_path``
 (``{workset.auth.path}/{system.agent}``, ``<None>`` for standalone). Only the two auth
 resolves used to fold ``auth_chain_floor``; the main launch resolve folded none, so a
-user ``@``-ref to either key resolved against nothing there.
+user ``{key}``-ref to either key resolved against nothing there.
 
 ⚑ THE ORACLE FOR THE VALUE is the CREDENTIAL route, not a restated path: the main
 snapshot must name the same per-agent directory ``resolve_auth_source`` hands credsync.

@@ -231,7 +231,7 @@ def standalone_proj(std, config, project_dir, credentials_dir):
 
 class TestTemplateSeedDefaults:
     """``template_seed_defaults`` declares the THREE §2a layers as ordinary keystore
-    ``seeded`` keys (+ their ``@``-ref SOURCE keys), gated per mode / agent."""
+    ``seeded`` keys (+ their ``{key}``-ref SOURCE keys), gated per mode / agent."""
 
     # ⚑ Layers 1 and 3's ENTRIES and the LAYER KEY SET (a fourth layer, or one dropped
     # in any single mode) are compared with the manifest by the ``system-seeded-layer``,
@@ -293,7 +293,7 @@ class TestTemplateSeedDefaults:
         )
 
         defs = template_seed_defaults(primary_proj, "claude")
-        # Layer 2's SOURCE, with its @-ref head resolved the way the cascade does:
+        # Layer 2's SOURCE, with its {key}-ref head resolved the way the cascade does:
         #   {agent.claude.template} -> {config.agents}/claude/<store rel>
         source = defs["agent.claude.seeded"]["~/"][0]
         store_ref = defs["agent.claude.template"]
@@ -569,7 +569,7 @@ class TestLayeredHomeSeed:
 
         A declared ``<None>`` is a SUPPLIED value ([R177]).  The floor used to OMIT them,
         which is a different thing: an absent referent renders ``""`` inside an embedded
-        ``@``-ref without triggering the seeded-layer skip.  ``workset.channels.common``
+        ``{key}``-ref without triggering the seeded-layer skip.  ``workset.channels.common``
         is the one the MERGE also dropped — it ends in the ``common`` category token.
         """
         from kanibako.commands.start import _resolve_launch_snapshot
@@ -1338,7 +1338,7 @@ class TestHandbookLayerSourceKeys:
           every key.  Requiring that WOULD be the drift it is guarding against, in
           reverse: it would forbid the fix that made the key answer for an existing box.
 
-        Each value is asserted to be an ``@``-ref STRING, not a seeded ``(src,)`` tuple —
+        Each value is asserted to be a ``{key}``-ref STRING, not a seeded ``(src,)`` tuple —
         that is the half of the pin the carrier split does not touch.
         """
         from kanibako.settings.settings_launch import workset_anchor_floor
@@ -1351,7 +1351,7 @@ class TestHandbookLayerSourceKeys:
         for key in keys[1:]:
             carrier = defs if key in defs else floor
             assert key in carrier, key
-            # A SOURCE scalar (an ``@``-ref string), NOT a seeded (src, dest) tuple.
+            # A SOURCE scalar (a ``{key}``-ref string), NOT a seeded (src, dest) tuple.
             assert isinstance(carrier[key], str)
         # ...and the split is the one described above, spelled out so a key silently
         # changing carrier reds here rather than passing the loop either way.

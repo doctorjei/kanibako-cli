@@ -105,7 +105,7 @@ _REF_NAME_RE = re.compile(rf"{_REF_SEG}(?:\.{_REF_SEG})*")
 
 
 class SettingsError(KanibakoError):
-    """Raised on unknown variable, unresolvable/cyclic ``@``-ref, or depth-cap."""
+    """Raised on unknown variable, unresolvable/cyclic ``{key}``-ref, or depth-cap."""
 
 
 class ExprSyntaxError(SettingsError):
@@ -309,7 +309,7 @@ def is_verbatim_text(path: Sequence[str]) -> bool:
     """Whether the key at *path* holds TEXT, never an expression: ``agent.<node>.endpoint``.
 
     Keyspec ``agent.default.endpoint``: verbatim in every settings file and at ``set`` —
-    no ``@``-ref, ``$``/``~`` expansion or ``\\`` unescape, never refused for its
+    no ``{key}``-ref, ``{$VAR}``/``~`` expansion or ``\\`` unescape, never refused for its
     characters.  Its readers: the expander (every resolve), ``config set`` validation,
     and the persona route, whose other values still enter as :func:`literal_expr`.
     ⚑ A SINGLE NAMED EXCEPTION, not a key-kind facility: separating literal keys from

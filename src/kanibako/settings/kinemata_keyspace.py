@@ -560,7 +560,7 @@ class KeyspaceRegistry:
 
     A literal that is not wholly key-shaped is PROSE -- help text, a message --
     and a key it names is ``kinemata claims``' business, not a use. A ``{a.b}``
-    or ``@``-ref is a use wherever it sits, so it is taken from prose too.
+    or ``{key}``-ref is a use wherever it sits, so it is taken from prose too.
     """
     seen: dict[str, None] = {}
     if self._candidate_re.fullmatch(text):

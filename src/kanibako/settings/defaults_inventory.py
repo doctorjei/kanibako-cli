@@ -125,7 +125,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("bootstrap.py (system tier)", frozenset(SYSTEM_PATH_DEFAULTS)),
     # ⚑ WIDENED 2026-08-29, from 6 keys to 10.
     # ``workset.{skip_kuid_check,registry,kuid,template}`` were declared rows that no floor
-    # emitted, so a whole-value ``@``-ref to any of them resolved to ``__MISSING__`` at
+    # emitted, so a whole-value ``{key}``-ref to any of them resolved to ``__MISSING__`` at
     # launch; they are now built by the same builder (the ``workset.channelroot`` fix of
     # 2026-08-25, R-35 "fix the CODE", applied to the rows it left behind). The group is
     # DERIVED, so the widening arrived here on its own — what moved by hand is the labels
@@ -441,6 +441,8 @@ class PluginConsultation(NamedTuple):
 
   consulted: tuple[str, ...]
   declaring: tuple[str, ...]
+  #: ``(target, error)`` for each target whose variables could not be read.
+  failed: tuple[tuple[str, str], ...] = ()
 
 
 def env_rows() -> tuple[list[DefaultRow], PluginConsultation]:
@@ -449,7 +451,8 @@ def env_rows() -> tuple[list[DefaultRow], PluginConsultation]:
   A cli-only install consults kanibako's own ``shell`` target and declares nothing; a
   plugin that fails to load is not allowed
   to take the listing down with it, since ``system defaults`` must work on a broken
-  install (that is when a user most needs to read it).
+  install (that is when a user most needs to read it).  Its error is kept, so the
+  listing names what to fix rather than showing the plugin as declaring nothing.
   """
   rows = [
     DefaultRow(
@@ -461,13 +464,14 @@ def env_rows() -> tuple[list[DefaultRow], PluginConsultation]:
 
   consulted: list[str] = []
   declaring: list[str] = []
+  failed: list[tuple[str, str]] = []
   for name, cls in sorted(_installed_targets().items()):
     consulted.append(name)
     try:
       envs = cls().default_envs()
-    except Exception:
-      # A plugin that cannot even be instantiated is reported by ``system diagnose``;
-      # here it simply declares nothing, and the consulted list still names it.
+    except Exception as exc:
+      # E.g. a defaults file this release refuses: the message names the file and cure.
+      failed.append((name, str(exc) or type(exc).__name__))
       continue
     if not envs:
       continue
@@ -480,7 +484,7 @@ def env_rows() -> tuple[list[DefaultRow], PluginConsultation]:
         key=key, value=str(value), scope=key.split(".", 1)[0],
         source=f"{name} plugin defaults (env:)",
       ))
-  return rows, PluginConsultation(tuple(consulted), tuple(declaring))
+  return rows, PluginConsultation(tuple(consulted), tuple(declaring), tuple(failed))
 
 
 def _installed_targets() -> dict[str, Any]:
@@ -570,6 +574,8 @@ def print_defaults(out: Any) -> None:
       f"{', '.join(plugins.consulted)}. Declaring variables: {declaring}.",
       file=out,
     )
+    for name, error in plugins.failed:
+      print(f"  Could not read {name}'s variables: {error}", file=out)
   else:
     # ⚑ DISCOVERY ITSELF FAILED — not a thin install: the ``shell`` built-in is
     # SEEDED, so a working install always consults at least one target.

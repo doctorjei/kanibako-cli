@@ -77,7 +77,7 @@ def _install(agent: str, tmp_path):
 def _shipped_descriptor(agent: str):
     """The shipped delivery bindings per agent (claude = share+launcher, both
     AGENT_CRITICAL ro; goose/codex = one binary, AGENT_CRITICAL ro) — the
-    descriptor-load shape (box_dest already $GUEST_HOME-expanded to absolute)."""
+    descriptor-load shape (box_dest already {$GUEST_HOME}-expanded to absolute)."""
     from kanibako.targets.base import (
         BindKind, Binding, BindScope, HostSrcOrigin, PluginDescriptor,
     )

@@ -2184,7 +2184,7 @@ class TestAgentSetRefusesABareRelativePath:
 
     ⚑ THIS IS THE PAYOFF OF THAT ROUTING, pinned at the CLI surface rather than at the
     engine: while this verb had its own writer straight to ``write_leaf``, no set-time
-    rule saw the value at all — the same class of hole that let a dangling ``@``-ref
+    rule saw the value at all — the same class of hole that let a dangling ``{key}``-ref
     store at rc 0.  ``canon`` and ``template`` are the two path-valued agent leaves.
     ⚑ MUTATION: restore a direct ``write_leaf`` for these two leaves and both rows go
     green-with-a-stored-value; the engine-level sweep in
@@ -2218,7 +2218,7 @@ class TestAgentSetRefusesABareRelativePath:
     @pytest.mark.parametrize("value", ("/srv/x", "~/x", "{$XDG_DATA_HOME}/x",
                                        "{meta.agent.claude.path}/x"))
     def test_the_legal_spellings_still_write(self, value, agent_env, capsys):
-        """⚑ THE OVER-FIRE GUARD. A refusal one notch too wide here bans the ``@``-ref
+        """⚑ THE OVER-FIRE GUARD. A refusal one notch too wide here bans the ``{key}``-ref
         the message itself offers as the cure."""
         from kanibako.commands.agent_cmd import run_set
 

@@ -1202,7 +1202,7 @@ def agent_tier_defaults(node: str) -> dict[str, str]:
     (`classify_spec_cell`), so the drop cannot hide one -- a producer that blanks a
     STATED row still reds as "declared, produced by nothing".
 
-    ⚑ ``$GUEST_HOME`` IS FOLDED BACK TO ``~``. The loader expands it to the guest
+    ⚑ ``{$GUEST_HOME}`` IS FOLDED BACK TO ``~``. The loader expands it to the guest
     constant (§2a: the guest-home literal lives in one place), so the stored value
     is the in-box path while the spec writes the ``~`` form. The fold is the
     INVERSE of ``settings_resolve.expand_guest_home``; without it every

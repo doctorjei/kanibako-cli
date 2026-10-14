@@ -1018,7 +1018,7 @@ class TestWorksetWorkspacesResolved:
 
     def test_boxes_and_logs_resolvers_default_to_the_spec_formula(self, tmp_path):
         """⚑ ``workset.boxes``/``workset.logs`` are declared keys and resolve exactly
-        like ``workspaces``: default ``{meta.workset.path}/<leaf>``, an ``@``-ref
+        like ``workspaces``: default ``{meta.workset.path}/<leaf>``, a ``{key}``-ref
         repoint resolved through the one route, absolute repoint used as-is."""
         from kanibako.project.workset import (
             resolve_workset_boxes,

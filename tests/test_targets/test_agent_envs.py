@@ -44,7 +44,7 @@ from kanibako.settings.store_collapse import collapse_env
 from kanibako.targets.shell import ShellTarget
 
 # The SHIPPED declarations, spelled out so a silent change to a plugin's defaults file
-# fails here by name. Values are GUEST-side and already ``$GUEST_HOME``-expanded.
+# fails here by name. Values are GUEST-side and already ``{$GUEST_HOME}``-expanded.
 DECLARED = {
     "claude": {
         "DISABLE_AUTOUPDATER": "1",

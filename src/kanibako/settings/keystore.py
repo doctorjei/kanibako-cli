@@ -2,7 +2,7 @@
 
 This module defines the KeyStore class & its supporting types _only_: the recursive attribute-dict
 container (:class:`KeyStore`) & reserved key errors (:class:`ReservedKeyError`) - NOT resolution,
-merge, cascade, ``@``-ref / ``$VAR`` / ``~`` expansion, typed views, or consumers — which live
+merge, cascade, ``{key}``-ref / ``{$VAR}`` / ``~`` expansion, typed views, or consumers — which live
 elsewhere. It imports nothing from the settings stack beyond its own :mod:`keystore_strings`
 (:mod:`kanibako.errors` is the tree-wide error hierarchy, not the settings stack, & imports
 nothing itself).

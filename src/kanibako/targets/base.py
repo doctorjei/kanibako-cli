@@ -1242,7 +1242,7 @@ class Target(ABC):
         return path if path.is_dir() else None
 
     def default_category_binds(self) -> CategoryBindDefaults:
-        """Declare default AGENT-scope `@`-ref-sourced category binds: TERMINAL key -> `BindArm`.
+        """Declare default AGENT-scope `{key}`-ref-sourced category binds: TERMINAL key -> `BindArm`.
 
         ⚑ Every destination must be normalized with `settings_resolve.normalize_bind_dest`.
         ⚑ ONE SHAPE, TWO DELIVERIES: `seeded` and `synced` are COPIES and stay copies.

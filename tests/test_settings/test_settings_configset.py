@@ -46,7 +46,7 @@ from kanibako.settings.settings_resolve import ResolveCtx
 # Test stubs for the injected callback                                        #
 # --------------------------------------------------------------------------- #
 
-#: A keyspace the @-refs in most validation tests resolve against (real values so
+#: A keyspace the {key}-refs in most validation tests resolve against (real values so
 #: the lenient expand actually resolves a chain, not just an existence map).
 _KEYSPACE: dict = {
     "workset": {"boxes": "/ws/boxes", "vault_rw": "/ws/vault"},
@@ -129,7 +129,7 @@ def test_a_colon_in_a_value_is_ordinary_content() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Verdict — dangling @-ref / unknown {$VAR} → Error                           #
+# Verdict — dangling {key}-ref / unknown {$VAR} → Error                           #
 # --------------------------------------------------------------------------- #
 
 
@@ -140,8 +140,8 @@ def test_dangling_ref_is_hard_error() -> None:
 
 
 def test_existing_whole_value_ref_repoint_is_ok_no_warn() -> None:
-    # B4: repointing a value to a whole-value @-ref to an EXISTING key is OK, and
-    # carries NO @-ref-repoint warning.
+    # B4: repointing a value to a whole-value {key}-ref to an EXISTING key is OK, and
+    # carries NO {key}-ref-repoint warning.
     v = _validate("box.bindings.rw.home", "{workset.boxes}")
     assert v is OK
 
@@ -280,7 +280,7 @@ def test_an_at_before_doubled_braces_is_literal_not_a_ref() -> None:
 # ``repoint_host_src`` (S24) had had NO CALLER since DS-BL1 = (a) retired the CLI
 # category write route, and its deletion was ruled [Jei:2026-08-08].  21 test functions / 24
 # parametrized cases went with it (counted, not estimated): the
-# host_src swap keeping box_dest/options, the RAW-form preservation (``@``-refs /
+# host_src swap keeping box_dest/options, the RAW-form preservation (``{key}``-refs /
 # ``{$XDG_*}`` / ``~`` stored verbatim, never expanded), the F10 cascade fallback
 # (``test_repoint_cascade_fallback_*``, ``test_repoint_missing_key_raises`` — spec
 # §2a's "the key MUST ALREADY EXIST in the cascade"), the non-category-value /
@@ -396,7 +396,7 @@ def test_e3_e_edited_value_upstream_chain_broken_blocks() -> None:
 
 
 def test_e3_e_embedded_dangling_in_edited_value_blocks() -> None:
-    # (e′, keyspec §2a "VALIDATION at set-time") an EMBEDDED dangling @-ref in the
+    # (e′, keyspec §2a "VALIDATION at set-time") an EMBEDDED dangling {key}-ref in the
     # EDITED value's chain is a defect that BLOCKS at set-time (NOT strict-expand's silent "").
     v = _validate("box.bindings.rw.home", "{workset.boxes}/{bad.embedded}/x")
     assert isinstance(v, Error)

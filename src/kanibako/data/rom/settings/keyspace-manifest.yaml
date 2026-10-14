@@ -2598,9 +2598,8 @@ bind_default_entries:
       default: "({workset.logs}/{meta.box.name}.jsonl)"
       note: "a SINGLE row for all modes — workset.logs carries the per-mode
              variation (R-28). ⚑ THE BRACES ARE LOAD-BEARING (policy.reference_forms
-             / R-23): the bare form would greedily parse `meta.box.name.jsonl` and
-             coerce to ''. There is NO meta.box.helper_log key
-             (not_keys.never_a_key)."
+             / R-23): they end the name, so `.jsonl` follows it. There is NO
+             meta.box.helper_log key (not_keys.never_a_key)."
       spec: "§2c (ALL PROJECTS; R-23 / R-28)"
     "~/spawn.yaml":
       user_key: true

@@ -130,7 +130,7 @@ _VAULT_RW_LEAF = f"{_VAULT_LEAF}/{bootstrap.RW_PATH}"
 # / workset.template / workset.vault_ro / workset.vault_rw) — thin per-key faces over
 # the ONE no-snapshot route,
 # ``settings/workset_dirkeys.resolve_workset_dir_key``.  ⚑ These read the leaf out
-# of the workset.yaml table; the ROUTE owns every token rule (@-refs, $XDG, ~) and
+# of the workset.yaml table; the ROUTE owns every token rule ({key}-refs, {$XDG_*}, ~) and
 # owns the refusal.  ``workset_registry.resolve_workset_registry_path`` is a ninth
 # face on the same route — do not give any of them a private expansion again.
 # ---------------------------------------------------------------------------

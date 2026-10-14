@@ -202,7 +202,7 @@ def flawed_oracle_categories(
        actually exercise is the live machinery it calls:
        :func:`~kanibako.settings.settings_resolve.resolve_value`,
        :func:`~kanibako.settings.settings_resolve.unpack_bind` and
-       :func:`~kanibako.settings.settings_resolve.expand_expr` — ``@``-ref
+       :func:`~kanibako.settings.settings_resolve.expand_expr` — ``{key}``-ref
        expansion, the cascade pick, bind unpacking, the ``empty`` sentinel and
        the SettingsError surface.  Those are LIVE.  **Read this file as coverage
        of the resolve primitives, NOT as conformance coverage for the category
@@ -216,7 +216,7 @@ def flawed_oracle_categories(
        code (the OLD path here could be the buggy side).
 
     *levels* are MOST-SPECIFIC-FIRST (``[box, workset, agent, system, ...]``).
-    *lookup* resolves ``@``-refs.  *scope_roots* maps a group prefix
+    *lookup* resolves ``{key}``-refs.  *scope_roots* maps a group prefix
     (``"{scope}.<category>"``) to a host-space root expression; absent/empty
     means no root join (bind-shaped categories only).
 
@@ -377,7 +377,7 @@ def make_lookup(levels: list[LevelView], ctx: ResolveCtx):
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):
-            raise SettingsError(f"Unknown @-reference: {ref}")
+            raise SettingsError(f"Unknown reference: {{{ref}}}")
         return expand_expr(rv.value, space="host", ctx=ctx, lookup=lookup, chain=chain)
 
     return lookup
@@ -1101,7 +1101,7 @@ class TestCoreDefaultCategories:
         bind is still emitted (create-if-missing), not silently dropped.
 
         The create-if-missing gate keys off the PROBED proj vault source (unchanged
-        by B2b); only the emitted host_src is now the @-ref (resolved at launch)."""
+        by B2b); only the emitted host_src is now the {key}-ref (resolved at launch)."""
         from kanibako.settings import core_defaults
 
         proj = _FakeProj(tmp_path, vault_dirs=False)  # vault dirs do NOT exist yet
@@ -1122,7 +1122,7 @@ class TestCoreDefaultCategories:
             "Z,U",
         )
         # ...and the missing source dirs were created (create-if-missing) — the gate
-        # still keys off the PROBED proj vault source, independent of the @-ref.
+        # still keys off the PROBED proj vault source, independent of the {key}-ref.
         assert proj.vault_ro_path.is_dir()
         assert proj.vault_rw_path.is_dir()
         # ⚑ HOME IS NOT AMONG THEM (6-H) — the core arm is workspace + vault only.
@@ -1154,10 +1154,10 @@ class TestCoreDefaultCategories:
         # {workset.vault_*}/{meta.box.name} (PRIMARY).  Provide the materialized anchors
         # (as the launch floor does) so the refs resolve.  Each anchor carries its
         # @-REF FORMULA, not a resolved literal, so this stays sensitive to a wrong
-        # formula: the oracle resolves @-refs TRANSITIVELY, exactly as the launch
+        # formula: the oracle resolves {key}-refs TRANSITIVELY, exactly as the launch
         # expand does.  The keys must be LISTED, though — this dict IS the whole
         # keyspace for the oracle, so an omitted key is simply an unknown
-        # @-reference.
+        # {key}-reference.
         # ⚑ ``meta.box.home`` is still declared here and is deliberately NOT walked by
         # any entry: since 6-H nothing in the core arm points at it, and its presence
         # is what makes that observable rather than merely untested.
@@ -1215,7 +1215,7 @@ class TestCoreDefaultCategories:
         ctx = make_ctx()
         # workspace via {meta.box.workspace}; vault via {workset.vault_*}/{meta.box.name}
         # (PRIMARY).  Each anchor carries its @-REF FORMULA (the oracle resolves
-        # @-refs transitively), so a wrong formula would show up here; every key it
+        # {key}-refs transitively), so a wrong formula would show up here; every key it
         # walks must be LISTED, since this dict IS the oracle's whole keyspace.
         levels = [
             LevelView("box", {

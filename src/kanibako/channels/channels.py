@@ -254,7 +254,7 @@ def _channel_key(
     ⚑ THE DEFAULT IS THE CALLER'S because these defaults hang off the resolved
     ``workset.channelroot`` (or the system partition), and that is the one thing
     ``resolve_workset_dir_key`` cannot supply — it anchors at the workset root.
-    Everything a repoint can contain (``@``-refs, ``$XDG_*``, ``~``, the relative
+    Everything a repoint can contain (``{key}``-refs, ``{$XDG_*}``, ``~``, the relative
     anchor, and the refusal that names the key) stays that ONE pre-snapshot route's
     business; this adds no second grammar.
 

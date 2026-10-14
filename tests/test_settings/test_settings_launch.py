@@ -1491,7 +1491,7 @@ def test_auth_named_default_workset_tier(tmp_path):
 def test_auth_persona_node_name_with_punctuation_resolves(tmp_path, agent_name):
     """A persona node-name containing ``_`` must resolve the capability MIRROR.
 
-    ``meta.box.agent.auth.share_support`` is the interpolated @-ref
+    ``meta.box.agent.auth.share_support`` is the interpolated {key}-ref
     ``{meta.agent.<node>.auth.share_support}``.  When the ref grammar omitted a
     character a persona segment allowed, the name truncated mid-node, the
     leftover survived as a literal, and ``as_bool`` raised "expected bool, got
@@ -1620,7 +1620,7 @@ def test_auth_clean_break_no_group_auth_keys():
 
 
 def test_auth_capability_mirror_is_ref_to_agent_slot():
-    """The box mirror meta.box.agent.auth.share_support is an @-ref to the active
+    """The box mirror meta.box.agent.auth.share_support is a {key}-ref to the active
     agent's capability slot (the 29g box.agent mirror pattern)."""
     chain = auth_chain_floor(mode="primary", agent_name="goose")
     assert (
@@ -2903,7 +2903,7 @@ class TestMetaAgentGrammarSnapshot:
 
     def test_settings_leaf_resolves_through_the_path_anchor(self):
         """``meta.agent.<a>.settings`` = {meta.agent.<a>.path}/agent.yaml —
-        the @-ref chain resolves through the sibling ``path`` anchor to the SAME
+        the {key}-ref chain resolves through the sibling ``path`` anchor to the SAME
         file ``agent_settings_path`` composes (agents/<a>/agent.yaml)."""
         from kanibako.settings.agent_config import agent_settings_path
 
@@ -6935,7 +6935,7 @@ class TestLoneNoneStandardBind:
         assert self._resolve(tmp_path, caplog, floor=floor) == (set(), [])
 
     def test_a_literal_source_floor_entry_is_internal(self, tmp_path, caplog):
-        # No ``@``-ref ⇒ no source key ⇒ not STANDARD ([Q95] 2): no warning.
+        # No ``{key}``-ref ⇒ no source key ⇒ not STANDARD ([Q95] 2): no warning.
         floor = {"box.bindings.ro": {self._DEST: ("/h/pkg", "ro")}}
         assert self._resolve(
             tmp_path, caplog, box=self._NULL_ENTRY, floor=floor,
@@ -7292,7 +7292,7 @@ class TestPersonaValuesAreDataNotExpressions:
     ``@`` / ``$`` / ``~`` / ``\\`` in it are characters, never tokens.
 
     The incident: ``https://user:key@host.invalid/v1`` lost ``@host.invalid`` to
-    ``@``-ref expansion (an unknown ref coerces to ``""`` when embedded), which
+    ``{key}``-ref expansion (an unknown ref coerces to ``""`` when embedded), which
     corrupted the delivered ``ANTHROPIC_BASE_URL`` and left the userinfo scrub no
     ``@`` to find, so the credential printed.
     """
@@ -7351,7 +7351,7 @@ def _file_endpoint(tier: str, node: str) -> dict:
 
 class TestASettingsFileEndpointIsText:
     """Keyspec ``agent.default.endpoint``: VERBATIM TEXT in every settings file — no
-    ``@``-ref, ``$``/``~`` expansion or ``\\`` unescape [Jei:2026-10-04].
+    ``{key}``-ref, ``{$VAR}``/``~`` expansion or ``\\`` unescape [Jei:2026-10-04].
 
     The persona store's half is :class:`TestPersonaValuesAreDataNotExpressions`.
     """
@@ -7411,7 +7411,7 @@ class TestASettingsFileEndpointIsText:
     ({"env": {"ODD": "/e{v}$q"}}, "{v}"),
 ], ids=["embedded-dest", "whole-dest", "embedded-src", "whole-env", "embedded-env"])
 def test_a_ref_that_names_no_key_is_refused_by_name(tmp_path: Path, box, named):
-    """Spec §0: the keyspace is closed, so an ``@``-ref to an undeclared key is refused
+    """Spec §0: the keyspace is closed, so a ``{key}``-ref to an undeclared key is refused
     NAMING it — never resolved as absence, which drops the key or empties the path."""
     from kanibako.settings.settings_resolve import SettingsError
 

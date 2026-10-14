@@ -610,7 +610,7 @@ class TestDescriptor:
         # box-start flattener writes codex's flattened per-agent guide to (codex
         # reads ~/.codex/AGENTS.md natively).  It is a DECLARED KEY
         # (agent.codex.env.<VAR>, spec §2d) reaching the box through the settings
-        # channel, so a user can override it by name; $GUEST_HOME is expanded by
+        # channel, so a user can override it by name; {$GUEST_HOME} is expanded by
         # the loader.
         assert CodexTarget().default_envs() == {
             "agent.codex.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/.codex/AGENTS.md",

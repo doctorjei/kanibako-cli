@@ -286,7 +286,7 @@ class TestCoreDefaultsShape:
             f"from 'images_store', B3 rider) + the internal 'images_conf': {keys}"
         )
         assert images[0].get("meta_ref") == "{box.images_store}", (
-            "the store bind's host_src must be the @-ref to the user key "
+            "the store bind's host_src must be the {key}-ref to the user key "
             f"box.images_store (spec §2b/D-M8): {images[0]!r}"
         )
 
@@ -363,7 +363,7 @@ class TestAgentDefaultsShape:
 
         ⚑ THE host_src ASSERTIONS ARE LOAD-BEARING, at BOTH levels.  Every generic
         predicate here (tuple arity, no ``:``, no ``,``, dest under
-        ``$GUEST_HOME``) is satisfied by an ``@``-ref just as it was by a bare
+        ``{$GUEST_HOME}``) is satisfied by a ``{key}``-ref just as it was by a bare
         leaf, so without an explicit shape check this "golden" guard would
         silently stop guarding ``host_src`` across P3's declaration-rooting flip.
         The YAML level pins the AUTHORED form (a bare leaf is what an author may
@@ -840,7 +840,7 @@ class TestCoreStaticEnvDefaults:
     #: dropping the key so the box gets no such variable. Only the host can claim a
     #: 24-bit display; the retired literal ``truecolor`` claimed it for them.
     #: ⚑ ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (§2d shell fence) is the file a
-    #: plain-shell launch renders the canon into; its ``$GUEST_HOME`` is expanded by
+    #: plain-shell launch renders the canon into; its ``{$GUEST_HOME}`` is expanded by
     #: the emitter, so the emitted value is the guest path.
     _SHIPPED_ENV = {
         "agent.default": {"TERM": "{$TERM}"},
@@ -979,11 +979,11 @@ class TestNoHardcodedGuestHome:
         are asserted against — a divergence in the guest-home spelling between the
         two is exactly the drift the conformance suite exists to catch).
 
-        Every in-box destination in the data files is a ``~``/``$GUEST_HOME``
+        Every in-box destination in the data files is a ``~``/``{$GUEST_HOME}``
         expression; a raw ``/home/agent`` would mean a re-hardcoded box path.
         (Comment lines are exempt — they are not data the loaders read; the
         loaders parse YAML values, and the assertions above already prove those
-        are ``$GUEST_HOME`` expressions.)
+        are ``{$GUEST_HOME}`` expressions.)
         """
         data_files = [
             _data_file_path("kanibako.data", "rom/settings/core-defaults.yaml"),
@@ -1007,7 +1007,7 @@ class TestNoHardcodedGuestHome:
                     offenders.append(f"{f.name}:{i}: {ln.strip()}")
         assert not offenders, (
             "raw /home/agent literal in shipped defaults data (use a "
-            "$GUEST_HOME/~ expression instead):\n  " + "\n  ".join(offenders)
+            "{$GUEST_HOME}/~ expression instead):\n  " + "\n  ".join(offenders)
         )
 
     def test_no_home_literal_in_defaults_loaders(self):

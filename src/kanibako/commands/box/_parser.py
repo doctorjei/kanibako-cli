@@ -4149,7 +4149,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
     if action == ConfigAction.set:
         # ⚑ The BOX is the target (spec §2a): ``resolve_inputs`` builds its full cascade
         # — the M-8 file pair, its real ``{meta.box.path}`` and workset anchors — so a
-        # cross-scope ``@``-ref in the new value resolves at set time as at launch.
+        # cross-scope ``{key}``-ref in the new value resolves at set time as at launch.
         # ⚑ THE TIER PAIR IS STILL THREADED, and it is not redundant: if the target
         # cannot be built, the target-less fallback reads these same files and differs
         # only by the floors. Without the workset tier a system-level value shows

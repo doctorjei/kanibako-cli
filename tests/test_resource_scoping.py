@@ -564,7 +564,7 @@ class TestBuildEffectiveState:
         scrubbed, through both routes an endpoint arrives by: the persona store and
         a settings file (where the endpoint is text, written as is).
 
-        The persona route is the incident: its ``@host`` was read as an ``@``-ref and
+        The persona route is the incident: its ``@host`` was read as a ``{key}``-ref and
         expanded to ``""``, so the credential printed with no ``@`` left to find it.
         """
         from kanibako.commands import start

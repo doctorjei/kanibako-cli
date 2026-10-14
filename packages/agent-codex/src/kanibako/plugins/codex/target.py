@@ -216,7 +216,7 @@ class CodexTarget(Target):
         return _CODEX_DESCRIPTOR
 
     def default_category_binds(self) -> CategoryBindDefaults:
-        """Declare codex's AGENT-scope ``@``-ref-sourced category binds.
+        """Declare codex's AGENT-scope ``{key}``-ref-sourced category binds.
 
         Read from ``codex-defaults.yaml`` (via the loader), and currently EMPTY:
         the former ``{system.instructions}`` → ``~/.codex/AGENTS.md`` bind was

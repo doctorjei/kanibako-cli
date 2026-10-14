@@ -63,7 +63,7 @@ class TestResolveSystemPathsDefaults:
         assert resolved["config.settings"] == base / "global" / "settings.yaml"
         assert resolved["config.primary_workset"] == base / "primary_workset"
         assert resolved["config.registry"] == base / "global" / "registry.yaml"
-        # Layer-2 system.* path settings (@-ref a config key).
+        # Layer-2 system.* path settings (reference a config key).
         assert resolved["system.backup"] == base / "backup"
         assert resolved["system.channelroot"] == base / "channels"
         assert resolved["system.template"] == base / "global" / "template"
@@ -130,7 +130,7 @@ class TestResolveSystemPathsDefaults:
 
 class TestResolveSystemPathsOverrides:
     def test_data_override_tracks_dependents(self, tmp_path):
-        """Overriding config.data moves dependents (which @-ref config.data)."""
+        """Overriding config.data moves dependents (which reference config.data)."""
         resolved = resolve_system_paths(
             {"config.data": "{$XDG_DATA_HOME}/custom"},
             data_home=tmp_path,
@@ -140,7 +140,7 @@ class TestResolveSystemPathsOverrides:
         assert resolved["config.data"] == custom
         assert resolved["config.agents"] == custom / "agents"
         assert resolved["_primary_boxes"] == custom / "primary_workset" / "boxes"
-        # A Layer-2 system.* path @-refs config.data → tracks the override too.
+        # A Layer-2 system.* path references config.data → tracks the override too.
         assert resolved["system.channelroot"] == custom / "channels"
         assert resolved["system.template"] == custom / "global" / "template"
 
@@ -1071,7 +1071,7 @@ class TestResolverSplitRouting:
 class TestConfigDataCascade:
     """A user ``kanibako.cfg`` override of ``config.data`` cascades to
     every dependent (the other ``config.*`` keys + the Layer-2 system paths that
-    @-ref it).
+    reference it).
     """
 
     def test_config_data_override_cascades_to_all(self, tmp_path):
@@ -1085,7 +1085,7 @@ class TestConfigDataCascade:
         assert resolved["config.primary_workset"] == root / "primary_workset"
         assert resolved["config.registry"] == root / "global" / "registry.yaml"
         assert resolved["config.journal"] == root / "global" / "journal.yaml"
-        # Layer-2 system paths @-ref config.data → cascade too.
+        # Layer-2 system paths reference config.data → cascade too.
         assert resolved["system.channelroot"] == root / "channels"
         assert resolved["system.backup"] == root / "backup"
         assert resolved["system.template"] == root / "global" / "template"

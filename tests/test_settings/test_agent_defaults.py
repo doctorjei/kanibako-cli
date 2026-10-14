@@ -562,7 +562,7 @@ class TestLayoutSingleSource:
 
     So the pairing asserted here is the one that is still LIVE, and both halves have
     a real producer: what a declaration STORES (``agent_category_root_ref``, read by
-    :func:`~kanibako.settings.agent_defaults.load_common`) against where that ``@``-ref
+    :func:`~kanibako.settings.agent_defaults.load_common`) against where that ``{key}``-ref
     RESOLVES (``settings_launch.meta_agent_path_floor``, which defines
     ``meta.agent.<a>.path``). A test that compared a live producer with a dead one
     would keep passing while the live pair drifted.

@@ -16,8 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   naming a declared key, a bare `$NAME` naming a known variable, `@{a.b.c}`, and `${NAME}` stop the command, naming
   the braced spelling; otherwise `@` and `$` are ordinary characters. A literal brace is doubled (`{{`, `}}`). Only
   `\\` and `\~` escape: respell an old `\@`, `\$`, `\{`, or `\/` as `@`, `$`, `{{`, or `/`. Plugin defaults files spell
-  `{$GUEST_HOME}` and braced `meta_ref` sources. See `MIGRATION.md`, "References are braced: `{a.b.c}` names a key
-  and `{$NAME}` a variable".
+  `{$GUEST_HOME}` and braced `meta_ref` sources; a leftover `$GUEST_HOME` or `${GUEST_HOME}` is refused, naming the
+  file. A plugin skipped for such a refusal is no longer reported as built against a different kanibako-cli, and
+  `system defaults` prints the error of a plugin whose variables cannot be read. See `MIGRATION.md`, "References are
+  braced: `{a.b.c}` names a key and `{$NAME}` a variable" and "Plugin values spell references in braces:
+  `{$GUEST_HOME}` and `{meta.agent.<agent>.path}`".
 - **A persistent box has helpers.** A plain `start` or `start --detach` no longer turns helpers off;
   `allow_helpers` and `--no-helpers` decide in every mode. The helper hub runs in its own host process,
   outlives `kanibako start`, and exits when the box stops (`kanibako stop` stops it, and the box's

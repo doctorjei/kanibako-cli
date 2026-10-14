@@ -185,7 +185,7 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     TAIL, so ``config: {nonsense: /x}`` and ``config: {box: {image: X}}`` were carried to
     :func:`~kanibako.settings.paths.resolve_config_paths`.  🛑 THEY WERE NOT MERELY DROPPED
     THERE: that function's OUTPUT loop iterates the DECLARED table, but its inner ``lookup``
-    resolves ``@``-refs against a ``LevelView`` built from the FILE's set-values — so an
+    resolves ``{key}``-refs against a ``LevelView`` built from the FILE's set-values — so an
     undeclared leaf was an undeclared NAME THE RESOLVER WOULD FOLLOW, and
     ``data: "@config.nonsense/kanibako"`` beside ``nonsense: /srv/elsewhere`` really did
     root the store at ``/srv/elsewhere/kanibako`` (measured both sides, 2026-09-09).  The

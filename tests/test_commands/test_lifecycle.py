@@ -3027,7 +3027,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
     def test_in_root_repoint_keeps_the_directory_that_holds_the_arm(self, env, capsys):
         """``vault_ro: {meta.workset.path}/store/ro`` makes the root child ``store`` — a
         name no list holds.  The ANCESTOR test is what keeps it; an equality test would
-        sweep it.  ⚑ The repoint carries the ``@``-ref because [R147] refuses a bare
+        sweep it.  ⚑ The repoint carries the ``{key}``-ref because [R147] refuses a bare
         relative; the directory it names is the same one ``store/ro`` used to reach."""
         root = _default_with_workset_keys(
             env, "inroot",
@@ -3113,7 +3113,7 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         """``workspaces: {meta.workset.path}`` means the workspace already IS the root —
         there is nothing to consolidate, and moving each child onto itself would raise.
         ⚑ It used to be spelled ``.``, which [R147] refuses along with every other bare
-        relative; the ``@``-ref names the same directory and names it unambiguously."""
+        relative; the ``{key}``-ref names the same directory and names it unambiguously."""
         root = _default_with_workset_keys(
             env, "atroot", {"workspaces": "{meta.workset.path}"},
         )

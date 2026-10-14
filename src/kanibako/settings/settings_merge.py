@@ -5,7 +5,7 @@ ordered ``list[KeyStore]`` partials (MOST-SPECIFIC-FIRST, S8) into ONE raw merge
 snapshot. PURE: no file / env / clock access, and it NEVER mutates its input
 partials (S15) — it builds a fresh :class:`~kanibako.settings.keystore.KeyStore`.
 
-OUT of scope (hard boundaries): ``@``-ref / ``$var`` / ``~`` expansion and cycle
+OUT of scope (hard boundaries): ``{key}``-ref / ``{$VAR}`` / ``~`` expansion and cycle
 detection (refs stay RAW), cross-scope ``box_dest`` collision, typed views,
 ``config set``.
 

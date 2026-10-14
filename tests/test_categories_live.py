@@ -56,7 +56,7 @@ def make_ctx(
     )
 
 # ---------------------------------------------------------------------------
-# B2b: per-mode BYTE-IDENTITY of the @-ref-routed home/vault binds (the
+# B2b: per-mode BYTE-IDENTITY of the {key}-ref-routed home/vault binds (the
 # equivalence bar) + the box.bindings.rw.home cascade override + workset anchors.
 # ---------------------------------------------------------------------------
 
@@ -75,7 +75,7 @@ def _resolve_home_vault(floor, *, mode, config=None):
 
     *config* is the Layer-1 ``config.*`` foundation; PRIMARY mode needs
     ``config.primary_workset`` because ``meta.runtime.ws_root`` is the
-    ``{config.primary_workset}`` @-ref for that mode (spec §1A).
+    ``{config.primary_workset}`` reference for that mode (spec §1A).
     """
     from kanibako.settings.settings_launch import (
         build_launch_snapshot,
@@ -128,7 +128,7 @@ class TestB2bHomeVaultByteIdentity:
                 ),
             },
         }
-        # The anchors are @-ref FORMULAS rooted at meta.workset.path, so the workset
+        # The anchors are {key}-ref FORMULAS rooted at meta.workset.path, so the workset
         # root is what pins the resolved values (= {config.primary_workset} at launch).
         floor.update(meta_runtime_floor(
             mode="primary", ws_name="__PRIMARY__",
@@ -277,7 +277,7 @@ class TestB2bWorksetAnchors:
             workset_channels={"common": "/ws/ch/common", "chat": "/ws/ch/chat",
                               "share": "/ws/ch/share"},
         )
-        # Every anchor is the spec's self-resolving @-ref FORMULA (spec §2c).
+        # Every anchor is the spec's self-resolving {key}-ref FORMULA (spec §2c).
         assert floor["workset.boxes"] == "{meta.workset.path}/boxes"
         assert floor["workset.vault_ro"] == "{meta.workset.path}/vault/ro"
         assert floor["workset.vault_rw"] == "{meta.workset.path}/vault/rw"
@@ -661,7 +661,7 @@ class TestB3ImagesStoreKey:
 
     Spec §2b (``box.images_store``) + §2c ALL PROJECTS row ``images`` (D-M8): the
     runtime-probed podman graphroot is the KEY'S DEFAULT, the bind's host_src is
-    the @-ref ``{box.images_store}``, and a cascade-tier repoint of the key MOVES
+    the {key}-ref ``{box.images_store}``, and a cascade-tier repoint of the key MOVES
     the mount.  The B3 rider — that the bind row and the scalar key must not share
     a name — is now carried STRUCTURALLY: under dest-keying (R-5) a bind row has no
     name at all, so what is pinned below is that the arm is TERMINAL and the one
@@ -669,7 +669,7 @@ class TestB3ImagesStoreKey:
     """
 
     def test_images_bind_is_the_at_ref_and_the_probe_is_the_key_default(self):
-        """The emitted table = the @-ref bind + the probed-default scalar.
+        """The emitted table = the {key}-ref bind + the probed-default scalar.
 
         Spelled, not just resolved (helper_log precedent): the host_src IS
         ``{box.images_store}``, so the mount follows the KEY rather than a probed
@@ -786,7 +786,7 @@ class TestB3ImagesStoreKey:
         """[Jei:2026-08-02]: a FAILED probe contributes no ``box.images_store`` default.
 
         The probe feeds ONLY the key's default, so ``graph_root=None`` leaves the
-        key unset in the table — the bind is still spelled as the @-ref (nothing
+        key unset in the table — the bind is still spelled as the {key}-ref (nothing
         falls back to a probed literal) and the INTERNAL conf bind is unaffected.
 
         ⚑ Re-derived for dest-keying: both binds are entries of the terminal
@@ -809,7 +809,7 @@ class TestB3ImagesStoreKey:
     def test_probe_fail_without_a_set_key_drops_the_store_mount(self, tmp_path):
         """Probe fail + no set key: ``{box.images_store}`` propagates ABSENT.
 
-        The whole-value @-ref to an unset key drops the bind (spec §0), so the store
+        The whole-value {key}-ref to an unset key drops the bind (spec §0), so the store
         mount simply is not there — the launch seam reads the same resolved key
         and warns rather than mounting half of the pair.
         """
@@ -838,7 +838,7 @@ class TestDeclarationRoots:
 
     The rule, driven through the REAL pipeline (build → snapshot → adapt):
     a bare relative leaf resolves under ``<agent-store>/<category>/``; an already
-    self-resolving source (absolute / ``~`` / ``$var`` / ``@``-ref) is NOT rooted.
+    self-resolving source (absolute / ``~`` / ``{$VAR}`` / ``{key}``-ref) is NOT rooted.
     There is no assembly-time prepend left to compensate for either way.
     """
 
@@ -887,7 +887,7 @@ class TestDeclarationRoots:
         ⚑ RE-SPELLED for dest-keying (2026-08-08c): ``caches`` is a TERMINAL key
         whose value is ``{box_dest: (host_src[, options])}``, so the retired
         ``agent.claude.caches.transform`` entry name is gone and the destination
-        is the map key.  The dest here is an ``@``-ref FORMULA — a USER-written
+        is the map key.  The dest here is a ``{key}``-ref FORMULA — a USER-written
         identity mount, still accepted (no refusal) though the shipped entry's dest
         is ``~/.kanibako/cache/tweakcc``; it is resolved by the emitter.
 

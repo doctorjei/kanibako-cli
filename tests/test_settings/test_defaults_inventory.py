@@ -485,6 +485,30 @@ class TestEnvRows:
         ]
 
 
+    def test_a_refused_plugin_shows_its_error_instead_of_no_rows(self, monkeypatch):
+        """A plugin whose defaults file this release refuses is named WITH the refusal.
+
+        ``system defaults`` still lists everything else; showing the plugin as merely
+        "declaring nothing" would hide the one message that says what to fix.
+        """
+        import kanibako.targets as targets_pkg
+        from kanibako.settings.agent_defaults import _guest_path
+
+        class _Refused:
+            def default_envs(self):
+                return {"agent.refused.env.X": _guest_path("$GUEST_HOME/x", "refused-defaults.yaml")}
+
+        monkeypatch.setattr(
+            targets_pkg, "discover_targets", lambda *a, **k: {"refused": _Refused},
+        )
+        rows, plugins = env_rows()
+        assert plugins.consulted == ("refused",) and plugins.declaring == ()
+        out = io.StringIO()
+        print_defaults(out)
+        text = out.getvalue()
+        assert "refused-defaults.yaml" in text, text
+        assert "{$GUEST_HOME}" in text, text
+
 class TestRendering:
     """The printed surface — what a reader actually gets."""
 

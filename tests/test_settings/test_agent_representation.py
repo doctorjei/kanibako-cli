@@ -3,7 +3,7 @@
 Covers the brief's §4 checklist: each origin selector (LAUNCHER/INSTALL_DIR/
 BINARY/LITERAL) resolves the RIGHT host_src from a fixture ``AgentInstall``;
 ro vs rw placement by ``binding.ro``; ``box_dest`` carried VERBATIM (with the
-descriptor-loader's ``$GUEST_HOME`` handling — already expanded at load); a
+descriptor-loader's ``{$GUEST_HOME}`` handling — already expanded at load); a
 LITERAL-origin raw expr stays raw (spec §0 "Files store entries UNRESOLVED"); the
 ``agent.<name>`` key path under the descriptor's OWN agent name (the §2d
 ``agent.<agent>.*`` form — NOT a bare ``agent`` token, §0; S27); the None-origin OMIT
@@ -220,12 +220,12 @@ def test_mixed_ro_and_rw_both_present() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# box_dest carried VERBATIM ($GUEST_HOME already expanded at load; raw stays)  #
+# box_dest carried VERBATIM ({$GUEST_HOME} expanded at load; raw stays)        #
 # --------------------------------------------------------------------------- #
 
 
 def test_box_dest_carried_verbatim() -> None:
-    # The loader has already $GUEST_HOME-expanded, so box_dest arrives literal.
+    # The loader has already {$GUEST_HOME}-expanded, so box_dest arrives literal.
     d = _descriptor(
         _binding(
             key="launcher",
@@ -491,7 +491,7 @@ class TestAgentCategoriesForNodeOnCommon:
 
     def test_a_self_resolving_source_is_carried_verbatim(self):
         """The re-root rule is NARROW: only the harness's own declaration root
-        moves. An absolute / ``~`` / ``$var`` / unrelated ``@``-ref source is the
+        moves. An absolute / ``~`` / ``{$VAR}`` / unrelated ``{key}``-ref source is the
         plugin's deliberate choice (spec §2a), not "my store dir"."""
         from kanibako.settings.agent_representation import agent_categories_for_node
 

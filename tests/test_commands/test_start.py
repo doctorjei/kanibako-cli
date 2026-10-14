@@ -2546,7 +2546,7 @@ class TestPluginsAndCacheShares:
             local_shared_base=std.data,
         )
         # Default/PRIMARY mode (B1: meta.runtime.* needs a real mode; primary uses
-        # the {config.primary_workset} @-ref so project_path is unused here).
+        # the {config.primary_workset} reference so project_path is unused here).
         proj.mode = BoxMode.primary
         proj.project_path = std.data
         proj.vault_enabled.return_value = False
@@ -2630,7 +2630,7 @@ class TestPersonaShareSymlinks:
     def _target(self, common_binds=None, seeds=None, category_binds=None):
         """A stand-in target returning the REAL declaration SHAPES.
 
-        ⚑ The values are the DECLARATION-ROOTED ``@``-refs the live claude plugin
+        ⚑ The values are the DECLARATION-ROOTED ``{key}``-refs the live claude plugin
         emits, NOT the pre-P3 bare leaves.  A fixture carrying the old shape kept
         every test in this class green while production built a garbage path out of
         the ref (see ``test_links_are_under_the_common_dir``) — a stale fixture
@@ -2742,7 +2742,7 @@ class TestPersonaShareSymlinks:
         shared with no shim change at all.
 
         (Mutation: join the WHOLE ``host_src`` instead of stripping the root → the
-        ``@``-ref becomes a path component → RED.)
+        ``{key}``-ref becomes a path component → RED.)
         """
         from kanibako.commands.start import ensure_persona_share_symlinks
 
@@ -2764,7 +2764,7 @@ class TestPersonaShareSymlinks:
         assert caches_link.readlink() == (
             std.agents / self._HARNESS / "caches" / "tweakcc"
         )
-        # And NOTHING was created from the raw @-ref value.
+        # And NOTHING was created from the raw {key}-ref value.
         assert not any(
             "@" in p.name for p in self._node_store(std).rglob("*")
         ), sorted(str(p) for p in self._node_store(std).rglob("*"))
@@ -5335,7 +5335,7 @@ class TestApplyInitSeeds:
     def _proj(self, shell_path, group=None):
         from types import SimpleNamespace
         # B1: meta.runtime.* needs a real mode. group=None here = default/PRIMARY
-        # (the {config.primary_workset} @-ref, so project_path is unused).
+        # (the {config.primary_workset} reference, so project_path is unused).
         # B2: meta.box.* identity anchors need the box name (proj.name).
         # B2b: the workset path anchors are derived off the vault paths + the box
         # home's box-parent, so the proj fake supplies them.

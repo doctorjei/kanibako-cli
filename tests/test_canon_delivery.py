@@ -1397,7 +1397,7 @@ class TestInternalBindEntryRefusal:
     def test_an_at_ref_dest_meets_a_collision_that_keeps_the_internal_bind(
         self, tmp_path, arm,
     ):
-        """An ``@``-ref dest is compared unexpanded, so it passes the written-dest refusal
+        """A ``{key}``-ref dest is compared unexpanded, so it passes the written-dest refusal
         and collides after expand; the collision's remedy must not offer to null the
         internal bind (spec §2c), which the resolve would then refuse."""
         from kanibako.errors import CategoryCollisionError

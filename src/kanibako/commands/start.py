@@ -303,7 +303,7 @@ def ensure_persona_share_symlinks(std, agent_id, target) -> None:
     :func:`~kanibako.settings.agent_representation.harness_store_leaf`, which
     strips EXACTLY the harness's store declaration root and answers ``None``
     for anything else — so this shim never treats a self-resolving source
-    (an absolute path, a ``~``, an unrelated ``@``-ref) as a store path.  Reading a
+    (an absolute path, a ``~``, an unrelated ``{key}``-ref) as a store path.  Reading a
     path component off the WHOLE value remains wrong for the reason it always was:
     ``{meta.agent.<a>.path}/common/<leaf>`` is a REF, and joining it would produce
     the literal directory ``agents/<node>/{meta.agent.<a>.path}/common/<leaf>``.
@@ -7318,7 +7318,7 @@ def _effective_behavior_for_display(
 
     With no declared descriptors the target has no behavior floor — the effective
     state is just the per-agent file's raw state (preserved from the old
-    early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
+    early-return). Values are scalars, used verbatim (behavior has no {key}-ref tier).
     *agent_cfg_path* is the file *agent_cfg* was read from (``None`` when it was
     generated); the snapshot reads the file there.
     The box's files, context and floors come off
@@ -7477,7 +7477,7 @@ def _resolve_box_auth_source(
         # freshly-validated ref, so nothing here may be assumed well-formed.
         _auth_persona_values = None
     # The resolved system.* tier is folded into the floor (default_categories
-    # here carries ONLY system.* — no category families) so any @-ref in the
+    # here carries ONLY system.* — no category families) so any {key}-ref in the
     # chain that reaches system.* resolves; this keeps the focused snapshot
     # consistent with the main one. The cascade box/workset tier file paths are the
     # mode-aware single source (P6c) — standalone reads <root>/workset.yaml as the
@@ -8019,10 +8019,10 @@ def _resolve_launch_snapshot(
                     harness=target.name,
                 ), family="agent env", origins=cat_origins,
             )
-            # PLUGIN-declared @-ref-sourced agent binds (spec §2d): a generic
+            # PLUGIN-declared {key}-ref-sourced agent binds (spec §2d): a generic
             # AGENT-scope category-bind extension point.  Unioned like a share; the
             # plugin builds each key DISCRIMINATED (``agent.<agent>.bindings.*``) and
-            # its ``@``-ref source is resolved by ``expand`` from the ``system_floor``
+            # its ``{key}``-ref source is resolved by ``expand`` from the ``system_floor``
             # floor.  Currently empty for all first-party plugins (the former
             # ``{system.instructions}`` instructions bind was retired — the guide now
             # ships via the RO bundle + launch-flatten).
@@ -8080,7 +8080,7 @@ def _resolve_launch_snapshot(
                 storage_conf_path=storage_conf_path,
             ), family="images", origins=cat_origins,
         )
-    # Fold the resolved system.* tier into the floor so @-refs in category values
+    # Fold the resolved system.* tier into the floor so {key}-refs in category values
     # resolve from the snapshot itself (replicating the old ``_lookup`` map).
     # ⚑ The SECOND deliberate last-wins injection (see ``extra_default_categories``
     # above): resolved ``system.*`` SCALARS, no ``bindings`` arm among them.
@@ -10232,7 +10232,7 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     above the channel may write these variables; adding a fifth stamp anywhere else
     is the bug this function exists to prevent.
 
-    The values are RESOLVED LITERALS, not ``@``-refs (the ``meta_identity_floor``
+    The values are RESOLVED LITERALS, not ``{key}``-refs (the ``meta_identity_floor``
     pattern): what a launch derives, it derives once, here; the box name enters as
     ``literal_expr``.
 

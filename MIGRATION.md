@@ -1544,29 +1544,23 @@ $ kanibako workset set <workset> workset.env.<VAR>=<value>  # <workset>/env
 $ kanibako box set <path> box.env.<VAR>=<value>             # <box>/env
 ```
 
-⚑ **A `$VAR` in an env VALUE is refused at set time.** These values go through kanibako's
-expansion grammar, which knows only `$AGENT`, `$WORKSET`, and `$XDG_*` — and a `set` at the CLI
-has no live agent or workset, so in practice only `$XDG_*` resolves. A shell variable your `env`
-file carried happily is now an error, and the message names it:
+⚑ **An env VALUE follows kanibako's reference grammar, not your shell's.** `$` is an ordinary
+character, so `$HOME/bin` reaches the box as written. `{$NAME}` names a kanibako variable, and any
+other name is refused at set time. For this release, a bare `$NAME` that names a kanibako variable
+is refused too, with the braced spelling (see *References are braced: `{a.b.c}` names a key and
+`{$NAME}` a variable*):
 
 ```console
 $ kanibako box set <box> box.env.MY_PATH='$HOME/bin'
+Set box.env.MY_PATH=$HOME/bin
+$ kanibako box set <box> box.env.MY_PATH='{$HOME}/bin'
 Error: 'box.env.MY_PATH': Unknown variable: {$HOME}
 $ kanibako box set <box> box.env.MY_PATH='$AGENT/bin'
-Error: 'box.env.MY_PATH': Variable {$AGENT} is not set in this context.
-```
-
-**The cure is to escape the `$`**: `\$` stores the backslash form in the settings file and
-kanibako unescapes it to the plain literal `$HOME/bin`, which becomes the variable's value
-verbatim — kanibako never substitutes it.
-
-```console
-$ kanibako box set <box> box.env.MY_PATH='\$HOME/bin'
-Set box.env.MY_PATH=\$HOME/bin
+Error: 'box.env.MY_PATH': malformed value '$AGENT/bin': Old reference spelling '$AGENT' at: '$AGENT/bin' — references are braced now: write '{$AGENT}'.
 ```
 
 A `{key}` reference is validated the same way (`box.env.X={meta.nope.key}/x` is refused as a
-dangling reference), and a lone unescaped `$` is refused as a malformed value.
+dangling reference).
 
 ---
 
@@ -2646,14 +2640,11 @@ below `workset`, and expanded like anything else.
    same variable in the agent file, the file's value is what you get now.**
 4. **`~` and `{$VAR}` in the value are expanded**, exactly as in a value written in any other
    settings file. Before, an agent-file `env` value reached the box as literal text, so
-   `EDITOR: ~/bin/ed` delivered the tilde itself. ⚑ **Expansion resolves against kanibako's own
-   namespace, not your shell's, and an unknown name is REFUSED rather than passed through** — this
-   is how `<scope>.env.<VAR>` has always behaved and the agent file simply joins it. So an
-   agent-file `env` value containing something like `$HOME` **stops the launch with `Unknown
-   variable: {$HOME}`** where it previously delivered those six characters verbatim (and your box's
-   own shell may well have expanded them later, which is why it can look like a regression). The
-   host paths kanibako does know are spelled as `{key}` references (`{config.data}`, `{meta.box.home}`);
-   for anything meant to be resolved *by the box*, escape it — see below.
+   `EDITOR: ~/bin/ed` delivered the tilde itself. ⚑ **A reference resolves against kanibako's
+   own namespace, not your shell's, and an unknown name is REFUSED**, as in `<scope>.env.<VAR>`:
+   `{$HOME}` stops the launch with `Unknown variable: {$HOME}`. A bare `$HOME` is plain text and
+   reaches the box as written. The host paths kanibako does know are `{key}` references
+   (`{config.data}`, `{meta.box.home}`). For `~` meant for the box, see below.
 
 **What you must do.** Nothing, unless one of these is true:
 
@@ -2661,9 +2652,9 @@ below `workset`, and expanded like anything else.
   `box.env.EDITOR` are two keys for one slot, which *An environment variable may be declared at ONE
   scope only* refuses — and the box used to take the box-scope value without a word. Give the
   variable one owner.
-- **You wrote `~` or `$NAME` into an agent-file `env` value and meant it to be delivered as
-  written** (for the box's own shell to resolve, or as a literal). Escape it — `\~`, `\$` — which
-  is both the fix for a launch that now refuses and the way to keep an intended literal intact.
+- **You wrote `~` into an agent-file `env` value and meant it to be delivered as written.**
+  Write it as `\~`. A `$` needs no escape (see *References are braced: `{a.b.c}` names a key and
+  `{$NAME}` a variable*).
 - **You wrote an `env:` or `secret_path:` table under a second `<node>:` level by hand**
   (`self: claude: env:`). **That spelling is refused by name and stops the launch.** See the box
   below — it is the one part of this section that can affect a file you never edited.
@@ -3658,12 +3649,12 @@ This now also covers a key the merge hides. An undeclared entry in a workset or 
 refused even when another file's table covers it, and the message names the file to edit by hand.
 Plain `workset share list` refuses such a file too.
 
-An `@`-reference counts too. A reference to a name that is not a key now stops the command, naming
-the reference and the entry that holds it. That covers `@meta.agent.home/x` as a bind destination, a
-typo such as `@box.nope`, and `@meta.box.name.jsonl`, whose name swallows the extension. Before, it
-resolved as empty, so the entry was dropped or the path lost that piece. A reference to a declared key
-that has no value is unchanged. The cure is a hand-edit: point the reference at a declared key, write
-`{meta.box.name}.jsonl` to keep a suffix, or escape a literal `@` as `\@`.
+A reference counts too. A reference to a name that is not a key now stops the command, naming the
+reference and the entry that holds it, such as `{meta.agent.home}/x` as a bind destination or a typo
+such as `{box.nope}`. Before, it resolved as empty, so the entry was dropped or the path lost that
+piece. A reference to a declared key that has no value is unchanged. The cure is a hand-edit: point
+the reference at a declared key. An old `@` spelling is covered in *References are braced:
+`{a.b.c}` names a key and `{$NAME}` a variable*.
 
 ### 2.48 `box get` and `workset get` refuse a name that is not a key, and `show` marks the entry
 
@@ -7941,9 +7932,9 @@ relied on the secret winning. Drop that `-e`.
   variable, are refused by name, and the message gives the braced spelling. So are `@{a.b.c}` and
   `${NAME}`: `@{a.b.c}x` used to mean the value of `a.b.c` followed by `x`. Once the guard is gone,
   a bare `@a.b.c` or `$NAME` is plain text, `@{a.b.c}x` is a literal `@`, the value, and `x`, and
-  `${NAME}` is a literal `$` followed by the variable's value. The guard reads only settings values;
-  a path kanibako is given, such as a project directory named `q@box.image`, and a persona's values
-  are kept as written.
+  `${NAME}` is a literal `$` followed by a reference to the key `NAME`. The guard reads only
+  settings values; a path kanibako is given, such as a project directory named `q@box.image`, and a
+  persona's values are kept as written.
 - **`@` and `$` are ordinary characters.** Any other text holding them is kept as written:
   `user@host`, `https://user:key@host/v1`, `$HOME/bin`. `HOME` is not a kanibako variable, so the
   box gets those characters and its own shell may expand them.
@@ -8665,6 +8656,12 @@ category_binds:
 ```
 
 A source declared in Python takes the same spelling, such as `("{system.cache}/launcher", "ro")`.
+
+A leftover `$GUEST_HOME` or `${GUEST_HOME}` is refused, naming the defaults file and the braced
+spelling. In a `bindings:` entry, read when the plugin is imported, the plugin does not load:
+kanibako prints `Warning: '<plugin>' failed to load and is being SKIPPED: <file>: Old reference
+spelling …`, and the agent is unavailable. In an `env:` value or a `category_binds:` destination,
+the launch stops with that message; `kanibako system defaults` also prints an `env:` refusal.
 
 **What you must do.** Respell `$GUEST_HOME` and each `@` reference in your defaults file and your
 Python declarations. The shipped plugins already use the braced spellings.

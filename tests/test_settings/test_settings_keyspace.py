@@ -1396,7 +1396,7 @@ def test_key_validity_still_refuses_every_non_key():
 
 def test_an_empty_declared_interior_is_not_a_finding():
     """⚑ THE MEASURED REGRESSION. Both paths reached a real launch snapshot EMPTY —
-    ``meta.box.agent`` when spec §0 dropped its only child (a dangling ``@``-ref
+    ``meta.box.agent`` when spec §0 dropped its only child (a dangling ``{key}``-ref
     referent), ``agent.claude`` when a ``--null`` pref suppressed its only entry —
     and the classifier reported each as an undeclared key.
 

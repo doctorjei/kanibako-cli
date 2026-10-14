@@ -45,4 +45,5 @@ class DefaultRow(NamedTuple):
 class PluginConsultation(NamedTuple):
     consulted: tuple[str, ...]
     declaring: tuple[str, ...]
+    failed: tuple[tuple[str, str], ...] = ()
 ```

@@ -454,7 +454,7 @@ class TestWorksetChannelDefaults:
     """(i-f) The channel family's defaults ARE what ``channels/channels.py`` derives.
 
     ⚑⚑ A VALUE ORACLE, NOT A SECOND RESOLVER — the distinction the retired E1 exemption
-    got wrong.  Each manifest formula is followed ONE HOP: its ``@``-refs are answered
+    got wrong.  Each manifest formula is followed ONE HOP: its ``{key}``-refs are answered
     by EXERCISING the code that owns them (``workset_root``, ``workset_name_token``,
     the resolved channel root itself), and the result is compared to the ``Path`` the
     derivation returns.  Nothing here re-implements the resolution rule; what is under
@@ -493,7 +493,7 @@ class TestWorksetChannelDefaults:
 
     @staticmethod
     def _refs(proj, std, derived) -> dict[str, object]:
-        """The ``@``-refs the seven formulas hang off, each answered BY THE CODE."""
+        """The ``{key}``-refs the seven formulas hang off, each answered BY THE CODE."""
         from kanibako.channels import channels as ch
 
         refs: dict[str, object] = {
@@ -510,7 +510,7 @@ class TestWorksetChannelDefaults:
 
     @staticmethod
     def _follow(formula: str, refs: dict[str, object]) -> Path:
-        """Follow ``@<ref>/<tail>`` one hop; *tail* may itself be a single ``@``-ref."""
+        """Follow ``{<ref>}/<tail>`` one hop; *tail* may itself be a single ``{key}``-ref."""
         head, sep, tail = formula.partition("/")
         assert sep and head in refs, f"unfollowable manifest formula {formula!r}"
         return Path(str(refs[head])) / str(refs.get(tail, tail))
@@ -808,7 +808,7 @@ class TestBindDefaults:
 #: 🛑 DO NOT RE-CREATE THIS CLASS TO PARK A ROW IN.  A join FACE is not an absence of a
 #: carrier; treating it as one is what let four declared rows resolve to ``__MISSING__``
 #: at launch while looking ordinary in the exemption table.  The shape check that used to
-#: sit under it (``every arm is an @-ref``) went with it: it read no code, so it was never
+#: sit under it (``every arm is a {key}-ref``) went with it: it read no code, so it was never
 #: an oracle, and there is now nothing left for it to be the honest floor under.
 #:
 #: (E2) A PROSE PLACEHOLDER standing in for a runtime-probed value.  The manifest is
@@ -929,7 +929,7 @@ _VALUE_BOX_CALLER_LITERAL_KEYS = (
 
 #: (ii-f) Value rows COMPUTED post-expand by
 #: ``settings_launch._materialize_auth_active`` (Q61) — the manifest carries the
-#: ``<computed>`` placeholder, NOT a formula: a real ``@``-ref there would resolve
+#: ``<computed>`` placeholder, NOT a formula: a real ``{key}``-ref there would resolve
 #: through ``expand`` and change launch behavior, so the placeholder is
 #: load-bearing, not vagueness. Pinned verbatim, plus the producer proof.
 _VALUE_AUTH_ACTIVE_KEYS = (
@@ -1005,7 +1005,7 @@ class TestValueAuthActiveFormulas:
     """(ii-f) The computed sharing-state rows ARE ``_materialize_auth_active``'s output.
 
     The manifest carries the ``<computed>`` placeholder rather than a formula:
-    ``&&`` is inexpressible in ``@``-ref grammar, so no formula could spell the
+    ``&&`` is inexpressible in ``{key}``-ref grammar, so no formula could spell the
     conjunction — the placeholder is load-bearing. Pinned verbatim, plus the
     producer proof — a floorless launch snapshot carries all three as bools (the
     fail-CLOSED arm; the truth table itself is pinned by
@@ -1310,7 +1310,7 @@ NO_VALUE_DELIVERY_CONSTRUCTED: frozenset[str] = frozenset({
 #: ``meta.box.container`` has NO producer (``settings_keyspace`` says so at the
 #: ``meta.box`` declaration: it renders in ``utils.render_container_name`` off proj attrs,
 #: not the store) — and the renderer cannot equal the manifest's ``%if`` template
-#: without a template engine, i.e. a second resolver.  A whole-value ``@``-ref to it
+#: without a template engine, i.e. a second resolver.  A whole-value ``{key}``-ref to it
 #: would dangle, which is why nothing floors it.
 NO_VALUE_OFF_SNAPSHOT_RENDER: frozenset[str] = frozenset({
     "meta.box.container",

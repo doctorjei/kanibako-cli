@@ -877,7 +877,7 @@ def start_mocks():
                 # collapse rather than exercise it.
                 # 🛑 The value is the LITERAL path, not the ``{meta.box.path}/home``
                 # formula: this stub passes no ``meta_runtime``/``workset_anchor``, so
-                # an @-ref would not resolve.  ``proj.shell_path`` is a REAL mkdir'd
+                # a {key}-ref would not resolve.  ``proj.shell_path`` is a REAL mkdir'd
                 # dir above, so the L7 guarantee-create has nothing to do.  It enters as
                 # ``literal_expr`` -- DATA, as the real ``meta.box.path`` floor does -- so
                 # a tmp path holding ``@box.image`` or ``$TERM`` resolves as written.

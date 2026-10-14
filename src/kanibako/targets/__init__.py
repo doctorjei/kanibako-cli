@@ -10,6 +10,7 @@ from importlib.metadata import entry_points
 
 from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP, reserved_pseudo_agent_reason
 from kanibako.identifiers import agent_node_case, find_identifier, name_flaw
+from kanibako.settings.settings_resolve import SettingsError
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.shell import ShellTarget
 
@@ -257,15 +258,28 @@ def discover_targets() -> dict[str, type[Target]]:
                 _EP_LOAD_FAILED.add(ep.name)
                 dist = getattr(getattr(ep, "dist", None), "name", None)
                 who = f"'{dist}'" if dist else f"the '{ep.name}' agent plugin"
+                # A SettingsError is this release REFUSING a value the package
+                # declares (e.g. a leftover ``$GUEST_HOME``): its message names the
+                # file and the cure, so the version-mismatch guess would mislead.
+                if isinstance(exc, SettingsError):
+                    why = (
+                        f"{exc}\n  The '{ep.name}' agent is unavailable; every other "
+                        f"agent, and 'kanibako setup', still work. This release "
+                        f"refuses a value the package declares — upgrade it, or "
+                        f"uninstall it if you do not use it."
+                    )
+                else:
+                    why = (
+                        f"{type(exc).__name__}: {exc}\n"
+                        f"  The '{ep.name}' agent is unavailable; every other agent, "
+                        f"and 'kanibako setup', still work. This usually means the "
+                        f"package was built against a different kanibako-cli — "
+                        f"upgrade it, or uninstall it if you do not use it. Installing "
+                        f"the 'kanibako' meta package pins a compatible set; see "
+                        f"MIGRATION.md for the plugin versions this release breaks."
+                    )
                 print(
-                    f"Warning: {who} failed to load and is being SKIPPED: "
-                    f"{type(exc).__name__}: {exc}\n"
-                    f"  The '{ep.name}' agent is unavailable; every other agent, "
-                    f"and 'kanibako setup', still work. This usually means the "
-                    f"package was built against a different kanibako-cli — "
-                    f"upgrade it, or uninstall it if you do not use it. Installing "
-                    f"the 'kanibako' meta package pins a compatible set; see "
-                    f"MIGRATION.md for the plugin versions this release breaks.",
+                    f"Warning: {who} failed to load and is being SKIPPED: {why}",
                     file=sys.stderr,
                 )
             logger.debug(

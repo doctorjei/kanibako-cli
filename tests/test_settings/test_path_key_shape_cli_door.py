@@ -245,7 +245,7 @@ def test_a_string_at_a_workset_early_path_key_still_reaches_the_bare_relative_ar
 
 
 def test_a_legal_path_key_value_is_not_refused_at_any_tier(tmp_home, config_file, capsys):
-    """The control at BOTH tiers: an absolute string, a ``$XDG``/``@``-ref and a null all pass.
+    """The control at BOTH tiers: an absolute string, a ``{$XDG_*}``/``{key}``-ref and a null all pass.
 
     ⭐ This is the regression the check could cause, so it is pinned at the door that
     stringifies rather than at the launch sweep that already passed.

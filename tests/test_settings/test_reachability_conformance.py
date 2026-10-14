@@ -260,7 +260,7 @@ def _may_answer_absent(row: dict) -> bool:
   ⚑ THE ROW STAYS IN THE CORPUS.  Only the DANGLE verdict changes — which is the
   narrowest place the arm can act.  Dropping the row from :func:`_corpus` instead would
   also silence D (demand) and F (family closure) for it, and a key another declaration
-  ``@``-references is a defect worth reporting whether or not its own absence is
+  references is a defect worth reporting whether or not its own absence is
   declared: the demander still collapses.
   """
   return bool(row.get(_ABSENT_ARM))
@@ -315,27 +315,19 @@ def _partition(mode: str, termini, ctx) -> "tuple[list[str], list[str], list[str
 
 
 # ---------------------------------------------------------------------------
-# The demand graph — who @-references whom.
+# The demand graph — who references whom.
 # ---------------------------------------------------------------------------
 
-# Braced forms first (they delimit the name explicitly); the old bare form is GREEDY
-# over dot-separated segments. The manifest is mid-transition (braced-refs plan), so
-# both grammars are read: ``{K}`` (new), ``@{K}`` and ``@K`` (old, until step 5).
+# The manifest spells every reference braced (keyspec § 0 "References"): ``{K}``.
 _REF_NAME = r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*"
-_OLD_BRACED_REF = re.compile(rf"@\{{({_REF_NAME})\}}")
-_NEW_REF = re.compile(rf"(?<!\{{)\{{({_REF_NAME})\}}")
-_BARE_REF = re.compile(rf"@({_REF_NAME})")
+_REF = re.compile(rf"(?<!\{{)\{{({_REF_NAME})\}}")
 
 
 def _refs_in(value: object) -> "set[str]":
-  """Every ``{K}`` / ``@K`` / ``@{K}`` reference name spelled inside *value*."""
+  """Every ``{K}`` reference name spelled inside *value*."""
   if not isinstance(value, str):
     return set()
-  found = set(_OLD_BRACED_REF.findall(value))
-  rest = _OLD_BRACED_REF.sub(" ", value)
-  found |= set(_NEW_REF.findall(rest))
-  found |= set(_BARE_REF.findall(_NEW_REF.sub(" ", rest)))
-  return {name.rstrip(".") for name in found if name}
+  return set(_REF.findall(value))
 
 
 def _arms(value: object) -> "dict[str, object]":
@@ -363,7 +355,7 @@ def _entry_defaults() -> "list[tuple[str, object]]":
 
 
 def _demand_edges() -> "list[tuple[str, str, str]]":
-  """``(demander, mode, demanded_key)`` for every ``@``-reference in the manifest.
+  """``(demander, mode, demanded_key)`` for every ``{key}``-reference in the manifest.
 
   Sources: every ``keys:`` row's ``default:`` AND ``value:`` (``meta.*`` rows carry
   the latter), plus every bind/category entry default.  A row referencing ITSELF is
@@ -403,7 +395,7 @@ def _families() -> "dict[str, set[str]]":
   ⚑ DEPTH 2 IS THE SCOPE, NOT A FAMILY — which is exactly why ``system.backup``
   forms no family while ``system.channels.broadcast`` does.
 
-  Closure adds any SAME-``scope:`` key a member's own default ``@``-references.
+  Closure adds any SAME-``scope:`` key a member's own default references.
   ⚑ Cross-scope refs are NOT followed (``workset.channels.mailboxes`` →
   ``{system.channels.mailboxes}``); follow them and every family merges into one blob.
   """
@@ -489,7 +481,7 @@ class TestTheCorpusAndTheProbe:
     absence instead of a value (spec §2c: a whole-value reference with an absent
     referent drops its key; ``settings_expand._is_whole_value_var`` decides the shape,
     and it is the production predicate, not a second copy of the grammar).  Put the arm
-    on a literal, an ``@``-ref or an embedded token and this REDS: there, absence is a
+    on a literal, a ``{key}``-ref or an embedded token and this REDS: there, absence is a
     dangle and P still says so.
 
     ⚑ The carrier floor is MEASURED, like ``_CORPUS_FLOOR`` — it reds on the machinery
@@ -620,7 +612,7 @@ class TestEveryDeclaredDefaultAnswers:
   fallback; when P was ratified outright, the proxies stayed and the property itself was
   never pinned.  **A file can be green on two proxies while the property they proxy for
   is false**, and it was: ``box.enable_vault`` answers NOWHERE and reds nothing, because
-  no declaration ``@``-references it (so D is silent) and it is in no partially-installed
+  no declaration references it (so D is silent) and it is in no partially-installed
   family (so F is silent).
 
   🛑 DO NOT WEAKEN THIS TO "the demanded ones" OR "the ones in a family".  Those are D
@@ -652,7 +644,7 @@ class TestEveryDeclaredDefaultAnswers:
       print(f"  {key}")
     assert not dangles, (
       f"mode={mode}: these keys declare a real default that NOTHING installs, so a "
-      f"whole-value @-reference to each resolves absent for a box that already "
+      f"whole-value {{key}}-reference to each resolves absent for a box that already "
       f"exists:\n" + "\n".join(
         f"  {key} (default: {_corpus(mode)[key].get('default')!r})" for key in dangles
       )
@@ -665,7 +657,7 @@ class TestEveryDeclaredDefaultAnswers:
 # ---------------------------------------------------------------------------
 
 class TestNoDemandedKeyDangles:
-  """A key ANOTHER declaration ``@``-references must answer, or that one collapses."""
+  """A key ANOTHER declaration references must answer, or that one collapses."""
 
   def test_the_graph_is_non_empty(self):
     edges = _demand_edges()
@@ -704,7 +696,7 @@ class TestNoDemandedKeyDangles:
       if not _answers(key, corpus[key], termini, ctx)
     ]
     assert not findings, (
-      f"mode={mode}: these keys are @-referenced by another declaration and do NOT "
+      f"mode={mode}: these keys are referenced by another declaration and do NOT "
       f"answer at ANY terminus, so every reference to them resolves absent:\n"
       + "\n".join(findings)
     )

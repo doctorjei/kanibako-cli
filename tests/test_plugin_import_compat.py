@@ -417,3 +417,37 @@ class TestAnOldPluginDegradesInsteadOfBricking:
         with patch("kanibako.targets.entry_points", return_value=[stale]):
             targets = discover_targets()
         assert isinstance(targets, dict)
+
+    @staticmethod
+    def _refused_plugin(agent: str) -> MagicMock:
+        """An entry point whose load() hits a REAL descriptor refusal: a leftover
+        ``$GUEST_HOME`` in a defaults file (braced-refs step 5, B1c)."""
+        from kanibako.settings.agent_defaults import _guest_path
+
+        ep = MagicMock()
+        ep.name = agent
+        ep.dist.name = f"kanibako-agent-{agent}"
+        ep.load.side_effect = lambda: _guest_path(
+            "$GUEST_HOME/.config/goose", f"{agent}-defaults.yaml",
+        )
+        return ep
+
+    def test_a_refused_descriptor_is_not_called_a_version_mismatch(self, capsys) -> None:
+        """A value this release refuses is named as such, with its cure; the warning
+        does not guess that the package was built against a different kanibako-cli."""
+        from kanibako.targets import discover_targets
+
+        refused = self._refused_plugin("goose")
+        healthy = self._healthy_plugin("claude")
+        with patch("kanibako.targets.entry_points", return_value=[refused, healthy]):
+            targets = discover_targets()
+        err = capsys.readouterr().err
+
+        assert "goose" not in targets
+        assert "claude" in targets, "a healthy agent must not be taken down with the refused one"
+        assert "kanibako-agent-goose" in err, err  # WHO
+        assert "goose-defaults.yaml" in err, err  # which file
+        assert "{$GUEST_HOME}" in err, err  # the cure
+        assert "SKIPPED" in err, err
+        assert "kanibako setup" in err, err
+        assert "built against a different kanibako-cli" not in err, err

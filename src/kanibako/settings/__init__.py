@@ -16,7 +16,7 @@ The resolver chain, in build order:
 * ``settings_assemble``   — per-scope settings files → ordered partials.
 * ``settings_merge``      — the depth-sensitive per-name union of those partials.
 * ``settings_expand``     — eager build-time expansion of tokens to terminals.
-* ``settings_resolve``    — the expression engine (``@``-refs, ``$vars``, ``~``)
+* ``settings_resolve``    — the expression engine (``{key}``-refs, ``{$VAR}``s, ``~``)
   and the box-layout contract: the ``GUEST_HOME``/``GUEST_UID``/``GUEST_GID``
   image contract plus the GUEST workspace/vault leaves
   (``GUEST_WORKSPACE``/``GUEST_VAULT_RO``/``GUEST_VAULT_RW`` and their

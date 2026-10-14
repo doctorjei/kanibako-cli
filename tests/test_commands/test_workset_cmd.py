@@ -2463,7 +2463,7 @@ class TestWorksetCmdSystemFloor:
     that they DO (by mutation) and that the display renders everything the launch floor
     answers (by derivation), so no key name appears in this file at all.
 
-    ⚑ The failure this guards is SILENT by construction: an unresolvable ``@``-ref is a
+    ⚑ The failure this guards is SILENT by construction: an unresolvable ``{key}``-ref is a
     legitimately-absent referent, not an error, so the binding row simply does not
     print, with rc 0.
     """

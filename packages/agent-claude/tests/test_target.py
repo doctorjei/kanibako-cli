@@ -577,7 +577,7 @@ class TestDefaultEnvs:
         # The two spec-declared vars, plus KANIBAKO_DIRECTIVE_FINAL naming claude's
         # native user-memory slot (the file the box-start flattener writes).  These
         # are DECLARED KEYS reaching the box through the settings channel, so a user
-        # can override one BY NAME; $GUEST_HOME is expanded by the loader.
+        # can override one BY NAME; {$GUEST_HOME} is expanded by the loader.
         assert ClaudeTarget().default_envs() == {
             "agent.claude.env.DISABLE_AUTOUPDATER": "1",
             "agent.claude.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",

@@ -105,7 +105,7 @@ def test_an_explicitly_empty_options_entry_does_NOT_take_the_category_default(
   )
   # NON-VACUOUS: the sibling helper LOG in the SAME table carries its declared
   # options, so "" is not simply what this path produces for everything. (Its own
-  # ``@``-ref source needs the workset floor this narrow harness omits, so it is
+  # ``{key}``-ref source needs the workset floor this narrow harness omits, so it is
   # pinned here at the entry rather than at the emitted Mount.)
   assert options[log_dest] == "ro", options
   # The spawn-budget bind is read-only too: a box must not rewrite its budget.

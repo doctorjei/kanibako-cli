@@ -219,7 +219,7 @@ class TestScopeEnvIsSettable:
         """The scoped arm IS host-expanded at launch, so it probes (R-39 note).
 
         The bare spelling was excluded from the probe because its value never
-        reached the expander; the scoped key's does, so a dangling ``@``-ref must
+        reached the expander; the scoped key's does, so a dangling ``{key}``-ref must
         be caught NOW rather than resolving silently to ``""`` at launch.
         """
         from kanibako.settings.config_keys import _probes_at_set_time

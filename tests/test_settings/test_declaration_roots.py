@@ -9,7 +9,7 @@ TWO HALVES, and they are separate rules:
 
 * the ABSTRACT categories (``common`` / ``caches`` / ``seeded``) let an author write a
   bare LEAF, and the root is supplied AT DECLARATION-LOAD, so what is STORED is the full
-  self-resolving ``@``-ref. Rooted at DECLARATION is REQUIRED; a later layer prepending a
+  self-resolving ``{key}``-ref. Rooted at DECLARATION is REQUIRED; a later layer prepending a
   root is the ``scope_roots`` shape §2a calls FORBIDDEN — which is why these assertions
   read the source off the FILE path and not off an injected floor entry.
 * the CONCRETE categories (``bindings.{ro,rw}``, ``synced``) take NO root at any scope, so

@@ -4,14 +4,14 @@ Covers the brief §5 checklist for the pure ``expand(snapshot, ctx) -> KeyStore`
 
 * transitive multi-hop chain collapses to a terminal regardless of key ORDER
   (fixpoint / topological);
-* WHOLE-VALUE ``@``-ref inherits the referent's 3-state the FULL chain length —
+* WHOLE-VALUE ``{key}``-ref inherits the referent's 3-state the FULL chain length —
   absent → the key is DROPPED; present-None → ``None``;
 * EMBEDDED token → substitution (absent → empty), never deletes the key; an
   embedded ref to a present-None key makes the WHOLE value None (spec §0);
 * CYCLE (whole-value AND embedded) → hard ``SettingsError`` with the chain;
   KEPT DISTINCT from a legitimately absent/None referent (NOT an error);
 * ``host_src`` ``{$XDG_*}``/``~`` expand host-side; ``box_dest`` ``{$XDG_*}``/``~`` left
-  RAW (deferred — asserted PRESENT) while a ``box_dest`` ``@``-ref IS expanded;
+  RAW (deferred — asserted PRESENT) while a ``box_dest`` ``{key}``-ref IS expanded;
 * escapes preserved; purity — input snapshot unmutated, idempotent on a terminal.
 
 Authority: spec §0 ("References") / §1 / §2c; system-design § "Resolution". The
@@ -145,7 +145,7 @@ def test_braced_xdg_var() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Transitive @-ref chains (fixpoint / order-independent)                      #
+# Transitive {key}-ref chains (fixpoint / order-independent)                      #
 # --------------------------------------------------------------------------- #
 
 
@@ -405,7 +405,7 @@ def test_embedded_ref_substitutes_value() -> None:
 
 
 def test_if_block_literal_carried_for_downstream_renderer() -> None:
-    # %if% is a downstream RENDER concern, NOT this pass: the embedded @-ref
+    # %if% is a downstream RENDER concern, NOT this pass: the embedded {key}-ref
     # substitutes; the %...% literal text is carried verbatim (no key deletion).
     snap = KeyStore({
         "cn": "kanibako-{meta.box.name}"
@@ -423,7 +423,7 @@ def test_if_block_literal_carried_for_downstream_renderer() -> None:
 
 
 def test_bind_host_expands_box_xdg_deferred() -> None:
-    # host_src: @-ref + ~ expand host-side; box_dest {$XDG_*} left RAW (deferred).
+    # host_src: {key}-ref + ~ expand host-side; box_dest {$XDG_*} left RAW (deferred).
     snap = KeyStore({
         "workset": {"logs": "/ws/logs"},
         "box": {"bindings": {"ro": {"helper_log": Bind(
@@ -451,7 +451,7 @@ def test_bind_box_tilde_deferred() -> None:
 
 
 def test_bind_box_at_ref_IS_expanded() -> None:
-    # box_dest @-ref (CONFIG) IS expanded even though {$XDG_*}/~ are not.
+    # box_dest {key}-ref (CONFIG) IS expanded even though {$XDG_*}/~ are not.
     snap = KeyStore({
         "dest_root": "/box/root",
         "box": {"bindings": {"rw": {"x": Bind("/h/src", "{dest_root}/sub")}}},
@@ -463,7 +463,7 @@ def test_bind_box_at_ref_IS_expanded() -> None:
 
 
 def test_bind_box_mixed_at_and_xdg() -> None:
-    # box_dest with BOTH an @-ref and a deferred {$XDG_*}: @ expands, {$XDG_*} stays raw.
+    # box_dest with BOTH a {key}-ref and a deferred {$XDG_*}: the ref expands, {$XDG_*} stays raw.
     snap = KeyStore({
         "seg": "mid",
         "box": {"bindings": {"rw": {"x": Bind("/h", "{$XDG_STATE_HOME}/{seg}/end")}}},
@@ -481,7 +481,7 @@ def test_bind_opts_carried() -> None:
 
 
 def test_bind_whole_value_host_absent_drops_bind() -> None:
-    # host_src is a whole-value @-ref to an absent key → the bind is DROPPED.
+    # host_src is a whole-value {key}-ref to an absent key → the bind is DROPPED.
     snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("{box.env.MISSING}", "~/x")}}}})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "x") is __MISSING__
@@ -512,7 +512,7 @@ def test_bind_host_xdg_and_tilde_expand_host_side() -> None:
 
 
 def test_bind_box_whole_value_absent_ref_raises() -> None:
-    # A whole-value box_dest @-ref to an absent key is unreachable on spec forms
+    # A whole-value box_dest {key}-ref to an absent key is unreachable on spec forms
     # and a mount foot-gun if coerced to "" — so it raises (not silently empty).
     snap = KeyStore({"box": {"caches": {"c": Bind("/h", "{box.env.NOPE}")}}})
     with pytest.raises(SettingsError) as ei:
@@ -697,7 +697,7 @@ def test_ref_regex_admits_persona_node_separator() -> None:
 
 
 def test_whole_value_persona_ref_resolves_bool_not_valueerror() -> None:
-    # The e2e-crashing case: an @-ref whose key contains a ℘ node-name resolves to
+    # The e2e-crashing case: a {key}-ref whose key contains a ℘ node-name resolves to
     # the value AT that key (a bool), not the garbage-truncated "…navigator"
     # sub-string that fed as_bool a bad literal and raised ValueError at launch.
     snap = KeyStore({
@@ -725,7 +725,7 @@ def test_diamond_no_false_cycle() -> None:
 # --------------------------------------------------------------------------- #
 #
 # STRICT (default) is byte-identical (the suite above asserts it). LENIENT
-# collects dangling @-refs / unknown {$VAR} / cycles into an error map keyed by the
+# collects dangling {key}-refs / unknown {$VAR} / cycles into an error map keyed by the
 # owning leaf's dotted path, resolves everything else, and TERMINATES on a cycle.
 
 
@@ -1159,7 +1159,7 @@ def test_embedded_colorterm_substitutes_empty_and_keeps_its_key(
 
     Absence deletes the key only where the whole value IS the token. Here the key's
     value is a sentence the user wrote, and it still exists — exactly as an embedded
-    ``@``-ref to an absent key behaves (``_lookup_str``).
+    ``{key}``-ref to an absent key behaves (``_lookup_str``).
     """
     monkeypatch.delenv("COLORTERM", raising=False)
     out = expand(KeyStore({"box": {"env": {"NOTE": "color={$COLORTERM};"}}}), _ctx())
@@ -1237,7 +1237,7 @@ def test_bind_entry_src_expands_host_side() -> None:
 
 def test_bind_entry_dest_key_expands_refs_but_defers_tilde_and_vars() -> None:
     # The destination moved from the VALUE to the KEY, so the key now carries the
-    # box_dest rule: ``@``-refs resolve; ``{$XDG_*}``/``~`` stay RAW for the box side
+    # box_dest rule: ``{key}``-refs resolve; ``{$XDG_*}``/``~`` stay RAW for the box side
     # (S17). Both halves of that rule are asserted on ONE arm.
     snap = _arm(
         {
@@ -1250,7 +1250,7 @@ def test_bind_entry_dest_key_expands_refs_but_defers_tilde_and_vars() -> None:
     arm = _probe(out, "box", "bindings", "rw")
     assert isinstance(arm, KeyStore)
     assert set(dict.keys(arm)) == {
-        "/data/box/home",  # @-ref expanded
+        "/data/box/home",  # {key}-ref expanded
         "~/.claude",  # ~ deferred, RAW
         "{$XDG_STATE_HOME}/k",  # {$VAR} deferred, RAW
     }
@@ -1656,8 +1656,8 @@ def test_space_selects_the_home_and_nothing_else_about_variables() -> None:
 
 
 def _refusing_lookup(ref: str, chain: tuple[str, ...]) -> str:
-    """``expand_expr`` lookup for expressions that carry no ``@``-ref."""
-    raise AssertionError(f"unexpected @-ref lookup: {ref}")
+    """``expand_expr`` lookup for expressions that carry no ``{key}``-ref."""
+    raise AssertionError(f"unexpected {{key}}-ref lookup: {ref}")
 
 
 def test_tilde_is_the_box_home_in_a_box_dest_and_the_host_home_in_a_host_src() -> None:
@@ -1738,7 +1738,7 @@ def test_every_legal_path_value_reaches_the_mount_unrefused(canon, expected) -> 
 
     ⚑ It tests the EXPANDED value, never the stored spelling — which is the whole
     reason [R147]'s four legal forms survive it: ``~``, ``$XDG_*`` (bare and braced)
-    and an ``@``-ref have all become an absolute path by the time the check runs.
+    and a ``{key}``-ref have all become an absolute path by the time the check runs.
     A guard placed on the STORED string instead would refuse every row here.
     """
     snap = KeyStore({

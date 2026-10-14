@@ -7,7 +7,7 @@
 - _scope token_: the ``system``/``agent``/``workset``/``box`` root a file is spelled against — KEPT
   in the partial (§0: namespace is ORTHOGONAL to cascade)
 
-READS + structural parsing ONLY: no merge/precedence, no ``@``-ref / ``$var`` / ``~`` expansion, no
+READS + structural parsing ONLY: no merge/precedence, no ``{key}``-ref / ``{$VAR}`` / ``~`` expansion, no
 typed views, no ``config set``. Binds keep their tokens RAW (spec §0). Authority, the seams realized
 here (S3/S7/S8/S9/S13/S14) & the dest-keying depth rule: llm-docs.
 """

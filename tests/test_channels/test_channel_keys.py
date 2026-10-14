@@ -402,7 +402,7 @@ class TestTheFloorCarriesTheWholeFamily:
     ):
         """⚑ standalone: the root and the four LOCAL leaves are ``<None>``, the two
         partition keys are not.  The ``<None>`` is SUPPLIED as a present ``None``, never
-        omitted ([R177]): an absent key renders ``""`` inside an embedded ``@``-ref."""
+        omitted ([R177]): an absent key renders ``""`` inside an embedded ``{key}``-ref."""
         from kanibako.settings.settings_launch import _workset_channel_floor_values
         from kanibako.settings.settings_launch import workset_anchor_floor
 

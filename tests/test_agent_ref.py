@@ -121,7 +121,7 @@ def test_parse_valid_does_not_raise():
 #
 # A node-name is a KEY SEGMENT (``agent.<node>.…``, ``meta.agent.<node>.…``) and
 # an on-disk directory name.  Every character this module admits must therefore
-# also be matchable by ``settings_resolve._REF_SEG``, or an ``@``-ref naming the
+# also be matchable by ``settings_resolve._REF_SEG``, or a ``{key}``-ref naming the
 # node truncates mid-name: silent ``""`` garbage at the bind-path sites, a hard
 # ``expected bool, got str`` at the auth site.
 # ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ def test_segment_charset_is_subset_of_ref_seg():
         f"agent_ref admits {len(offenders)} character(s) that "
         f"settings_resolve._REF_SEG ({_REF_SEG}) cannot match, e.g. "
         f"{offenders[:20]!r} — a node-name containing one truncates every "
-        f"@-ref that names it"
+        f"{{key}}-ref that names it"
     )
 
 

@@ -1,8 +1,8 @@
 """TIER PARITY — the path tier a user may SET must equal the path tier LAUNCH resolves.
 
 ⚑ THE PROPERTY.  A path-tier key is resolvable at SET time (``config set`` can accept a
-value naming it, and an ``@``-ref to it expands) and resolvable at LAUNCH time (a stored
-``@``-ref to it expands when the box actually starts).  Those two must name the SAME SET
+value naming it, and a ``{key}``-ref to it expands) and resolvable at LAUNCH time (a stored
+``{key}``-ref to it expands when the box actually starts).  Those two must name the SAME SET
 OF KEYS.  Where they differ, one of the two carriers is wrong — and the code cannot tell
 you which, because neither side has ever compared itself to the other.  That is the
 project's named recurring defect class: TWO CARRIERS OF ONE SHAPE, DISAGREEING, WITH

@@ -256,7 +256,7 @@ def _subject_inputs(which: str, std, ws, box) -> LaunchInputs:
 
 
 def _refer_to(std, refs: dict[str, str]) -> None:
-    """Write system binds whose SOURCES are the ``@``-refs in *refs* (guest dest → ref)."""
+    """Write system binds whose SOURCES are the ``{key}``-refs in *refs* (guest dest → ref)."""
     std.settings.parent.mkdir(parents=True, exist_ok=True)
     std.settings.write_text("system:\n  bindings:\n    ro:\n" + "".join(
         f"      {dest}: ['{ref}']\n" for dest, ref in refs.items()

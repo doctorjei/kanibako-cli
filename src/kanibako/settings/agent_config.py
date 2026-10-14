@@ -128,7 +128,7 @@ def agent_category_dirname(category: str) -> str:
 
 
 def category_root_ref(scope: str, category: str, *, agent: str | None = None) -> str:
-    """The self-resolving ``@``-ref an abstract *category*'s sources root at, per SCOPE.
+    """The self-resolving ``{key}``-ref an abstract *category*'s sources root at, per SCOPE.
 
     ⚑ What a loader STORES: it must resolve on its own, with no layer prepending
     anything later (spec §2a).  Every row comes from the single copy of the
@@ -155,7 +155,7 @@ def category_root_ref(scope: str, category: str, *, agent: str | None = None) ->
 
 
 def agent_category_root_ref(agent: str, category: str) -> str:
-    """The self-resolving ``@``-ref an abstract *category*'s sources root at."""
+    """The self-resolving ``{key}``-ref an abstract *category*'s sources root at."""
     # ⚑ The AGENT row of :func:`category_root_ref`, kept as a named entry point for
     # the per-agent loaders that never see another scope.
     return category_root_ref("agent", category, agent=agent)

@@ -412,7 +412,7 @@ class TestWorksetChannelFloorLeaf:
     leaf into ``workset.channels.{leaf}``.  A rename of the channel type root that
     updates only the literal spellings leaves the floor installing the OLD key
     while ``core-defaults.yaml`` asks for the NEW ``{workset.channels.common}`` —
-    the @-ref does not resolve and the workset common bind SILENTLY VANISHES (no
+    the {key}-ref does not resolve and the workset common bind SILENTLY VANISHES (no
     error, no warning).
 
     Tests that pass their own ``workset_channels=`` dict into
@@ -456,7 +456,7 @@ class TestWorksetChannelFloorLeaf:
         }
         assert referenced, "expected {workset.channels.*} routed binds"
         assert referenced <= installed, (
-            f"bind @-refs with no floor key: {sorted(referenced - installed)}"
+            f"bind {{key}}-refs with no floor key: {sorted(referenced - installed)}"
         )
 
     def test_standalone_has_only_the_all_projects_channel_keys(

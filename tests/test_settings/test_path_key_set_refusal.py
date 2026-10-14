@@ -626,7 +626,7 @@ class TestEveryNounPassesItsTarget:
 
 
 # ---------------------------------------------------------------------------
-# The system PATH TIER's @-ref scope (system-design "Ordering rule": a key depends only on preceding sets)
+# The system PATH TIER's {key}-ref scope (system-design "Ordering rule": a key depends only on preceding sets)
 # ---------------------------------------------------------------------------
 
 #: Shapes whose ``{key}``-ref names a key OUTSIDE the system path tier.  Each parses to a

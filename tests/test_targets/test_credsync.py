@@ -703,7 +703,7 @@ def _real_auth_source(mode: str, *, agent_name: str = "goose"):
 
     The hand-built AuthSource fixtures above set ``workset_source`` explicitly, so
     they cannot reproduce the standalone ``{workset.auth.path}/<agent>`` →
-    ``/<agent>`` escape (workset.auth.path=None renders the @-ref as ``""``). This
+    ``/<agent>`` escape (workset.auth.path=None renders the {key}-ref as ``""``). This
     exercises the true resolver so the guard is proven against the real value.
     """
     from kanibako.settings.settings_launch import (

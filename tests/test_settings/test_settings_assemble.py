@@ -5,7 +5,7 @@ Covers the brief's checklist: the 6-level count + MOST-SPECIFIC-FIRST order;
 pre-merged), each under its TRUE discriminated §2d key (``agent.default.<key>`` /
 ``agent.<active-name>.<key>`` — NO bare-``agent`` collapse, spec §0/§2d);
 binds become ``BindEntry`` under a DEST-KEYED terminal category key — all six of
-them since 2026-08-08c — with raw ``@``-refs / ``$vars``
+them since 2026-08-08c — with raw ``{key}``-refs / ``{$VAR}``s
 / ``~`` preserved (NOT expanded); ``masks`` is the keyed ``dict[box_dest →
 bool|None]`` shape; absent files → empty ``KeyStore`` partials; the floor lands
 on ``base``, the cascade ends at ``box`` (no ``required`` cap); NO ``machine``

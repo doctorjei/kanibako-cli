@@ -2928,7 +2928,7 @@ class TestCategoryConfigSet:
     ⚑⚑ THIS CLASS USED TO PIN THE SOURCE-ONLY REPOINT (S24/S25): a category set
     swapped ``host_src`` and preserved ``box_dest`` + options RAW, WARNed on a
     not-yet-existent literal, and hard-ERRORed on the ``:`` notation / a dangling
-    ``@``-ref / an unknown ``$VAR`` / a key absent from the cascade. **DS-BL1 = (a)
+    ``{key}``-ref / an unknown ``{$VAR}`` / a key absent from the cascade. **DS-BL1 = (a)
     ([Jei:2026-08-07g] — "accept the loss uniformly") retired that route for EVERY
     bind-shaped category**, so what is pinned here now is the REFUSAL: by name, with
     a cure, in the verb preamble before any write machinery, at every scope, leaving
@@ -3184,10 +3184,10 @@ class TestCategoryConfigSet:
 
 
 # ---------------------------------------------------------------------------
-# Cross-scope @-ref resolution at set-time — the (b) FULL CASCADE rework
+# Cross-scope {key}-ref resolution at set-time — the (b) FULL CASCADE rework
 # ([Jei:2026-06-29]). The first cut built the set-time snapshot from the
 # command-scope file + the system.* floor ONLY, which FALSE-BLOCKED a value that
-# @-refs a higher non-system scope key. These exercise the full cascade: a box-
+# references a higher non-system scope key. These exercise the full cascade: a box-
 # scope set whose new value references a key set ONLY at the workset scope must
 # RESOLVE (allowed); a genuinely dangling cross-scope ref still BLOCKS.
 # Spec §2a "layer the target's settings in precedence order".
@@ -3202,7 +3202,7 @@ class TestCrossScopeCascadeConfigSet:
     which is the surviving caller of the very same
     ``_category_set_lookups`` → lenient-``expand`` seam (``set_config_value`` runs it
     for every key ``_probes_at_set_time`` claims). What is pinned is unchanged: the
-    snapshot is the FULL cascade, so a cross-scope ``@``-ref RESOLVES instead of
+    snapshot is the FULL cascade, so a cross-scope ``{key}``-ref RESOLVES instead of
     false-blocking, and a genuinely dangling one still BLOCKS by name.
     """
 
@@ -3213,7 +3213,7 @@ class TestCrossScopeCascadeConfigSet:
         return f
 
     def test_cross_scope_ref_resolves_with_full_cascade(self, tmp_path):
-        """A box-scope set whose value @-refs a key set ONLY at the workset scope
+        """A box-scope set whose value references a key set ONLY at the workset scope
         is ALLOWED (the false-block the first cut produced is GONE)."""
         box_f = tmp_path / "box-settings.yaml"
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
@@ -3225,7 +3225,7 @@ class TestCrossScopeCascadeConfigSet:
         )
         # ALLOWED: {workset.vault_ro} is visible in the full cascade -> resolves.
         assert not msg.startswith("Error:"), msg
-        # stored RAW (the @-ref, NOT a literal — §0 files unresolved).
+        # stored RAW (the {key}-ref, NOT a literal — §0 files unresolved).
         assert load_doc(box_f)["box"]["canon"] == "{workset.vault_ro}/bar"
 
     def test_cross_scope_ref_false_blocked_without_workset_file(self, tmp_path):
@@ -3243,7 +3243,7 @@ class TestCrossScopeCascadeConfigSet:
         assert "workset.vault_ro" in msg  # names the broken upstream dep
 
     def test_cross_scope_genuinely_dangling_still_blocks(self, tmp_path):
-        """A value @-ref to a key set NOWHERE in the cascade still BLOCKS, naming
+        """A value {key}-ref to a key set NOWHERE in the cascade still BLOCKS, naming
         the dangling target (E3 upstream rule holds over the full cascade)."""
         box_f = tmp_path / "box-settings.yaml"
         ws_f = self._seed_workset(tmp_path, "vault_ro", "/srv/vault/ro")
@@ -5538,7 +5538,7 @@ def test_meta_box_path_is_read_only_from_every_scope():
 # ---------------------------------------------------------------------------
 
 class TestSetTimeResolutionProbe:
-    """T16 — a dangling ``@``-ref is REFUSED in a value the EXPANDER will see.
+    """T16 — a dangling ``{key}``-ref is REFUSED in a value the EXPANDER will see.
 
     Before this, the E3 probe was wired only at the CATEGORY set path, so a set
     accepted a value whose ref does not resolve. For an expanded value that is
@@ -5652,7 +5652,7 @@ class TestSetTimeResolutionProbe:
         """The live env arm is host-expanded at launch, so it gets the check.
 
         This is the direction the retired arm could not take: an unresolvable
-        ``@``-ref here would otherwise resolve to ``""`` silently at launch.
+        ``{key}``-ref here would otherwise resolve to ``""`` silently at launch.
         """
         msg = set_config_value(
             "box.env.MY_PATH", "{nope.not.a.key}/bin",
