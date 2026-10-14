@@ -135,7 +135,9 @@ _BASE_TO_BOX_LEVELS: tuple[str, ...] = ("base", *SCOPE_CONTAINMENT)
 # the DECLARATION-ROOT table is keyed on.
 
 
-def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None:
+def _declaration_root_ref(
+    path: tuple[str, ...], category: str, active_agent: str | None = None,
+) -> str | None:
     """The §2a DECLARATION ROOT for an ABSTRACT *category* declared at key *path*.
 
     *path* is the key path ABOVE the category token, doc-root first. ``None`` means
@@ -146,6 +148,11 @@ def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None:
     ⚑ A ``pref.`` head is STRIPPED, not refused: a pref's value is installed AT its
     target key (spec §2h), so it must be stored exactly as that key's own file would
     store it — an unrooted pref would reintroduce the divergence one level up.
+
+    ⚑ ``agent.default`` ROOTS AT THE ACTIVE NODE'S STORE (keyspec §2d *Default settings*:
+    its scope-root is the active agent's own path), because its values seed into every agent
+    and each must get its own directory. *active_agent* is that node; a read with no active
+    agent (an agent-less narrow resolve) keeps the reserved tier's own root.
     """
     if category not in ABSTRACT_CATEGORIES:
         return None
@@ -159,7 +166,10 @@ def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None:
         # The agent tier is DISCRIMINATED (§2d): without the node there is no row.
         if len(segments) != 2:
             return None
-        return category_root_ref(scope, category, agent=segments[1])
+        node = segments[1]
+        if node == _AGENT_DEFAULT_SUB and active_agent:
+            node = active_agent
+        return category_root_ref(scope, category, agent=node)
     return category_root_ref(scope, category) if len(segments) == 1 else None
 
 
@@ -1195,6 +1205,7 @@ def _at_bind_leaf(parts: tuple[str, ...], *, in_binds: bool) -> bool:
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
     path: tuple[str, ...] = (), for_pref_requests: bool = False,
+    active_agent: str | None = None,
 ) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
@@ -1206,7 +1217,8 @@ def _parse_node(
     *path* is the KEY PATH walked so far, doc-root first, and exists for ONE reason: it carries the
     SCOPE to :func:`_declaration_root_ref`, so an abstract category's bare leaf is rooted HERE
     (spec §2a) instead of downstream. A caller whose document does not START at a scope token seeds
-    it — :func:`_agent_partial` does, because ``self:`` IS ``agent.<node>``.
+    it — :func:`_agent_partial` does, because ``self:`` IS ``agent.<node>``. *active_agent* is the
+    node an ``agent.default`` declaration roots at (:func:`_declaration_root_ref`).
     """
     if isinstance(value, dict):
         store = KeyStore()
@@ -1232,7 +1244,7 @@ def _parse_node(
                 if isinstance(sub, dict):
                     store[key_s] = parse_bind_map(
                         sub, category=key_s,
-                        root_ref=_declaration_root_ref(path, key_s),
+                        root_ref=_declaration_root_ref(path, key_s, active_agent),
                         declared=_at_declared_category((*path, key_s)),
                         defer_shape=for_pref_requests and _under_pref(path),
                         pref_agent=_pref_agent_segment(path),
@@ -1257,6 +1269,7 @@ def _parse_node(
                 for_pref_requests=for_pref_requests,
                 at_bindings=(not in_binds and key_s == _DEST_KEYED_CATEGORY),
                 path=(*path, key_s),
+                active_agent=active_agent,
             )
         return store
     if in_binds and isinstance(value, (list, tuple)):
@@ -1365,7 +1378,7 @@ def _declared_source(
 
 def _parse_naming_file(
     raw: dict, *, file_path: Path | None, key_path: tuple[str, ...] = (),
-    for_pref_requests: bool = False,
+    for_pref_requests: bool = False, active_agent: str | None = None,
 ) -> KeyStore:
     """Parse one settings file's node, NAMING *file_path* in every refusal the parse raises.
 
@@ -1383,6 +1396,7 @@ def _parse_naming_file(
     try:
         parsed = _parse_node(
             raw, in_binds=False, path=key_path, for_pref_requests=for_pref_requests,
+            active_agent=active_agent,
         )
     except (ReservedKeyError, SettingsError) as exc:
         raise _naming_file(exc, file_path) from exc
@@ -1398,6 +1412,7 @@ def _naming_file(exc: Exception, file_path: Path | None) -> SettingsError:
 
 def _file_partial(
     raw: dict, *, path: Path | None = None, for_pref_requests: bool = False,
+    active_agent: str | None = None,
 ) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
@@ -1426,7 +1441,7 @@ def _file_partial(
         return KeyStore()
     return _parse_naming_file(
         fold_agent_nodes(raw, path=path), file_path=path,
-        for_pref_requests=for_pref_requests,
+        for_pref_requests=for_pref_requests, active_agent=active_agent,
     )
 
 
@@ -1470,8 +1485,8 @@ def _agent_partial(
                 f"agent.{level.node}.{leaf}", leaf_value,
                 where=str(path) if path is not None else None,
             )
-    scope = _scope_nodes(level.scope, sub_key=sub_key, path=path)
-    store = _file_partial(level.contained, path=path)
+    scope = _scope_nodes(level.scope, sub_key=sub_key, path=path, active_agent=node)
+    store = _file_partial(level.contained, path=path, active_agent=node)
     if not level.table and not level.state and not scope:
         return store
     agent_node = KeyStore()
@@ -1486,6 +1501,7 @@ def _agent_partial(
         # does differently from a file tier's — the file naming is the shared wrap's.
         own = _parse_naming_file(
             level.table, file_path=path, key_path=("agent", level.node),
+            active_agent=node,
         )
         # ⚑ THE FILE'S ROOT SCALARS RIDE THIS LEVEL TOO (K4): ``state`` is ``agent.<node>``'s
         # non-category leaves, so they sit beside its categories and every resolve that reads
@@ -1510,7 +1526,9 @@ def _agent_partial(
     return store
 
 
-def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore:
+def _scope_nodes(
+    scope: dict, *, sub_key: str, path: Path | None, active_agent: str | None = None,
+) -> KeyStore:
     """The node tables of the agent file's ``agent:`` table that the *sub_key* tier merges.
 
     Parsed as the scope files parse it (:func:`_file_partial`: node fold, bind parse, file named
@@ -1518,7 +1536,9 @@ def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore:
     """
     if not scope:
         return KeyStore()
-    nodes = _file_partial({FILE_SCOPE: scope}, path=path).get(FILE_SCOPE)
+    nodes = _file_partial(
+        {FILE_SCOPE: scope}, path=path, active_agent=active_agent,
+    ).get(FILE_SCOPE)
     picked = KeyStore()
     if not isinstance(nodes, KeyStore):
         return picked
@@ -1528,7 +1548,9 @@ def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore:
     return picked
 
 
-def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
+def dotted_partial(
+    floor: dict[str, object] | None, *, active_agent: str | None = None,
+) -> KeyStore:
     """Build a merge LEVEL from the caller's flat ``{dotted key: value}`` declared-default *floor*,
     EXPLODED to the nested keyspace (S7) so it merges uniformly with the other partials.
 
@@ -1540,11 +1562,13 @@ def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
     if not floor:
         return store
     for raw_key, raw_val in floor.items():
-        _insert_dotted(store, str(raw_key), raw_val)
+        _insert_dotted(store, str(raw_key), raw_val, active_agent=active_agent)
     return store
 
 
-def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
+def _insert_dotted(
+    store: KeyStore, dotted: str, value: Any, *, active_agent: str | None = None,
+) -> None:
     """Insert *value* at the dotted-path *dotted*, exploding to nested :class:`KeyStore` nodes (S7)
     and parsing the terminal leaf.
 
@@ -1588,7 +1612,7 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
         # emits a self-resolving source, which is stored verbatim.
         leaf = parse_bind_map(
             value, category=parts[-1],
-            root_ref=_declaration_root_ref(tuple(parts[:-1]), parts[-1]),
+            root_ref=_declaration_root_ref(tuple(parts[:-1]), parts[-1], active_agent),
         )
     elif parts[-1] in _MARKER_LEAF_CATEGORIES and isinstance(value, dict):
         leaf = _parse_marker_map(value, path=tuple(parts))
@@ -1629,15 +1653,17 @@ def assemble_levels(
 
     # The floor is inserted FIRST and the base-file leaves overlay it, so a base-file entry wins
     # WITHIN this single level and the floor is the ultimate fallback.
-    base_partial = dotted_partial(floor)
-    _overlay(base_partial, _file_partial(_view("base"), path=_path("base")))
+    base_partial = dotted_partial(floor, active_agent=agent_name)
+    _overlay(base_partial, _file_partial(
+        _view("base"), path=_path("base"), active_agent=agent_name,
+    ))
 
     # MOST-SPECIFIC-FIRST (S8). Each scope file's partial keeps its scope token so the merge works
     # by scope-qualified name; the agent tier keeps its §2d discriminator — NO bare-``agent``
     # collapse.
     return [
-        _file_partial(_view("box"), path=_path("box")),
-        _file_partial(_view("workset"), path=_path("workset")),
+        _file_partial(_view("box"), path=_path("box"), active_agent=agent_name),
+        _file_partial(_view("workset"), path=_path("workset"), active_agent=agent_name),
         _agent_partial(
             raw_agent, sub_key=agent_name, path=agent_path, node=agent_name,
         ),
@@ -1649,7 +1675,7 @@ def assemble_levels(
         _agent_partial(
             raw_agent, sub_key=_AGENT_DEFAULT_SUB, path=agent_path, node=agent_name,
         ),
-        _file_partial(_view("system"), path=_path("system")),
+        _file_partial(_view("system"), path=_path("system"), active_agent=agent_name),
         base_partial,
     ]
 

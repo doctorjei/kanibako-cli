@@ -927,6 +927,12 @@ relative source moves the same way; absolute sources are unaffected. Persona sto
 stale top-level symlinks (`agents/<persona>/<leaf>`) that should be swept in the same pass —
 they are harmless but will dangle if the old harness dirs are later removed.
 
+An all-agents entry (an `agent: default:` table) in `common`, `caches`, or `seeded` with a
+relative source now lands in the running agent's own store,
+`<data>/agents/<agent>/<category>/<src>`, not the shared `<data>/agents/default/<category>/<src>`,
+so each agent gets its own directory. Copy the old directory into each agent's store, or give
+the entry an absolute source to keep one directory for every agent.
+
 **(b) The box template root — verified end-to-end on a simulated upgraded store.**
 `system.base_template` is retired; the new key `system.template` names a template **root**,
 and the box-home seed lives two levels down (`global/template/box/home/`). What actually

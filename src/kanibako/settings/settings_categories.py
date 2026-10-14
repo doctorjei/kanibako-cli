@@ -130,6 +130,8 @@ def agent_declaration_root_ref(node: str) -> str:
     ⚑ ``agent.default`` HAS NO IDENTITY ANCHOR: keyspec §2d declares no
     ``meta.agent.default.*``, so its root is the store path that retired anchor
     resolved to — the same directory, spelled with no undeclared ``{key}``-ref.
+    A settings-file declaration at ``agent.default`` roots at the ACTIVE node instead
+    (``settings_assemble._declaration_root_ref``); this row is what an agent-less read keeps.
     """
     if node == "default":
         return "{config.agents}/default"

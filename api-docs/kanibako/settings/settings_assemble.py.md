@@ -47,12 +47,12 @@ def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, store
 def undeclared_listing(findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> tuple[str, str, str]
 def retired_cure(files: Iterable[SettingsFile]) -> None
 def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None, declared: bool=True, defer_shape: bool=False, pref_agent: str | None=None) -> KeyStore
-def dotted_partial(floor: dict[str, object] | None) -> KeyStore
+def dotted_partial(floor: dict[str, object] | None, *, active_agent: str | None=None) -> KeyStore
 def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
 def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig
 def agent_store_refusal(store: Path, why: str, *, fix: str | None=None) -> SettingsError
 def cascade_files(*, purpose: ReadPurpose, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, subject: str | None=None, box_ref: str | None=None) -> tuple[SettingsFile, ...]
-def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None
+def _declaration_root_ref(path: tuple[str, ...], category: str, active_agent: str | None=None) -> str | None
 def _stored_spelling(raw: Any) -> str
 def _cure_assignment(sub: str, value: Any) -> str
 def _cure_subject(level: str, box_ref: str | None) -> str
@@ -77,15 +77,15 @@ def _pref_agent_segment(parts: tuple[str, ...]) -> str | None
 def _is_bare_scalar_entry(value: Any) -> bool
 def _at_declared_category(parts: tuple[str, ...]) -> bool
 def _at_bind_leaf(parts: tuple[str, ...], *, in_binds: bool) -> bool
-def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=(), for_pref_requests: bool=False) -> Any
+def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=(), for_pref_requests: bool=False, active_agent: str | None=None) -> Any
 def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str
-def _parse_naming_file(raw: dict, *, file_path: Path | None, key_path: tuple[str, ...]=(), for_pref_requests: bool=False) -> KeyStore
+def _parse_naming_file(raw: dict, *, file_path: Path | None, key_path: tuple[str, ...]=(), for_pref_requests: bool=False, active_agent: str | None=None) -> KeyStore
 def _naming_file(exc: Exception, file_path: Path | None) -> SettingsError
-def _file_partial(raw: dict, *, path: Path | None=None, for_pref_requests: bool=False) -> KeyStore
+def _file_partial(raw: dict, *, path: Path | None=None, for_pref_requests: bool=False, active_agent: str | None=None) -> KeyStore
 def _agent_partial(raw: dict, *, sub_key: str, path: Path | None=None, node: str | None=None) -> KeyStore
-def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore
-def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None
+def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None, active_agent: str | None=None) -> KeyStore
+def _insert_dotted(store: KeyStore, dotted: str, value: Any, *, active_agent: str | None=None) -> None
 def _agent_shape_input(agent_file: SettingsFile | None) -> Any
 def _overlay(base: KeyStore, top: KeyStore) -> None
 ```

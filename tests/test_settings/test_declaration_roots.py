@@ -40,9 +40,9 @@ WS = "/ws"
 BOX = "/ws/boxes/b"
 
 
-def _ctx() -> ResolveCtx:
+def _ctx(agent: str = AGENT) -> ResolveCtx:
   return ResolveCtx(
-    agent_name=AGENT,
+    agent_name=agent,
     workset_name="myws",
     host_home="/home/u",
     xdg={"XDG_DATA_HOME": DATA, "XDG_CACHE_HOME": "/xcache"},
@@ -50,7 +50,7 @@ def _ctx() -> ResolveCtx:
   )
 
 
-def _floor() -> dict[str, object]:
+def _floor(agent: str = AGENT) -> dict[str, object]:
   """The @-anchors the four DECLARATION ROOTS resolve through — nothing else."""
   floor: dict[str, object] = {
     "config.data": DATA,
@@ -59,11 +59,11 @@ def _floor() -> dict[str, object]:
     "meta.box.name": "b",
     "meta.workset.path": WS,
   }
-  floor.update(meta_agent_path_floor(AGENT))
+  floor.update(meta_agent_path_floor(agent))
   return floor
 
 
-def _sources(tmp_path: Path, **files: str) -> dict[str, str]:
+def _sources(tmp_path: Path, active: str = AGENT, **files: str) -> dict[str, str]:
   """Write the named settings files, resolve, and return ``{box_dest: host_src}``.
 
   *files* keys are ``system`` / ``agent`` / ``workset`` / ``box``; each value is the file's
@@ -78,16 +78,16 @@ def _sources(tmp_path: Path, **files: str) -> dict[str, str]:
     p = tmp_path / f"{level}.yaml"
     p.write_text(text)
     paths[level] = p
-  ctx = _ctx()
+  ctx = _ctx(active)
   snap = build_launch_snapshot(
-    agent_name=AGENT, ctx=ctx,
+    agent_name=active, ctx=ctx,
     system_path=paths["system"], agent_path=paths["agent"],
     workset_path=paths["workset"], box_path=paths["box"],
-    default_categories=_floor(), valid_agents=(AGENT,),
+    default_categories=_floor(active), valid_agents=(active,),
   )
   return {
     e.box_dest: e.host_src
-    for e in snapshot_category_entries(snap, active_agent=AGENT, box_ctx=ctx)
+    for e in snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
     if e.delivery != "ENV"
   }
 
@@ -178,6 +178,30 @@ def test_a_pref_is_rooted_at_the_key_it_targets(tmp_path: Path) -> None:
     ),
   )
   assert sources["/home/agent/p"] == f"{AGENTS}/{AGENT}/caches/leaf"
+
+
+#: ``agent.default`` declared in each file that can hold it. keyspec §2d *Default settings*
+#: roots the tier at the ACTIVE agent's own store, so each agent gets its own directory.
+_DEFAULT_TIER = (
+  ("system", 'agent:\n  default:\n    common: {"~/d": ["leaf"]}\n', "common"),
+  ("system", 'agent:\n  default:\n    caches: {"~/d": ["leaf"]}\n', "caches"),
+  ("system", 'agent:\n  default:\n    seeded: {"~/d": ["leaf"]}\n', "seeded"),
+  ("agent", 'agent:\n  default:\n    caches: {"~/d": ["leaf"]}\n', "caches"),
+)
+
+
+@pytest.mark.parametrize("agent", [AGENT, "codex"])
+@pytest.mark.parametrize(("level", "text", "category"), _DEFAULT_TIER)
+def test_the_all_agents_tier_roots_at_the_active_agents_store(
+  tmp_path: Path, agent: str, level: str, text: str, category: str,
+) -> None:
+  """A bare leaf at ``agent.default.<abstract>`` lands under the ACTIVE agent's store.
+
+  Two agents running the same system file get two directories, never one shared
+  ``agents/default/`` directory.
+  """
+  sources = _sources(tmp_path, agent, **{level: text})
+  assert sources["/home/agent/d"] == f"{AGENTS}/{agent}/{category}/leaf"
 
 
 # --------------------------------------------------------------------------- #
