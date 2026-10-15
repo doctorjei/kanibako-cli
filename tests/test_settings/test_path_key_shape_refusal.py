@@ -9,7 +9,7 @@ A hand-edited file bypasses the ``set`` door entirely, so making the refusal rea
 EVERY path-typed key falls to the READ-time sweep over the levels a user
 writes. Two shapes reach it, and they arrive by different roads:
 
-* a **list** stays a LEAF (``_parse_node`` stores it verbatim), so the sweep saw it and
+* a **list** stays a LEAF (``parse_node`` stores it verbatim), so the sweep saw it and
   judged only strings — a list was passed through, and at the Layer-1/Layer-2 keys
   ``config._flatten_dotted`` stringified it into a Python repr that the bare-relative
   arm then reported as a path the user never wrote;
@@ -122,7 +122,7 @@ def test_a_list_at_system_channels_common_gets_the_path_key_refusal(tmp_path):
     Spec §2a: ``<scope>.common`` is the MOUNT category; ``system.channels.common`` is the
     CHANNEL type-root, and the ``channels.`` segment is the discriminator.
 
-    Mutation: key ``_parse_node``'s bind-leaf branch on the bare ``common`` token again →
+    Mutation: key ``parse_node``'s bind-leaf branch on the bare ``common`` token again →
     the bind parser's "2 or 3 elements" arity refusal answers instead.
     """
     with pytest.raises(SettingsError) as exc:
@@ -135,10 +135,10 @@ def test_a_list_at_system_channels_common_gets_the_path_key_refusal(tmp_path):
 
 def test_a_map_at_system_common_still_parses_as_a_bind_map():
     """The control: the MOUNT category ``system.common`` keeps its bind-map parse."""
-    from kanibako.settings.settings_assemble import _parse_node
+    from kanibako.settings.settings_assemble import parse_node
     from kanibako.settings.kb_store import BindEntry
 
-    parsed = _parse_node({"system": {"common": {"/x": ["/h"]}}}, in_binds=False)
+    parsed = parse_node({"system": {"common": {"/x": ["/h"]}}}, in_binds=False)
     assert isinstance(parsed["system"]["common"]["/x"], BindEntry)
 
 

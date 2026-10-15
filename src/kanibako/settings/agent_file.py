@@ -209,7 +209,7 @@ class AgentFileLevel:
     *contained* is the file's ``workset:`` / ``box:`` tables, RAW, likewise (Q85).
 
     The file's ROOT is split by KEY (:func:`level_table`): *table* holds every category key,
-    whatever it holds, and *state* every other key.  ``settings_assemble._agent_partial`` sets
+    whatever it holds, and *state* every other key.  ``settings_assemble.agent_file_partial`` sets
     both on the active tier's node, so the file reaches the cascade as one level.
     """
 
@@ -643,7 +643,7 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # Flat state = the SCALAR agent-state knobs. Exclude every key the record MODELS
     # as a field of its own, and any dict-valued entry: a CATEGORY table is a dict
     # and is NOT flat state.  This field serves the agent verbs' reads; the launch reads
-    # the file's root through ``level_table``'s *state* instead (``_agent_partial``).
+    # the file's root through ``level_table``'s *state* instead (``agent_file_partial``).
     # ⚑ EVERY modeled key, not just the ones with a scalar slot (S3/D-7): the
     # narrower test differs only for a MALFORMED file, where it swept a modeled
     # field's garbage — ``env: oops`` — into state as an agent-state knob (llm-doc).

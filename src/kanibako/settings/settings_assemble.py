@@ -108,7 +108,7 @@ _MARKER_LEAF_CATEGORIES: frozenset[str] = frozenset(
 ) - BIND_LEAF_CATEGORIES
 
 # The bind-shaped category tokens; every one holds dest-keyed ``BindMap``(s). ``masks`` (a keyed
-# 3-state, S5; dests canonicalized by :func:`_parse_marker_map`) and the scalar ``env`` /
+# 3-state, S5; dests canonicalized by :func:`parse_marker_map`) and the scalar ``env`` /
 # ``secret_path`` families are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw`` sub-tables, each holding a map.
 # ⚑ These are path SEGMENTS met on a tree walk, so ``bindings`` is UNSPLIT: the walk meets that
 # segment before it can see the arm. DERIVED (P13) from the two constants above — the ARMED
@@ -180,7 +180,7 @@ def _declaration_root_ref(
 # deliberately TIGHT: these three keys, nothing else. Why, and the M-7 precedent: llm-docs.
 
 #: The NESTED FILE path of each retired leaf → the retired KEY name. The cure is LEVEL-DEPENDENT
-#: (:func:`_retired_key_cure`) — a pref is legal only in a workset or box file (§2h). Record: M-4.
+#: (:func:`retired_key_cure`) — a pref is legal only in a workset or box file (§2h). Record: M-4.
 #: ⚑⚑ ``box.agent`` is ONE path carrying TWO retired spellings, told apart by the VALUE SHAPE the
 #: file holds (both are manifest ``renamed`` rows): a SCALAR is the agent-NAME spelling
 #: (``box.crab`` → ``box.agent`` → ``box.agent_name``, all → ``pref.system.agent``), a TABLE is the
@@ -224,7 +224,7 @@ def _cure_assignment(sub: str, value: Any) -> str:
     return f"{sub}={spelled}" if spelled else f"{sub}=<value>"
 
 
-def _cure_subject(level: str, box_ref: str | None) -> str:
+def cure_subject(level: str, box_ref: str | None) -> str:
     """The REQUIRED subject positional for ``kanibako <level> set`` — ONE derivation, shared by
     every cure this module emits.
 
@@ -258,13 +258,13 @@ def _retired_mirror_cure(
     """The LEVEL-APPROPRIATE fix for a TABLE-valued ``box.agent`` — the RETIRED settable agent
     MIRROR ``box.agent.<key>`` (R-4), whose replacement is the §2h per-agent request.
 
-    ⚑ The agent renders as the ``<agent>`` PLACEHOLDER, the :func:`_retired_behavior_cure` shape:
+    ⚑ The agent renders as the ``<agent>`` PLACEHOLDER, the :func:`retired_behavior_cure` shape:
     this seam runs BEFORE selection, so naming an agent here would be a guess — and the guess a
     box carrying this table most needs kanibako not to make.
     """
     tails = [_cure_assignment(str(sub), val) for sub, val in table.items()] or ["<key>=<value>"]
     if level in PREF_LEGAL_LEVELS:
-        subject = _cure_subject(level, box_ref)
+        subject = cure_subject(level, box_ref)
         return "; ".join(
             f"kanibako {level} set {subject} pref.agent.<agent>.{tail}" for tail in tails
         )
@@ -277,7 +277,7 @@ def _retired_mirror_cure(
     )
 
 
-def _retired_key_cure(
+def retired_key_cure(
     key: str, *, level: str, value: str, box_ref: str | None = None,
     mirror: "dict[Any, Any] | None" = None,
 ) -> str:
@@ -288,7 +288,7 @@ def _retired_key_cure(
     ``[project]`` positional (spec: the box argument is REQUIRED unless the caller's cwd already
     resolves to that box; a live box hit exactly that gap). Threaded ONLY for a box-level refusal
     (``None`` at any other *level*, where no single box is being refused for) — a WORKSET-level
-    refusal takes the ``workset set`` verb and its own placeholder (:func:`_cure_subject`).
+    refusal takes the ``workset set`` verb and its own placeholder (:func:`cure_subject`).
 
     *mirror* is the retired ``box.agent`` TABLE when that is the shape the file holds — the one
     discriminator between this key's two spellings (:data:`RETIRED_FILE_KEYS`); ``None`` means the
@@ -300,14 +300,14 @@ def _retired_key_cure(
         # Always the same cure: the replacement is a SYSTEM-scope key wherever the stale leaf was.
         return f"kanibako system set system.agent={value}"
     # box.agent / box.agent_name → the §2h request, but ONLY where a request may be written.
-    # ⚑ The VERB IS THE LEVEL (:func:`_cure_subject`) — a workset file's cure is
+    # ⚑ The VERB IS THE LEVEL (:func:`cure_subject`) — a workset file's cure is
     # ``workset set``, the same fork :func:`_retired_mirror_cure` makes.
     # 🛑 THE CURE NAMES AN AGENT AND NOTHING ELSE. It used to offer `--null
     # pref.system.agent` "for a no-agent box"; since [Jei:2026-09-19] a null
     # selection REFUSES to launch (spec §2b), so that half sent the user from one
     # error to another.
     if level in PREF_LEGAL_LEVELS:
-        subject = _cure_subject(level, box_ref)
+        subject = cure_subject(level, box_ref)
         return f"kanibako {level} set {subject} pref.system.agent={value}"
     # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
     # No single box is in scope here, so the box arm takes the placeholder.
@@ -361,7 +361,7 @@ _MIRROR_STORY = (
 _RETIRED = "a retired entry"
 
 
-def _file_spelled_parents(parts: "tuple[str, ...]") -> "list[str]":
+def file_spelled_parents(parts: "tuple[str, ...]") -> "list[str]":
     """The ancestor tables of a file-key, innermost first, spelled the way the FILE spells them.
 
     ``("agent", "default", "default_agent")`` → ``["`agent: default:`", "`agent:`"]`` — the
@@ -383,7 +383,7 @@ def refuse_retired_keys(
     Never a warning and never a silent drop; called at the SELECTION seam
     (:mod:`kanibako.settings.agent_select`), NOT inside :func:`assemble_levels`. Why both: llm-docs.
 
-    *box_ref* is passed straight through to :func:`_retired_key_cure` — see its docstring for why
+    *box_ref* is passed straight through to :func:`retired_key_cure` — see its docstring for why
     it is only meaningful at ``level="box"``.
     """
     if not isinstance(raw, dict):
@@ -398,7 +398,7 @@ def refuse_retired_keys(
         # The cure quotes the value the user ACTUALLY has, so it is copy-pasteable; a
         # present-``None`` has no value to quote → the shape.
         value = _stored_spelling(found)
-        cure = _retired_key_cure(
+        cure = retired_key_cure(
             key, level=level, value=value or "<name>", box_ref=box_ref, mirror=mirror,
         )
         where = path if path is not None else "<settings>"
@@ -409,7 +409,7 @@ def refuse_retired_keys(
             f"{_MIRROR_STORY if mirror is not None else _SELECTION_STORY}\n"
             + delete_before_set_step(
                 f"`{': '.join(parts)}` entry", where=where,
-                parents=_file_spelled_parents(parts),
+                parents=file_spelled_parents(parts),
                 # ``agent set <agent>`` reads this file for its own agent.
                 collides_with=_RETIRED if level in SET_TARGETS_ITS_OWN_FILE
                 or (mirror is not None and level == "agent") else None,
@@ -475,7 +475,7 @@ def _behavior_leaf_sites(
     return sites
 
 
-def _retired_behavior_cure(
+def retired_behavior_cure(
     successor: str, *, level: str, tier: str, subject: str | None,
     box_ref: str | None = None, node: str | None = None,
 ) -> str:
@@ -496,16 +496,16 @@ def _retired_behavior_cure(
         return f"kanibako agent set {agent} {successor}={tier}"
     if level in PREF_LEGAL_LEVELS:
         # ⚑ *agent* is the AGENT inside the key; the verb's own required positional is
-        # the BOX or WORKSET — *box_ref*, or a PLACEHOLDER (:func:`_cure_subject`).
+        # the BOX or WORKSET — *box_ref*, or a PLACEHOLDER (:func:`cure_subject`).
         return (
-            f"kanibako {level} set {_cure_subject(level, box_ref)} "
+            f"kanibako {level} set {cure_subject(level, box_ref)} "
             f"pref.agent.{agent}.{successor}={tier}"
         )
     return f"kanibako system set agent.{agent}.{successor}={tier}"
 
 
-def _behavior_cure_checks_file(level: str, *, node: str | None, subject: str | None) -> bool:
-    """Whether :func:`_retired_behavior_cure`'s cure for THIS ARM writes the file the stale
+def behavior_cure_checks_file(level: str, *, node: str | None, subject: str | None) -> bool:
+    """Whether :func:`retired_behavior_cure`'s cure for THIS ARM writes the file the stale
     entry is stored in — the one fact that decides whether the delete's ``set`` refuses.
 
     ⚑ NOT A LEVEL TABLE, and the ``agent`` tier is why: the cure writes the persona the entry
@@ -530,7 +530,7 @@ def refuse_retired_behavior_keys(
     *subject* is the agent being RESOLVED; only the agent file's root stores no node, and
     it is the one shape cured under *subject*. *box_ref* is the DIFFERENT subject the
     ``box set`` verb needs as its positional, passed straight through to
-    :func:`_retired_behavior_cure` → :func:`_cure_subject` — meaningful only at
+    :func:`retired_behavior_cure` → :func:`cure_subject` — meaningful only at
     ``level="box"``. The resolve seam passes it when its inputs name a box
     (``settings_launch.LaunchInputs.box_ref``); without one the cure keeps ``<box>``.
     """
@@ -561,7 +561,7 @@ def refuse_retired_behavior_keys(
                     f"boolean, so it maps to no tier — choose one of "
                     f"restricted | editing | full."
                 )
-            cure = _retired_behavior_cure(
+            cure = retired_behavior_cure(
                 successor, level=level, tier=tier, subject=subject, box_ref=box_ref,
                 node=node,
             )
@@ -579,8 +579,8 @@ def refuse_retired_behavior_keys(
                 + delete_before_set_step(
                     f"`{spelling}` entry",
                     where=path if path is not None else "<settings>",
-                    parents=_file_spelled_parents(parts),
-                    collides_with=_RETIRED if _behavior_cure_checks_file(
+                    parents=file_spelled_parents(parts),
+                    collides_with=_RETIRED if behavior_cure_checks_file(
                         level, node=node, subject=subject,
                     ) else None,
                 )
@@ -1201,7 +1201,7 @@ def _at_bind_leaf(parts: tuple[str, ...], *, in_binds: bool) -> bool:
     return key_class(key, valid_agents=()).cls is not KeyClass.KEY
 
 
-def _parse_node(
+def parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
     path: tuple[str, ...] = (), for_pref_requests: bool = False,
     active_agent: str | None = None,
@@ -1216,8 +1216,8 @@ def _parse_node(
     *path* is the KEY PATH walked so far, doc-root first, and exists for ONE reason: it carries the
     SCOPE to :func:`_declaration_root_ref`, so an abstract category's bare leaf is rooted HERE
     (spec §2a) instead of downstream. A caller whose document does not START at a scope token seeds
-    it — :func:`_agent_partial` does, because ``self:`` IS ``agent.<node>``. *active_agent* is the
-    node an ``agent.default`` declaration roots at (:func:`_declaration_root_ref`).
+    it — :func:`agent_file_partial` does, because ``self:`` IS ``agent.<node>``. *active_agent* is
+    the node an ``agent.default`` declaration roots at (:func:`_declaration_root_ref`).
     """
     if isinstance(value, dict):
         store = KeyStore()
@@ -1261,7 +1261,7 @@ def _parse_node(
                 _refuse_malformed_category((*path, key_s), sub)
             if not in_binds and key_s in _MARKER_LEAF_CATEGORIES:
                 if isinstance(sub, dict):
-                    store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
+                    store[key_s] = parse_marker_map(sub, path=(*path, key_s))
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
             if not in_binds and _is_table_valued_agent_leaf((*path, key_s)):
@@ -1270,7 +1270,7 @@ def _parse_node(
                 _refuse_malformed_category((*path, key_s), sub)
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or bind_leaf or key_s == _DEST_KEYED_CATEGORY
-            store[key_s] = _parse_node(
+            store[key_s] = parse_node(
                 sub,
                 in_binds=descend_binds,
                 dest_keyed=dest_keyed,
@@ -1299,14 +1299,14 @@ def _parse_node(
     return value
 
 
-def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
+def parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
     """Parse a dest-keyed MARKER map (``masks``): canonicalize each dest, keep each value as is."""
     # ⚑ A marker value is a 3-state marker, not a bind entry, so only the PER-MAP check applies.
     refuse_dest_spelled_twice(raw, category=path[-1])
     store = KeyStore()
     for key, sub in raw.items():
         dest = normalize_bind_dest(str(key))
-        store[dest] = _parse_node(sub, in_binds=False, path=(*path, dest))
+        store[dest] = parse_node(sub, in_binds=False, path=(*path, dest))
     return store
 
 
@@ -1361,7 +1361,7 @@ def parse_bind_map(
             # entry is well-formed, so deferring the shape defers that proof.
             store[dest] = sub
             continue
-        entry = _parse_node(sub, in_binds=True, dest_keyed=True)
+        entry = parse_node(sub, in_binds=True, dest_keyed=True)
         if isinstance(entry, BindEntry) and not defer_root:
             entry = BindEntry(
                 _declared_source(entry.src, category, dest, root_ref), entry.opts,
@@ -1404,7 +1404,7 @@ def _declared_source(
     return src
 
 
-def _parse_naming_file(
+def parse_naming_file(
     raw: dict, *, file_path: Path | None, key_path: tuple[str, ...] = (),
     for_pref_requests: bool = False, active_agent: str | None = None,
 ) -> KeyStore:
@@ -1417,12 +1417,12 @@ def _parse_naming_file(
     first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
     ⚑ Re-raised as ``SettingsError`` per both callers' contract; ``ReservedKeyError``'s ``KeyError``
     base is read by the ``config set`` probe, not by anything on this path.
-    ⚑ SHARED by :func:`_file_partial` and :func:`_agent_partial` — the file tiers and the agent
+    ⚑ SHARED by :func:`file_partial` and :func:`agent_file_partial` — the file tiers and the agent
     tier walk the SAME parse, so they must name the file the same way; *key_path* is the only
     difference between them (the agent file's walk starts one scope in).
     """
     try:
-        parsed = _parse_node(
+        parsed = parse_node(
             raw, in_binds=False, path=key_path, for_pref_requests=for_pref_requests,
             active_agent=active_agent,
         )
@@ -1438,14 +1438,14 @@ def _naming_file(exc: Exception, file_path: Path | None) -> SettingsError:
     return SettingsError(f"{exc} (in settings file {where})")
 
 
-def _file_partial(
+def file_partial(
     raw: dict, *, path: Path | None = None, for_pref_requests: bool = False,
     active_agent: str | None = None,
 ) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
     The rule for every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the agent
-    tier uses :func:`_agent_partial`. ⚑ The bind DEPTH is not chosen here — :func:`_parse_node`
+    tier uses :func:`agent_file_partial`. ⚑ The bind DEPTH is not chosen here — :func:`parse_node`
     derives it from the CATEGORY token it walks past, so there is no flag for a caller to get wrong.
 
     ⚑ *path* EXISTS TO NAME THE FILE IN EVERY REFUSAL THIS PARSE RAISES — the same argument, with
@@ -1467,13 +1467,13 @@ def _file_partial(
     """
     if not isinstance(raw, dict):
         return KeyStore()
-    return _parse_naming_file(
+    return parse_naming_file(
         fold_agent_nodes(raw, path=path), file_path=path,
         for_pref_requests=for_pref_requests, active_agent=active_agent,
     )
 
 
-def _agent_partial(
+def agent_file_partial(
     raw: dict, *, sub_key: str, path: Path | None = None, node: str | None = None
 ) -> KeyStore:
     """Build an AGENT-tier level partial (``agent.default`` or ``agent.<active>``) from the agent
@@ -1487,11 +1487,11 @@ def _agent_partial(
 
     *sub_key* selects the TIER; the two agent levels are kept SEPARATE (spec §2) and merge by
     their true §2d names — NO bare-``agent`` collapse. *path* NAMES THE FILE in every refusal
-    this level raises — the boundary's AND this function's own parse (:func:`_parse_naming_file`,
+    this level raises — the boundary's AND this function's own parse (:func:`parse_naming_file`,
     the same wrap the file tiers get); *node* renders the boundary's message alone. Neither is
     read as a VALUE. llm-docs.
 
-    ⚑ THE FILE'S ``agent:`` TABLE IS READ (Q92) — parsed by :func:`_file_partial`, the scope
+    ⚑ THE FILE'S ``agent:`` TABLE IS READ (Q92) — parsed by :func:`file_partial`, the scope
     files' own builder, so it folds and parses exactly as that table does in a workset or system
     file. The all-agents tier takes its ``agent.default`` node; the active tier takes every other
     node and merges them beside the re-rooted ``self:`` (:func:`_scope_nodes`). So in foo's file,
@@ -1514,7 +1514,7 @@ def _agent_partial(
                 where=str(path) if path is not None else None,
             )
     scope = _scope_nodes(level.scope, sub_key=sub_key, path=path, active_agent=node)
-    store = _file_partial(level.contained, path=path, active_agent=node)
+    store = file_partial(level.contained, path=path, active_agent=node)
     if not level.table and not level.state and not scope:
         return store
     agent_node = KeyStore()
@@ -1527,13 +1527,13 @@ def _agent_partial(
         # ``agent.<node>`` ([spec:14-18, "self"]), so the walk starts one scope in and the §2a
         # DECLARATION ROOT would otherwise have no scope to read. It is the ONLY thing this call
         # does differently from a file tier's — the file naming is the shared wrap's.
-        own = _parse_naming_file(
+        own = parse_naming_file(
             level.table, file_path=path, key_path=("agent", level.node),
             active_agent=node,
         )
         # ⚑ THE FILE'S ROOT SCALARS RIDE THIS LEVEL TOO (K4): ``state`` is ``agent.<node>``'s
         # non-category leaves, so they sit beside its categories and every resolve that reads
-        # the file reads all of it. They are set VERBATIM, with no ``_parse_node``: the record's
+        # the file reads all of it. They are set VERBATIM, with no ``parse_node``: the record's
         # coercions (``str()``, the ``run_args`` split, a bare ``run_args:`` as ``[]``) do not
         # apply, and the key split keeps them disjoint from the parsed categories. A reserved
         # name the store refuses is named with its file, as the categories' parse names it.
@@ -1559,12 +1559,12 @@ def _scope_nodes(
 ) -> KeyStore:
     """The node tables of the agent file's ``agent:`` table that the *sub_key* tier merges.
 
-    Parsed as the scope files parse it (:func:`_file_partial`: node fold, bind parse, file named
+    Parsed as the scope files parse it (:func:`file_partial`: node fold, bind parse, file named
     in every refusal). The all-agents tier takes the ``default`` node; the active tier the rest.
     """
     if not scope:
         return KeyStore()
-    nodes = _file_partial(
+    nodes = file_partial(
         {FILE_SCOPE: scope}, path=path, active_agent=active_agent,
     ).get(FILE_SCOPE)
     picked = KeyStore()
@@ -1643,9 +1643,9 @@ def _insert_dotted(
             root_ref=_declaration_root_ref(tuple(parts[:-1]), parts[-1], active_agent),
         )
     elif parts[-1] in _MARKER_LEAF_CATEGORIES and isinstance(value, dict):
-        leaf = _parse_marker_map(value, path=tuple(parts))
+        leaf = parse_marker_map(value, path=tuple(parts))
     else:
-        leaf = _parse_node(value, in_binds=in_binds)
+        leaf = parse_node(value, in_binds=in_binds)
     store.insert_segments(parts, leaf)
 
 
@@ -1682,7 +1682,7 @@ def assemble_levels(
     # The floor is inserted FIRST and the base-file leaves overlay it, so a base-file entry wins
     # WITHIN this single level and the floor is the ultimate fallback.
     base_partial = dotted_partial(floor, active_agent=agent_name)
-    _overlay(base_partial, _file_partial(
+    _overlay(base_partial, file_partial(
         _view("base"), path=_path("base"), active_agent=agent_name,
     ))
 
@@ -1690,9 +1690,9 @@ def assemble_levels(
     # by scope-qualified name; the agent tier keeps its §2d discriminator — NO bare-``agent``
     # collapse.
     return [
-        _file_partial(_view("box"), path=_path("box"), active_agent=agent_name),
-        _file_partial(_view("workset"), path=_path("workset"), active_agent=agent_name),
-        _agent_partial(
+        file_partial(_view("box"), path=_path("box"), active_agent=agent_name),
+        file_partial(_view("workset"), path=_path("workset"), active_agent=agent_name),
+        agent_file_partial(
             raw_agent, sub_key=agent_name, path=agent_path, node=agent_name,
         ),
         # ⚑⚑ THIS LEVEL HOLDS ONLY THE FILE'S ``agent: default:`` TABLE (Q92). ``self:`` has
@@ -1700,10 +1700,10 @@ def assemble_levels(
         # sub-table under it reads ``agent.<node>.default.*`` and REFUSES); the ``agent:``
         # table does, read as in any settings file, and applies only while this agent is
         # active, since only then is this file read.
-        _agent_partial(
+        agent_file_partial(
             raw_agent, sub_key=_AGENT_DEFAULT_SUB, path=agent_path, node=agent_name,
         ),
-        _file_partial(_view("system"), path=_path("system"), active_agent=agent_name),
+        file_partial(_view("system"), path=_path("system"), active_agent=agent_name),
         base_partial,
     ]
 
@@ -1721,7 +1721,7 @@ def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
 
     THE ONE READER of the agent file (design 2C): one :func:`read_settings_files` read, the
     file's shape judged by ``agent_file.level_table`` — the same view the launch's
-    :func:`_agent_partial` takes — and the record built from that level
+    :func:`agent_file_partial` takes — and the record built from that level
     (``agent_file.record``, which refuses every undeclared entry; its ``workset:`` / ``box:``
     tables are audited as the scope files' are). Every reader — the launch,
     ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file

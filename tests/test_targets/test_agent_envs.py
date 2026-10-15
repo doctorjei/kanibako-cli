@@ -294,9 +294,9 @@ class TestTheNestedSpellingRefuses:
     refuses, through the REAL chain.
 
     ⚑ The layer-level cases live in ``test_settings_launch.py``; what this one adds is that the
-    refusal is REACHABLE from the path a launch actually walks, not only from ``_agent_partial``
-    called on its own. It is a DIFFERENT raise from the twin refusal below — assembly-time file
-    spelling, not collapse-time slot arbitration.
+    refusal is REACHABLE from the path a launch actually walks, not only from
+    ``agent_file_partial`` called on its own. It is a DIFFERENT raise from the twin refusal
+    below — assembly-time file spelling, not collapse-time slot arbitration.
     """
 
     def test_a_second_node_level_under_self_refuses_naming_the_spelling(self, tmp_path):

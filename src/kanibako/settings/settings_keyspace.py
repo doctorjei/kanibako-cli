@@ -616,7 +616,7 @@ def pseudo_agent_fence(name: str) -> PseudoAgentFence | None:
 #: unwritable there. A NARROWER SUBSET, not a disagreement; the direction is pinned by
 #: ``tests/test_settings/test_settings_keyspace.py`` so it cannot silently invert.
 #: ⚑ AND THE ORDER IS WHY THIS FLOOR IS NOT REDUNDANT. For a FILE-authored key the
-#: store speaks FIRST — ``settings_assemble._parse_naming_file`` builds the
+#: store speaks FIRST — ``settings_assemble.parse_naming_file`` builds the
 #: ``KeyStore`` and raises before ``merge`` or any resolve — so the reserved arm of
 #: :func:`key_validity` never runs on that path. It earns its keep everywhere nothing
 #: has been written to a store yet — the file-scope READ gates

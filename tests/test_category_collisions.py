@@ -1286,7 +1286,7 @@ class TestRemedyBlockKeysTheDestWhole:
 
 
 def _pref_map(**entries):
-    """A dest-keyed category VALUE, shaped as ``_file_partial`` would parse it.
+    """A dest-keyed category VALUE, shaped as ``file_partial`` would parse it.
 
     A ``KeyStore`` node of ``dest -> BindEntry(src, opts)``. Written as a helper
     because the destinations are paths (``~/plugins``) and cannot be keyword

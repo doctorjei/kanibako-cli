@@ -746,7 +746,7 @@ class TestABlankExplicitRefIsGivenNotUnset:
 # --------------------------------------------------------------------------- #
 #
 # ⚑ ``TestRetiredKeyCureIsLevelAppropriate`` (and ``settings_assemble``'s own
-# mutation-proved unit tests) drove ``_retired_key_cure`` / ``refuse_retired_keys``
+# mutation-proved unit tests) drove ``retired_key_cure`` / ``refuse_retired_keys``
 # DIRECTLY — that machinery is correct but was NOT WIRED: the production caller,
 # ``select_agent``, never passed ``box_ref``, so the user-visible cure line stayed
 # the bare form regardless. These three drive ``select_agent`` itself, so deleting
@@ -862,7 +862,7 @@ class TestRetiredKeyCureIsLevelAppropriate:
         BOX. The sibling ``_retired_mirror_cure`` never had the bug; this pins the
         two functions to the same shape.
 
-        INVERT: hardcode ``box`` in ``_retired_key_cure`` again and this reddens.
+        INVERT: hardcode ``box`` in ``retired_key_cure`` again and this reddens.
         """
         msg = self._msg(tmp_path, "workset", {"box": {"agent_name": "goose"}})
         cure = msg.split("Fix: ", 1)[1].splitlines()[0].strip()

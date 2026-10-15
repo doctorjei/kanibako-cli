@@ -180,7 +180,7 @@ whole. The read this function serves and the read the cascade performs are there
 
 It resolves `agent.<node>.secret_path.<VAR>` (SECRET category) to a slot on the node's own settings
 file with the tail `secret_path.<VAR>`. `agent_file` places it at EXACTLY the table
-`_agent_partial` reads into the launch cascade and `agent_file.record` reads back into
+`agent_file_partial` reads into the launch cascade and `agent_file.record` reads back into
 `AgentConfig.secret_path`.
 
 ⚑⚑ **IT HAS THREE OUTCOMES.** A slot; `None` for an UNTHREADED `agents_root` ("no store here");
@@ -261,7 +261,7 @@ the node's file shape and is resolved by `_agent_node_route`. A key no family cl
 and falls through to `_KEY_ROUTES`.
 
 `<scope>.env.<VAR>` is the SIBLING of the scope secret pointer: a scalar in the noun's settings file
-at `<scope>.env.<VAR>`, the shape `settings_assemble._file_partial` reads into the cascade and
+at `<scope>.env.<VAR>`, the shape `settings_assemble.file_partial` reads into the cascade and
 `settings_launch._emit_scope_node` emits as a `category="env"` entry. It answers `_NOUN` for the
 same reason the secret pointer does — env is a SETTINGS category and has no Layer-1 config-file form.
 
@@ -343,7 +343,7 @@ keys that route here are the bare terminal ones — `agent.<node>.{caches,seeded
 
 ⚑⚑ **AND FOR THOSE THE ROUTE IS WRONG, MEASURABLY.** It answers the NOUN's settings file, while the
 agent tier is assembled from `agents/<node>/agent.yaml`'s FLAT category tables directly under
-`self:` (`settings_assemble._agent_partial`; a nested `self.<node>` table is REFUSED by name). So a
+`self:` (`settings_assemble.agent_file_partial`; a nested `self.<node>` table is REFUSED by name). So a
 hand-authored `self.caches` reads back "(not set)" while a stray
 `agent.claude.caches` in the system settings file reads back instead.
 

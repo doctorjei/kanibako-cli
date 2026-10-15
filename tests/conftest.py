@@ -913,7 +913,7 @@ def start_mocks():
                 # ENV category, the EXACT analog of the secret above and folded for
                 # the same reason (MBR-1 P3): the per-agent file's ``self.env`` is an
                 # ``agent.<node>.env.<VAR>`` key now, re-rooted into the cascade by
-                # ``_agent_partial``, and it reaches the box ONLY through the collapse.
+                # ``agent_file_partial``, and it reaches the box ONLY through the collapse.
                 # The stub's agent file carries no ``env``, so without the fold a mocked
                 # launch would deliver none of a user's agent-scope variables.
                 # ⚑ THE APPROXIMATION is the same one the secret takes: the value

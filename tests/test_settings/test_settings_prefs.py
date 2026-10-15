@@ -389,7 +389,7 @@ def test_collect_tolerates_absent_files_and_absent_tables(tmp_path):
 
 
 def test_collect_parses_a_bind_shaped_pref_as_a_bind(tmp_path):
-    """The pref path mirrors the target path, so `_parse_node`'s ancestor test
+    """The pref path mirrors the target path, so `parse_node`'s ancestor test
     makes a bind-shaped request a real bind — the property D5 protects.
 
     ⚑ ``common`` is TERMINAL and DEST-KEYED since 2026-08-08c, so the request ends
@@ -439,7 +439,7 @@ def test_a_dotted_leaf_inside_the_pref_table_is_an_error(tmp_path):
 
 # ⚑ THE PATH WAS IN SCOPE AND WAS NOT PASSED. ``collect_prefs`` builds a SYNTHESIZED
 # ``{pref: table}`` wrapper to re-use the cascade's parse, and handed it to
-# ``_file_partial`` with no path — so a refusal raised while parsing a real workset or
+# ``file_partial`` with no path — so a refusal raised while parsing a real workset or
 # box file rendered the anonymous ``<settings>`` while the very next argument on the
 # same call, ``prefs_from_partial(..., path=path)``, already carried the filename.
 #
@@ -460,7 +460,7 @@ def test_a_dotted_leaf_inside_the_pref_table_is_an_error(tmp_path):
     ),
 ])
 def test_a_pref_file_parse_refusal_NAMES_THE_FILE(tmp_path, arm, doc, needle):
-    # MUTATION-PROVED: drop ``path=path`` from the ``_file_partial`` call in
+    # MUTATION-PROVED: drop ``path=path`` from the ``file_partial`` call in
     # ``collect_prefs`` and every row goes red on the filename assert alone.
     f = write(tmp_path / f"{arm}.yaml", doc)
     args = (f, None) if arm == "workset" else (None, f)
@@ -1184,8 +1184,8 @@ class TestPrefShapeVerdictFollowsTheAgentVerdict:
         """The deferral is scoped to a ``pref.`` head: the same malformed map read as
         a settings value is still refused by the parse. INVERT: defer every map
         -> reddens here."""
-        from kanibako.settings.settings_assemble import _file_partial
+        from kanibako.settings.settings_assemble import file_partial
 
         with pytest.raises(SettingsError) as exc:
-            _file_partial({"agent": {"claude": {"seeded": {"somebox": "some-scalar"}}}})
+            file_partial({"agent": {"claude": {"seeded": {"somebox": "some-scalar"}}}})
         assert "must be a structured entry" in str(exc.value)

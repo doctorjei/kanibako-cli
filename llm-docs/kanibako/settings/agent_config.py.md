@@ -58,7 +58,7 @@ ordinary §2d key, and a file still holding a `name:` line REFUSES the launch by
 
 `agent.<node>.env.<VAR>`, stored flat under `self` for the same reason `secret_path` is.
 
-⚑ **It is NOT a launch-invocation input and not a delivery route.** `_agent_partial` re-roots the
+⚑ **It is NOT a launch-invocation input and not a delivery route.** `agent_file_partial` re-roots the
 table into the cascade, and the variable reaches the box through the collapse's arbitrated env slots
 like every other scope's.
 
@@ -84,7 +84,7 @@ Spec §2a. A mapping of VAR to a host PATH pointing at secret material — for e
 bearer-token file.
 
 Stored DISCRIMINATED under `agent.<node>.secret_path.<VAR>`: the same first-class category shape that
-`config set agent.<node>.secret_path.<VAR>` writes and that `_agent_partial` reads into the launch
+`config set agent.<node>.secret_path.<VAR>` writes and that `agent_file_partial` reads into the launch
 cascade. That is what makes it resolve through `system → workset → box → agent` precedence.
 
 The value is a PATH only. At launch the file is ro-bind-mounted arm's-length and exported IN-BOX;
@@ -107,7 +107,7 @@ The category tables that get no field of their own: `bindings` (the `{ro, rw}` p
 `caches`, `seeded`, `common`, `synced`, `masks`. All flat under the file's root, again because
 `self` IS `agent.<node>`.
 
-They are not modeled as fields because they ride `_agent_partial` into the launch **cascade**, not
+They are not modeled as fields because they ride `agent_file_partial` into the launch **cascade**, not
 into the launch invocation. They are carried OPAQUELY through the load → write round trip.
 
 ⚑ **That round trip has no live producer.** All three `agent_file.save` callers persist a

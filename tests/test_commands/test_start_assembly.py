@@ -760,7 +760,7 @@ class TestOneVariableTwoOrderings:
 class TestTheAgentFileEnvRidesTheOneChannel:
     """MBR-1 P3 — the per-agent FILE's ``self.env`` is an ordinary ``agent.<node>.env.<VAR>``.
 
-    🛑 IT WAS NOT ONE. ``settings_assemble._agent_partial`` re-rooted the file's flat
+    🛑 IT WAS NOT ONE. ``settings_assemble.agent_file_partial`` re-rooted the file's flat
     ``self.secret_path`` and nothing else, so the env block never became a snapshot
     leaf: it reached the box on a private under-layer BELOW every collapsed slot.
     Two consequences, both closed here and both pinned below — it lost to a ``system``

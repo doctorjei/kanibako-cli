@@ -118,7 +118,7 @@ def test_a_bare_leaf_is_rooted_at_every_declaring_scope(
   """A bare LEAF in an abstract category resolves under ``<scope-root>/<category>/``.
 
   (Mutation: drop the ``root_ref=`` argument at either ``parse_bind_map`` call site in
-  ``settings_assemble._parse_node`` → every row fails with the bare ``'leaf'``.)
+  ``settings_assemble.parse_node`` → every row fails with the bare ``'leaf'``.)
   """
   assert _sources(tmp_path, **{level: text})[dest] == expected
 

@@ -129,7 +129,7 @@ class TestScopeEnvIsSettable:
             config_path=f, command_scope=ConfigLevel.box,
         )
         assert msg == "Set box.env.EDITOR=vim", msg
-        # Stored at the shape ``_file_partial`` reads into the launch cascade.
+        # Stored at the shape ``file_partial`` reads into the launch cascade.
         assert load_doc(f)["box"]["env"]["EDITOR"] == "vim"
 
         assert get_config_value(

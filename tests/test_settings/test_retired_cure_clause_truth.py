@@ -16,7 +16,7 @@
 # ⛔ THE REFUSAL IS NOT PER LEVEL. At the ``agent`` tier it turns on the ARM: the
 # cure writes the persona the entry is STORED UNDER, so one entry refuses under
 # its own persona and succeeds under another's. Measured per arm in section 5; for
-# the behavior keys ``_behavior_cure_checks_file`` is the one place that decides it.
+# the behavior keys ``behavior_cure_checks_file`` is the one place that decides it.
 #
 # What is therefore stated unconditionally is the one fact that holds at every
 # level and for every shape: a table left with nothing under it parses as null,
@@ -34,8 +34,8 @@ import yaml
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _refuse_nested_tables
 from kanibako.settings.settings_assemble import (
-    _behavior_cure_checks_file,
-    _file_spelled_parents,
+    behavior_cure_checks_file,
+    file_spelled_parents,
     refuse_retired_behavior_keys,
     refuse_retired_keys,
 )
@@ -111,13 +111,13 @@ def test_the_agent_tier_is_decided_per_arm_and_not_per_level() -> None:
     """Same level, same entry spelling, opposite answers — so a level table cannot
     carry it. The persona is *node*, falling back to *subject* (the cure's own rule)."""
     # entry stored under another persona -> the cure writes THAT persona's file
-    assert _behavior_cure_checks_file("agent", node="claude", subject="goose") is False
+    assert behavior_cure_checks_file("agent", node="claude", subject="goose") is False
     # entry stored under its own persona -> the cure writes the file holding it
-    assert _behavior_cure_checks_file("agent", node="claude", subject="claude") is True
+    assert behavior_cure_checks_file("agent", node="claude", subject="claude") is True
     # the agent file's own root stores no node and falls back to *subject*
-    assert _behavior_cure_checks_file("agent", node=None, subject="goose") is True
+    assert behavior_cure_checks_file("agent", node=None, subject="goose") is True
     # the reserved default tier is cured by the bare key at the SYSTEM scope
-    assert _behavior_cure_checks_file("agent", node="default", subject="goose") is False
+    assert behavior_cure_checks_file("agent", node="default", subject="goose") is False
 
 
 @pytest.mark.parametrize("level", _LEVELS)
@@ -134,7 +134,7 @@ def test_the_wording_matches_the_predicate_at_every_level_and_arm(level, node) -
         raw = {"pref": {"agent": {node or "shell": {"auto_approve": True}}}}
     msg = _behavior_refusal(level, node_entry=raw, subject=subject)
     promised = _PROMISES_REFUSAL in msg
-    assert promised is _behavior_cure_checks_file(level, node=node, subject=subject), (
+    assert promised is behavior_cure_checks_file(level, node=node, subject=subject), (
         f"{level}/node={node}: the printed sentence must match whether the cure "
         f"writes the file holding this entry"
     )
@@ -174,11 +174,11 @@ def test_the_stranded_parent_is_never_called_a_refusal(level) -> None:
 def test_every_enclosing_table_up_to_the_top_level_is_named(parts, spelled) -> None:
     """Derived from the retired key's OWN path, so it holds at any depth rather than
     from a table of parents measured at one."""
-    assert _file_spelled_parents(parts) == spelled
+    assert file_spelled_parents(parts) == spelled
 
 
 def test_a_top_level_leaf_has_no_parent_to_strand() -> None:
-    assert _file_spelled_parents(("agent_name",)) == []
+    assert file_spelled_parents(("agent_name",)) == []
 
 
 # --------------------------------------------------------------------------- #

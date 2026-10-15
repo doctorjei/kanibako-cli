@@ -375,7 +375,7 @@ Unpack a STRUCTURED **name-keyed** category binding leaf into `(host_src, box_de
 A structured leaf is a YAML list or Python `tuple`, never a colon-joined `"host:box"` string (spec
 §2a "REPRESENTATION"). ⚑ No bind-shaped category is name-keyed: every `bindings.*` / `caches` /
 `seeded` / `common` / `synced` value is a DEST-KEYED map read by `unpack_bind_entry`. The one
-caller, `settings_assemble._parse_node`, reaches this function only for a MALFORMED node that
+caller, `settings_assemble.parse_node`, reaches this function only for a MALFORMED node that
 `parse_bind_map` hands back.
 
 * **2 elements** `[host_src, box_dest]` → `(host_src, box_dest, None)`; the caller falls back to

@@ -49,7 +49,7 @@ exactly like the `workset.channels.*` six.
 All six declared leaves (`common`, `chat`, `share`, `broadcast`, `mailboxes`, `share_global` —
 `settings_keyspace.DECLARED_WORKSET_CHANNEL_LEAVES`, spec §2c) are `set: cli+file` STRING paths
 (`KEY_TYPES` type `path` — stored raw, never coerced), routed to the SAME `workset: channels:` nested slot, which is where
-`settings_assemble._file_partial` reads the whole table into the cascade.
+`settings_assemble.file_partial` reads the whole table into the cascade.
 
 ⚑ A leaf missing from `KNOWN_CONFIG_KEYS` and `_KEY_ROUTES` would break both halves of a declared
 key in opposite directions — a CLI `set` answering "unknown config key" while a hand-authored value
@@ -607,7 +607,7 @@ The regex does not match the ``box.agent.bindings.*`` box-mirror form (a ``box``
 
 ``agent.<node>.secret_path.<VAR>`` — the per-node SECRET category (spec §2a). Like the
 descriptor bind key it is DISCRIMINATED (node in the key) and stored UNDER the
-``agent.<node>.secret_path`` sub-table in the node's OWN settings file — the shape `_agent_partial`
+``agent.<node>.secret_path`` sub-table in the node's OWN settings file — the shape `agent_file_partial`
 reads into the launch cascade — but the value is a SCALAR host PATH, not a `Bind` tuple (so it routes
 via a plain scalar write — never the category write route, which no longer exists at all: DS-BL1 =
 (a)). ``<node>`` is NON-greedy so the FIRST ``.secret_path.`` splits node from VAR; VAR is the
@@ -619,7 +619,7 @@ env-name shape (no dots).
 value | scoped env var``, and §2a's "What remains CLI-settable: scalars, including ``env.<VAR>``".
 The AGENT scope form ``agent.<node>.env.<VAR>`` is DISCRIMINATED and routed by
 `_is_persona_agent_key` (the node file); this covers the other three, which write a scalar to the
-COMMAND scope's OWN settings file at ``<scope>.env.<VAR>`` — the shape `_file_partial` reads into
+COMMAND scope's OWN settings file at ``<scope>.env.<VAR>`` — the shape `file_partial` reads into
 the cascade and `settings_launch._emit_scope_node` delivers as a ``category="env"`` entry. The match
 is `settings_categories.ENV_KEY_RE` through `_file_scope_match`, deliberately the SIBLING-EXACT twin
 of the secret family below: same three scopes, same VAR shape (no dots), same NOUN-file destination.
@@ -632,7 +632,7 @@ this path.
 `settings_categories.SECRET_KEY_RE` through `_file_scope_match`. The AGENT scope form
 ``agent.<node>.secret_path.<VAR>`` is DISCRIMINATED and routed by `_is_agent_node_secret_key` (the
 node file); this covers the other three, which write a scalar to the COMMAND scope's OWN settings
-file at ``<scope>.secret_path.<VAR>`` (the shape `_file_partial` reads into the cascade).
+file at ``<scope>.secret_path.<VAR>`` (the shape `file_partial` reads into the cascade).
 
 ## Scopes that cannot write a BARE agent key — `_NO_BARE_AGENT_KEY_SCOPES`
 
@@ -1354,7 +1354,7 @@ category>.<name>``, or `None` when *canonical* is not one.
 
 The SIBLING of :func:`scope_bind_retired_error` — same ruling, same wording, one different cure: the
 tuple lives in the NODE's own settings file ``agents/<node>/agent.yaml``, under the flat
-``self.<category>`` table (the shape `settings_assemble._agent_partial` reads into the launch
+``self.<category>`` table (the shape `settings_assemble.agent_file_partial` reads into the launch
 cascade, re-rooting ``self`` to ``agent.<node>``), not in a scope table. Naming the scope file
 here would send a user to edit a file the launch never reads for this key.
 

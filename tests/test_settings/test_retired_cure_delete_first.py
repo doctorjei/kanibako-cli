@@ -6,7 +6,7 @@
 # ``Fix: … then delete …`` order and were left behind:
 #
 #   * ``settings_assemble.refuse_retired_keys`` — the retired FILE keys (§2h
-#     selection / mirror), text built by ``_retired_key_cure``.
+#     selection / mirror), text built by ``retired_key_cure``.
 #   * ``agent_file._refuse_nested_tables`` — a ``self.<sub>:`` sub-table in an
 #     agent file.
 #
@@ -48,7 +48,7 @@ import pytest
 from kanibako.settings import agent_file
 from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.settings_assemble import (
-    _retired_behavior_cure,
+    retired_behavior_cure,
     refuse_retired_keys,
 )
 from kanibako.settings.settings_resolve import SettingsError
@@ -275,7 +275,7 @@ def test_the_default_sub_table_is_a_hand_edit_not_a_verb(tmp_path) -> None:
 
 @pytest.mark.parametrize("level", ["agent", "base", "system"])
 def test_the_reserved_default_cure_is_the_bare_key(level) -> None:
-    cure = _retired_behavior_cure(
+    cure = retired_behavior_cure(
         "access", level=level, tier="full", subject="default", node="default",
     )
     assert cure == "kanibako system set access=full"
@@ -284,7 +284,7 @@ def test_the_reserved_default_cure_is_the_bare_key(level) -> None:
 
 def test_a_persona_node_at_agent_level_still_names_the_node() -> None:
     """The bare key is the ANY-agent default; a persona's own tier stays spelled out."""
-    assert _retired_behavior_cure(
+    assert retired_behavior_cure(
         "access", level="agent", tier="full", subject="claude", node="claude",
     ) == "kanibako agent set claude access=full"
 
@@ -292,7 +292,7 @@ def test_a_persona_node_at_agent_level_still_names_the_node() -> None:
 @pytest.mark.parametrize("level", ["box", "workset"])
 def test_a_pref_request_still_spells_the_reserved_tier_as_data(level) -> None:
     """§2h requests carry the node as data, so the bare-key rule must NOT reach them."""
-    cure = _retired_behavior_cure(
+    cure = retired_behavior_cure(
         "access", level=level, tier="full", subject="claude",
         box_ref="mybox", node="default",
     )

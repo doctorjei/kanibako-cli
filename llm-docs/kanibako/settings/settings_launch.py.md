@@ -1423,7 +1423,7 @@ function mirrors whatever active agent it is given.
 ## The level-wrapping partial
 
 `_persona_partial` is the one partial here that wraps a live input under a slot. The agent file's
-root scalars need none: `settings_assemble._agent_partial` sets them on the `agent.<active>` level
+root scalars need none: `settings_assemble.agent_file_partial` sets them on the `agent.<active>` level
 beside the file's categories (K4), so there is no separate agent-state rung.
 
 `_persona_partial` wraps the PERSONA STORE's live values under the active slot —

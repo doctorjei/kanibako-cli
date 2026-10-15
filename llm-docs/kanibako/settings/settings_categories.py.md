@@ -698,7 +698,7 @@ levels and print a block that is not a declaration at all.
 
 ⚑ **The AGENT-scope caveat.** An agent's own file has NO node level at all: it is that node's
 file, so its root `self:` IS `agent.<node>` and the category table sits DIRECTLY under it — the
-shape `_agent_partial` reads back. The canonical `agent.<node>` spelling
+shape `agent_file_partial` reads back. The canonical `agent.<node>` spelling
 is what a CONTAINING scope's file writes as a defaults-down override. Printing one shape
 without saying so would hand the reader an edit that silently does nothing in the other file.
 ⚑ The file's own spelling comes from the BOUNDARY (`agent_file.file_spelling`), never a literal

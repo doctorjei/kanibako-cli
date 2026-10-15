@@ -3049,7 +3049,7 @@ class TestCategoryConfigSet:
     def test_agent_scope_category_set_is_refused_through_its_own_door(self, tmp_path):
         """The AGENT-scope spelling is refused too, and by the NODE door
         (``agent_node_bind_retired_error``) — so the cure names the node's OWN
-        settings file, the file ``_agent_partial`` actually reads, not a scope
+        settings file, the file ``agent_file_partial`` actually reads, not a scope
         table."""
         f = tmp_path / CONFIG_FILENAME
         msg = set_config_value(
@@ -5840,7 +5840,7 @@ class TestEffectiveCategoryBlock:
 
         # The agent file is rooted at ``self:``, which IS ``agent.<node>`` — the file is
         # that node's own, so the category tables sit DIRECTLY under the root and a
-        # second ``<node>`` level refuses (``settings_assemble._agent_partial``, the S2
+        # second ``<node>`` level refuses (``settings_assemble.agent_file_partial``, the S2
         # flatten). Every category below is DEST-KEYED — the map key is the box
         # destination, the value is ``[src[, opts]]``.
         agent_file = tmp_path / "agent-settings.yaml"

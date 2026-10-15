@@ -1218,13 +1218,13 @@ class TestOneSetTwoPositions:
     ):
         """Why this floor is not redundant, stated as its own ORDER claim.
 
-        The store speaks FIRST on the file path — ``settings_assemble._parse_naming_file``
+        The store speaks FIRST on the file path — ``settings_assemble.parse_naming_file``
         builds the ``KeyStore`` and raises before ``merge`` or any resolve — so the
         reserved arm of :func:`key_validity` never runs there at all.
 
         ⚑ MUTATION IS THE PROOF: neuter this module's floor entirely and the file is
         STILL refused, with the store's own wording.  ⚑ The class is ``SettingsError``
-        since 0c4fa47 lifted the file-naming wrap out of ``_file_partial``; both tiers
+        since 0c4fa47 lifted the file-naming wrap out of ``file_partial``; both tiers
         agree on it now.
         """
         import yaml

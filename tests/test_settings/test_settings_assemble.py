@@ -1284,7 +1284,7 @@ def _merged(
     The per-agent tables ride the SYSTEM file, which is a spec-LEGAL downward
     source for ``agent.*`` (``system ⊃ agent``, defaults-down); a box file may NOT
     carry ``agent.<agent>.*`` — that is an upward write dropped at RESOLVE (spec §0
-    directional enforcement). ``_file_partial`` mirrors the system file's whole
+    directional enforcement). ``file_partial`` mirrors the system file's whole
     tree, so ``agent.<name>.*`` / ``agent.default.*`` flow under their TRUE
     discriminated names at the system level (below the agent-active/default
     levels in precedence).
@@ -1478,7 +1478,7 @@ class TestPrefTableWriteSiteAtAssembly:
         assert "workset or box settings file" not in caplog.text
 
     def test_a_bind_shaped_pref_value_is_parsed_as_a_bind(self, tmp_path) -> None:
-        """The pref path mirrors its target's, so ``_parse_node``'s ancestor
+        """The pref path mirrors its target's, so ``parse_node``'s ancestor
         test makes a bind-shaped request a real bind value — the property that
         makes the NESTED-only spelling load-bearing (D5).
 
@@ -1671,7 +1671,7 @@ class TestRefuseRetiredBehaviorKeys:
         ``workset`` positional and leaves ``key_value`` empty, so the pasted
         line looks for a working set called ``pref.agent.claude.access=full``.
 
-        INVERT: drop the subject from ``_retired_behavior_cure`` and this reddens.
+        INVERT: drop the subject from ``retired_behavior_cure`` and this reddens.
         """
         with pytest.raises(SettingsError) as exc:
             self._refuse(
@@ -1912,9 +1912,9 @@ def test_a_name_keyed_sub_table_under_an_arm_is_refused() -> None:
 # A file-parse refusal NAMES THE FILE — every non-agent level (§0)             #
 # --------------------------------------------------------------------------- #
 #
-# ⚑ THE DEFECT WAS A SHAPE ASYMMETRY, NOT A MISSING STRING. ``_file_partial`` was the
+# ⚑ THE DEFECT WAS A SHAPE ASYMMETRY, NOT A MISSING STRING. ``file_partial`` was the
 # ONE partial builder in ``assemble_levels`` handed no ``path``, while every sibling
-# (``_drop_upward_scopes``, ``_agent_partial``, ``refuse_pref_table``) took one — so a
+# (``_drop_upward_scopes``, ``agent_file_partial``, ``refuse_pref_table``) took one — so a
 # refusal raised UNDER it could name the offending KEY and nothing else, and a user with
 # six cascade files was told what was illegal but not where it lived.
 #
@@ -1925,11 +1925,11 @@ def test_a_name_keyed_sub_table_under_an_arm_is_refused() -> None:
 #
 # ⚑ TWO refusals, ONE seam: the reserved name comes out of ``KeyStore.__setitem__`` and
 # the retired §2a shape out of ``parse_bind_map``, but both are raised under the single
-# ``_parse_node`` call, so both are pinned here together.
+# ``parse_node`` call, so both are pinned here together.
 
-# The four levels ``_file_partial`` builds, each with the scope token its own file is
+# The four levels ``file_partial`` builds, each with the scope token its own file is
 # legally spelled against. ``agent`` is absent on purpose — that tier goes through
-# ``_agent_partial``, which was already handed a path.
+# ``agent_file_partial``, which was already handed a path.
 _FILE_LEVELS = [
     pytest.param("base_path", "box", id="base"),
     pytest.param("system_path", "system", id="system"),
@@ -1942,7 +1942,7 @@ _FILE_LEVELS = [
 def test_a_reserved_leaf_name_refusal_NAMES_THE_FILE(
     tmp_path: Path, kwarg: str, scope: str
 ) -> None:
-    # MUTATION-PROVED: drop the ``path=`` from the matching ``_file_partial`` call in
+    # MUTATION-PROVED: drop the ``path=`` from the matching ``file_partial`` call in
     # ``assemble_levels`` and this row goes red on the filename assert alone.
     path = _write(tmp_path / f"{kwarg}.yaml", {scope: {"get": "x"}})
     with pytest.raises(SettingsError) as exc:
@@ -2003,7 +2003,7 @@ def _clean_base(tmp_path: Path, kwarg: str, path: Path) -> dict[str, Path]:
 # ...AND SO DOES THE AGENT TIER — the same wrap, the other partial builder      #
 # --------------------------------------------------------------------------- #
 #
-# ⚑ ``_agent_partial`` ALREADY TOOK A PATH and forwarded it only to ``level_table``, so
+# ⚑ ``agent_file_partial`` ALREADY TOOK A PATH and forwarded it only to ``level_table``, so
 # the BOUNDARY refusal (a nested ``self.<sub>:`` table) named the file while every refusal
 # out of its OWN parse did not. Half a fix reads exactly like a whole one from the outside:
 # one agent-file defect named the file and the next one did not.
@@ -2034,8 +2034,8 @@ def _agent_probe(tmp_path: Path, doc: dict) -> Path:
 def test_an_agent_file_parse_refusal_NAMES_THE_FILE(
     tmp_path: Path, doc: dict, needle: str
 ) -> None:
-    # MUTATION-PROVED: drop ``file_path=path`` from ``_agent_partial``'s
-    # ``_parse_naming_file`` call and both rows go red on the filename assert alone.
+    # MUTATION-PROVED: drop ``file_path=path`` from ``agent_file_partial``'s
+    # ``parse_naming_file`` call and both rows go red on the filename assert alone.
     agent = _agent_probe(tmp_path, doc)
     base = _write(tmp_path / "clean_base.yaml", {})
     with pytest.raises(SettingsError) as exc:

@@ -325,7 +325,7 @@ the full cascade (the three set handlers) passes every scope's file.
 
 ⚑ The AGENT arm is the one that is easy to get wrong. A per-node descriptor bind
 (`agent.<node>.bindings.*`, item-0) sets the AGENT-scope file (`agents/<node>/agent.yaml`);
-it goes in the agent slot so its own already-set tuple (read by `_agent_partial` at the
+it goes in the agent slot so its own already-set tuple (read by `agent_file_partial` at the
 `agent.<agent_name>` sub-table) is the cascade winner — NOT the box slot, where
 `_drop_upward_scopes` would DROP its agent-scope keys.
 
@@ -669,7 +669,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   answered "(not set)" over the value the user hand-authored where it said to.
 * **`agent.<node>.secret_path.<VAR>`** — the per-node SECRET category (spec §2a). A SCALAR path
   write to the node's OWN settings file at the DISCRIMINATED `agent.<node>.secret_path`
-  sub-table (the shape `_agent_partial` reads into the cascade and `agent_file.record`, through
+  sub-table (the shape `agent_file_partial` reads into the cascade and `agent_file.record`, through
   `settings_assemble.agent_record`, reads back).
   ⚑ Checked BEFORE the persona branch (`env_file` was there in rc; `secret_path` is discriminated
   node storage, a clean break). The §0 directional guard already ran: `agent.*` is settable only
@@ -678,12 +678,12 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   an `"Error: …"` string for it, and only an UNTHREADED `agents_root` reaches the
   "only settable at the system scope" sentence.
 * **`<scope>.secret_path.<VAR>`** — the SECRET category at a NON-agent scope: a SCALAR path write
-  to the command scope's SETTINGS file at the nested slot (the shape `_file_partial` reads into
+  to the command scope's SETTINGS file at the nested slot (the shape `file_partial` reads into
   the cascade). The §0 directional guard already permitted it (own/contained scope).
   `settings_dest` = the command scope's settings file (`config_path` at box/workset; the system
   settings file at SYSTEM — never the Layer-1 config file).
 * **`<scope>.env.<VAR>`** — the ENV category at a NON-agent scope: a SCALAR write to the command
-  scope's SETTINGS file at the nested slot (the shape `_file_partial` reads into the cascade and
+  scope's SETTINGS file at the nested slot (the shape `file_partial` reads into the cascade and
   `settings_launch._emit_scope_node` delivers as a `category="env"` entry). Spec §2a declares the
   key and lists it under "What remains CLI-settable"; the AGENT form
   `agent.<node>.env.<VAR>` is DISCRIMINATED and routed by the persona branch. The value is

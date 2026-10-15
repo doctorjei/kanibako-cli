@@ -37,8 +37,8 @@ class TestSecretPathSection:
     RENAMED from ``env_file`` (rc0-rc2, clean break). Stored DIRECTLY under the file's root
     (``self.secret_path.<VAR>``) — ``self`` IS ``agent.<node>`` (the per-agent store dir
     ``agents/<node>/agent.yaml``), so there is NO second ``<node>`` embedding; the whole root
-    table is what ``_agent_partial`` re-roots into the launch cascade.  The value is a PATH only
-    (never the secret contents).
+    table is what ``agent_file_partial`` re-roots into the launch cascade.  The value is a PATH
+    only (never the secret contents).
     """
 
     def _node_file(self, tmp_path, node="nav℘claude"):
@@ -370,7 +370,7 @@ class TestRoundTrip:
 class TestCategoryTablesCarryThrough:
     """The CATEGORY tables the record does not model (bindings, caches, seeded, common,
     synced, masks) must survive the load→write round trip OPAQUELY.  AgentConfig does not
-    model them (they ride ``_agent_partial`` into the launch cascade), but before the
+    model them (they ride ``agent_file_partial`` into the launch cascade), but before the
     ``category_tables`` carry a read-modify-write persist silently DROPPED a user's binds.
 
     ⚑ RENAMED FROM ``node_tables`` WITH THE S2 FLATTEN, and the name is the fact: there is no

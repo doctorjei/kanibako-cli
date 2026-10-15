@@ -200,7 +200,7 @@ def test_reserved_method_name_rejected_at_construction(name: str) -> None:
 
 def test_reserved_key_error_is_BOTH_a_kanibako_error_and_a_key_error() -> None:
     # ⚑ BOTH BASES, AND THE ORDER, ARE THE FIX. A settings file carrying ``box: get:``
-    # walks through ``_file_partial`` into a store, so this raised out of
+    # walks through ``file_partial`` into a store, so this raised out of
     # ``assemble_levels`` BEFORE the keyspace oracle ran; as a bare ``KeyError`` it
     # passed every ``except KanibakoError`` and reached the user as a TRACEBACK.
     #

@@ -372,16 +372,16 @@ def test_agent_partial_surfaces_flat_secret_path():
     # the token ro-mount + $VAR export), silently breaking persona auth. The active
     # layer must surface the flat secret_path as ``agent.<node>.secret_path``; the
     # all-agents ``default`` layer must NOT (it is the file's own node's secret).
-    from kanibako.settings.settings_assemble import _agent_partial
+    from kanibako.settings.settings_assemble import agent_file_partial
 
     raw = {"self": {
         "secret_path": {"API_KEY": "/home/agent/.config/personas/navigator/token"},
     }}
-    active = _agent_partial(raw, sub_key="navigator℘codex")
+    active = agent_file_partial(raw, sub_key="navigator℘codex")
     assert (active.agent["navigator℘codex"].secret_path["API_KEY"]
             == "/home/agent/.config/personas/navigator/token")
     # The default layer never carries the file's own secret_path.
-    assert _agent_partial(raw, sub_key="default") == KeyStore()
+    assert agent_file_partial(raw, sub_key="default") == KeyStore()
 
 
 def test_agent_partial_surfaces_flat_env():
@@ -391,16 +391,16 @@ def test_agent_partial_surfaces_flat_env():
     # the box only as a separate under-layer BELOW every ``<scope>.env.<VAR>`` slot
     # (inverting the cascade bracket, where agent outranks system) and never saw the
     # expand pass. Same arm, same ACTIVE-layer-only rule as the secret above.
-    from kanibako.settings.settings_assemble import _agent_partial
+    from kanibako.settings.settings_assemble import agent_file_partial
 
     raw = {"self": {
         "env": {"CODEX_HOME": "~/.codex"},
     }}
-    active = _agent_partial(raw, sub_key="navigator℘codex")
+    active = agent_file_partial(raw, sub_key="navigator℘codex")
     assert active.agent["navigator℘codex"].env["CODEX_HOME"] == "~/.codex"
     # The default layer never carries the file's own env (it is this node's, not
     # every agent's) — the same discrimination the secret above is held to.
-    assert _agent_partial(raw, sub_key="default") == KeyStore()
+    assert agent_file_partial(raw, sub_key="default") == KeyStore()
 
 
 #: A sample entry per CATEGORY, so a parametrized case can assert the CURE it renders (the
@@ -453,12 +453,12 @@ class TestNothingNestsUnderSelfButTheCategories:
         # entirely: a hand-written file carrying ONLY the nested table. Before the refusal it
         # resolved to the very same ``agent.<node>.<category>.<VAR>`` keys as the flat spelling,
         # so nothing distinguished it and nothing told the user.
-        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_assemble import agent_file_partial
         from kanibako.settings.settings_resolve import SettingsError
 
         raw = {"self": {"codex": {category: {var: value}}}}
         with pytest.raises(SettingsError) as exc:
-            _agent_partial(
+            agent_file_partial(
                 raw, sub_key="codex", path=Path("/a/agent.yaml"), node="codex",
             )
         message = str(exc.value)
@@ -492,12 +492,12 @@ class TestNothingNestsUnderSelfButTheCategories:
         # actually reads. Without the expansion the refusal is an assertion of authority; with
         # it, it is an argument they can check. ⚑ ``agent.codex.codex.<category>`` is the whole
         # point — the node appears TWICE.
-        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_assemble import agent_file_partial
         from kanibako.settings.settings_resolve import SettingsError
 
         raw = {"self": {"codex": {category: {var: value}}}}
         with pytest.raises(SettingsError) as exc:
-            _agent_partial(raw, sub_key="codex", node="codex")
+            agent_file_partial(raw, sub_key="codex", node="codex")
         message = str(exc.value)
         assert f"agent.codex.codex.{category}" in message
         assert "alias" in message.lower()
@@ -509,7 +509,7 @@ class TestNothingNestsUnderSelfButTheCategories:
         # WHOLESALE, so ``ONLY_NESTED`` below simply was not in the cascade — no warning, no
         # key, no trace. The refusal names it instead. ⚑ Asserting the NESTED name (not the flat
         # one) is what catches a check placed on the wrong side of the splice.
-        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_assemble import agent_file_partial
         from kanibako.settings.settings_resolve import SettingsError
 
         raw = {"self": {
@@ -517,7 +517,7 @@ class TestNothingNestsUnderSelfButTheCategories:
             "codex": {category: {"ONLY_NESTED": value}},
         }}
         with pytest.raises(SettingsError) as exc:
-            _agent_partial(raw, sub_key="codex", node="codex")
+            agent_file_partial(raw, sub_key="codex", node="codex")
         assert "ONLY_NESTED" in str(exc.value)
 
     def test_the_literal_default_sub_table_refuses_on_the_same_ground(
@@ -528,12 +528,12 @@ class TestNothingNestsUnderSelfButTheCategories:
         # the flat table is re-rooted for the ACTIVE layer only, so the all-agents tier has no
         # agent-file spelling at all and is written in the SYSTEM file (both routes MEASURED
         # live 2026-08-14: the value arrives, and it does not beat the active node).
-        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_assemble import agent_file_partial
         from kanibako.settings.settings_resolve import SettingsError
 
         raw = {"self": {"default": {category: {var: value}}}}
         with pytest.raises(SettingsError) as exc:
-            _agent_partial(
+            agent_file_partial(
                 raw, sub_key="default", path=Path("/a/agent.yaml"), node="codex",
             )
         message = str(exc.value)
@@ -550,11 +550,11 @@ class TestNothingNestsUnderSelfButTheCategories:
         # ``<category>:`` with nothing under it parses to None. It is still the refused
         # spelling, and catching it here is what stops a user adding the first entry under a
         # table kanibako was never going to read.
-        from kanibako.settings.settings_assemble import _agent_partial
+        from kanibako.settings.settings_assemble import agent_file_partial
         from kanibako.settings.settings_resolve import SettingsError
 
         with pytest.raises(SettingsError, match=rf"self\.codex\.{category}"):
-            _agent_partial({"self": {"codex": {category: None}}}, sub_key="codex")
+            agent_file_partial({"self": {"codex": {category: None}}}, sub_key="codex")
 
 
 def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
@@ -567,22 +567,22 @@ def test_the_nested_bindings_sub_table_refuses_now_that_the_flat_route_exists():
     # existed. None of them should"*. Keeping the test as an INVERSION is what records
     # that the change was MADE rather than assumed; a deletion would have left the
     # widening unwitnessed.
-    from kanibako.settings.settings_assemble import _agent_partial
+    from kanibako.settings.settings_assemble import agent_file_partial
     from kanibako.settings.settings_resolve import SettingsError
 
     raw = {"self": {"codex": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}}
     with pytest.raises(SettingsError) as exc:
-        _agent_partial(raw, sub_key="codex", node="codex")
+        agent_file_partial(raw, sub_key="codex", node="codex")
     assert "self.codex.bindings" in str(exc.value)
 
 
 def test_the_flat_bindings_table_is_the_route_that_replaced_it():
     # The other half of the same fact, and the reason the refusal above is legitimate:
     # the value still has a spelling, one level up.
-    from kanibako.settings.settings_assemble import _agent_partial
+    from kanibako.settings.settings_assemble import agent_file_partial
 
     raw = {"self": {"bindings": {"rw": {"~/x": ["/tmp/x"]}}}}
-    active = _agent_partial(raw, sub_key="codex", node="codex")
+    active = agent_file_partial(raw, sub_key="codex", node="codex")
     assert "x" in str(active.agent["codex"].bindings.rw)
 
 
@@ -5291,7 +5291,7 @@ def _agent_file_contender(key, value):
 
     There is ONE file shape: everything sits DIRECTLY under ``self:``, which IS
     ``agent.<node>``; a second ``<node>`` level REFUSES ([spec:14-18, "self"]). A CATEGORY
-    table and a BEHAVIOR scalar both ride ``_agent_partial``'s ``agent.<active>`` level; only
+    table and a BEHAVIOR scalar both ride ``agent_file_partial``'s ``agent.<active>`` level; only
     the spelling differs, as a category is nested by its dotted name.
 
     Keyed off the PRODUCTION tuple, so a category joining or leaving it cannot leave a stale
@@ -6784,20 +6784,20 @@ def test_every_command_a_retirement_cure_names_is_a_real_command():
     from kanibako.settings.settings_assemble import (
         RETIRED_BEHAVIOR_KEYS,
         RETIRED_FILE_KEYS,
-        _retired_behavior_cure,
-        _retired_key_cure,
+        retired_behavior_cure,
+        retired_key_cure,
     )
 
     cures: list[str] = []
     for level in _CURE_LEVELS:
         for key in RETIRED_FILE_KEYS.values():
-            cures.append(_retired_key_cure(key, level=level, value="claude"))
+            cures.append(retired_key_cure(key, level=level, value="claude"))
         # The TABLE-valued spelling of ``box.agent`` takes the other builder.
-        cures.append(_retired_key_cure(
+        cures.append(retired_key_cure(
             "box.agent", level=level, value="claude", mirror={"model": "sonnet"},
         ))
         for successor in RETIRED_BEHAVIOR_KEYS.values():
-            cures.append(_retired_behavior_cure(
+            cures.append(retired_behavior_cure(
                 successor, level=level, tier="full", subject=None,
             ))
     # ⚑ REDS ON ITS OWN EMPTINESS (P15): a builder that stopped emitting commands
@@ -7315,7 +7315,7 @@ class TestAgentFileAgentTable:
     def test_a_box_table_applies_above_the_system_file(self, tmp_path):
         # 2E (Q85): the agent file's ``box:`` table merges defaults-down — below the box
         # file, above the system file. (Mutation: drop ``level.contained`` from
-        # ``_agent_partial`` → ``A`` is absent → RED.)
+        # ``agent_file_partial`` → ``A`` is absent → RED.)
         from kanibako.settings.settings_launch import snapshot_leaf
 
         snap = self._snap(tmp_path, {"self": {}, "box": {"env": {"A": "agent"}}},

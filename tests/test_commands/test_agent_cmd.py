@@ -993,7 +993,7 @@ class TestSparseWrites:
         assert data["self"]["label"] == "Custom"
         assert data["self"]["env"] == {"FOO": "bar"}
         # secret_path lands DIRECTLY under self.secret_path (self IS agent.<node>);
-        # the whole self table is what _agent_partial re-roots into the cascade.
+        # the whole self table is what agent_file_partial re-roots into the cascade.
         assert data["self"]["secret_path"] == {"TOK": "/p/token"}
         # secret_path.<VAR> must NOT leak into the plain env table.
         assert "TOK" not in data["self"]["env"]

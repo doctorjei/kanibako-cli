@@ -34,7 +34,7 @@ V = TypeVar("V")
 # ⚑ BOTH BASES ARE LOAD-BEARING, and neither may be dropped.
 #
 # ``KanibakoError`` is what ``cli.py`` catches (see :mod:`kanibako.errors`), and a reserved name in
-# a SETTINGS FILE is a user-authored defect, not a crash: ``_file_partial`` walks the whole file
+# a SETTINGS FILE is a user-authored defect, not a crash: ``file_partial`` walks the whole file
 # into a store, so ``box: get:`` raised out of ``assemble_levels`` BEFORE the keyspace oracle ever
 # ran, escaped every handler, and reached the user as a TRACEBACK. Spec §0 requires a refusal that
 # NAMES the offending key, so this joins the hierarchy rather than being special-cased at the

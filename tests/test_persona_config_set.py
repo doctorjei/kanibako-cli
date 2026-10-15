@@ -142,7 +142,7 @@ class TestSetPersona:
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
         # Stored DIRECTLY under self.secret_path — self IS agent.<node>, so there is
-        # no second <node> embedding. The whole self table is what _agent_partial
+        # no second <node> embedding. The whole self table is what agent_file_partial
         # re-roots into the cascade.
         assert load_doc(_node_file(agents_root)) == {
             "self": {"secret_path": {_TOKEN_VAR: "/host/token"}},

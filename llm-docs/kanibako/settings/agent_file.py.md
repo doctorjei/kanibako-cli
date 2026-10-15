@@ -23,7 +23,7 @@ IN: the root table's spelling · a key TAIL → its `(sections, leaf)` address �
 `AgentConfig` round trip · which raw table a cascade level reads · the nested and top-level refusals ·
 the file's own spelling as a STRING, for the two messages that quote it at a user.
 
-OUT: `KeyStore` and every store coercion (`settings_assemble._agent_partial`, deliberately — see
+OUT: `KeyStore` and every store coercion (`settings_assemble.agent_file_partial`, deliberately — see
 below) · whether a key EXISTS (`settings_keyspace`) · which FAMILY a spelling is (`config_keys`) ·
 whether a NODE is routable (`config_dest.check_agent_node` — key classification, not file shape).
 
@@ -57,10 +57,10 @@ shape flip that passes green while the meaning changes. The dataclass makes both
 ONE cascade tier read out of the file: its §2d discriminator and its RAW table.
 
 *scope* is the file's top-level `agent:` table, RAW, on BOTH tiers (Q92), already judged by
-`_contribution`; `settings_assemble._agent_partial` parses it with the scope files' own builder.
+`_contribution`; `settings_assemble.agent_file_partial` parses it with the scope files' own builder.
 *contained* is the file's `workset:` / `box:` tables, RAW, likewise (Q85). The file's ROOT is split
 by KEY (`level_table`): *table* holds every category key, whatever it holds, and *state* every
-other key; `settings_assemble._agent_partial` sets both on the active tier's node, so the file
+other key; `settings_assemble.agent_file_partial` sets both on the active tier's node, so the file
 reaches the cascade as one level. *scope*, *state* and *contained* default to empty.
 
 *node* is the discriminator the tier merges under (`default` or the active agent), NOT necessarily
@@ -86,7 +86,7 @@ and the agent-file fixtures pin which root ships.
 ## The file's shape
 
 ⚑⚑ **The agent file's top-level table is `self:`, NOT `agent:`.** `_read_address` / `_write_address` are the
-SoT for the per-agent file shape, and `level_table` reads `raw[_ROOT]`. *(The `_agent_partial`
+SoT for the per-agent file shape, and `level_table` reads `raw[_ROOT]`. *(The `agent_file_partial`
 docstring claimed "rooted at a top-level `agent:` table"; that is `config.read_agent_settings`'s
 shape, over a different file. Dropped, not relocated.)* Inside `self:`:
 
@@ -465,7 +465,7 @@ lives in `kanibako.settings.agent_config`; there is no flat `kanibako.agent_conf
 **Flat state is the SCALAR knobs only.** `cfg.state` takes every root entry that is neither a
 MODELED key nor dict-valued. A category table (`env`, `secret_path`, `bindings`, …) is a dict, so
 it is never flat state. `cfg.state` serves the agent verbs' reads; the launch reads the file's root
-through `level_table`'s *state*, set beside the categories by `settings_assemble._agent_partial`.
+through `level_table`'s *state*, set beside the categories by `settings_assemble.agent_file_partial`.
 
 ⚑ **The test is EVERY modeled key, not just the one with a scalar slot.** A narrower test differs
 only for a MALFORMED file: a scalar written where a table belongs (`env: oops`) is not dict-valued,
@@ -480,7 +480,7 @@ list's `str()` would land in `cfg.state` beside the properly typed field, and
 a hand-edited or `--null`-written `model: null` would become the four-byte string `"None"`: a BOGUS
 model id reaching the launch cascade as a real value, silently defeating the "no model"
 declaration. The cascade reads the file's values verbatim
-(`settings_assemble._agent_partial`), so a present-`None` survives all the way to its per-key
+(`settings_assemble.agent_file_partial`), so a present-`None` survives all the way to its per-key
 active-over-default pick — exactly where it needs to keep meaning "explicitly reset/keyless" rather than a string. For
 `secret_path` the same `None` means "this VAR is deliberately keyless": a DECLARED third state, not
 a malformed second one, where coercion would produce a garbage path indistinguishable from a
@@ -516,7 +516,7 @@ Which RAW table one agent-tier level reads — the SHAPE half of the cascade sea
 document at all: the ACTIVE tier is the file's own flat category tables, and the all-agents
 `default` tier's table is **EMPTY** — `self:` has no spelling for it. Both tiers carry the file's
 `agent:` table as *scope* (Q92), whose `default` node IS a spelling for that tier; which nodes a
-tier takes is decided in `settings_assemble._agent_partial`, after the cascade's node fold.
+tier takes is decided in `settings_assemble.agent_file_partial`, after the cascade's node fold.
 
 ⚑ **The FLAT-CATEGORY re-root, and why it is ACTIVE-LAYER ONLY.** `self` IS `agent.<active-node>`,
 so the categories at the file's top level belong to THIS node; re-rooting them for the all-agents

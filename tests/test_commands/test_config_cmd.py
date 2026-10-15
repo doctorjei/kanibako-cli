@@ -1491,7 +1491,7 @@ class TestAReservedNameInASettingsFileRefusesInsteadOfCrashing:
 
     ⚑ THE DEFECT WAS THE EXCEPTION TYPE, NOT A HOLE IN THE RESERVATION. The store
     refuses the name correctly and always did; ``ReservedKeyError`` merely subclassed
-    ``KeyError`` alone, so it flew out of ``_file_partial`` → ``assemble_levels``
+    ``KeyError`` alone, so it flew out of ``file_partial`` → ``assemble_levels``
     past every ``except KanibakoError`` and reached the user as a stack trace.
 
     ⚑ END-TO-END THROUGH ``cli.main``, deliberately. ``tests/test_settings/
@@ -1568,7 +1568,7 @@ class TestAReservedNameInASettingsFileRefusesInsteadOfCrashing:
         assert "fromkeys" in err               # ...and lists the set, so it is actionable
         # ⚑ ...and NAMES THE FILE. The key is the defect; the file is the address, and a
         # user with six cascade files had to guess which one to open. MUTATION-PROVED:
-        # drop ``path=`` from the matching ``_file_partial`` call and this alone goes red.
+        # drop ``path=`` from the matching ``file_partial`` call and this alone goes red.
         assert str(path) in err
         assert "Traceback" not in err
 

@@ -21,9 +21,9 @@ from kanibako.settings.agent_config import agent_settings_path
 from kanibako.settings.agent_file import _CONTRIBUTED, _contribution, level_table
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_assemble import (
-    _file_partial,
-    _parse_marker_map,
-    _parse_naming_file,
+    file_partial,
+    parse_marker_map,
+    parse_naming_file,
     parse_bind_map,
 )
 from kanibako.settings.settings_resolve import SettingsError
@@ -94,7 +94,7 @@ def test_two_spellings_of_one_dest_refuse_naming_both(first: str, second: str) -
 
 def test_two_spellings_of_one_dest_refuse_in_a_marker_map() -> None:
     with pytest.raises(SettingsError) as exc:
-        _parse_marker_map({"/opt/m": "x", "/opt//m/": "y"}, path=("masks",))
+        parse_marker_map({"/opt/m": "x", "/opt//m/": "y"}, path=("masks",))
     assert "/opt/m" in str(exc.value)
     assert "/opt//m/" in str(exc.value)
 
@@ -350,7 +350,7 @@ def test_a_scalar_at_a_category_refuses_in_a_settings_file(
 ) -> None:
     path = _settings_file(tmp_path, {scope: {category: _scalar(value)}})
     with pytest.raises(SettingsError) as exc:
-        _parse_naming_file({scope: {category: _scalar(value)}}, file_path=path)
+        parse_naming_file({scope: {category: _scalar(value)}}, file_path=path)
     message = str(exc.value)
     assert f"'{scope}.{category}'" in message   # the DISCRIMINATED key, scope-qualified
     assert str(path) in message                 # and the file to edit
@@ -370,7 +370,7 @@ def test_the_cure_is_printed_in_the_shape_that_category_takes(
     """A mask has no source, so the bind example would send the reader somewhere wrong."""
     path = _settings_file(tmp_path, {"system": {category: 5}})
     with pytest.raises(SettingsError) as exc:
-        _parse_naming_file({"system": {category: 5}}, file_path=path)
+        parse_naming_file({"system": {category: 5}}, file_path=path)
     assert example in str(exc.value)
 
 
@@ -381,7 +381,7 @@ def test_a_null_category_is_accepted_in_a_settings_file(
 ) -> None:
     """⚑ THE OTHER SIDE OF THE SAME VERDICT: a bare ``<category>:`` is spec §2h's OMIT."""
     path = _settings_file(tmp_path, {scope: {category: None}})
-    store = _parse_naming_file({scope: {category: None}}, file_path=path)
+    store = parse_naming_file({scope: {category: None}}, file_path=path)
     assert store[scope][category] is None
 
 
@@ -389,12 +389,12 @@ def test_a_null_category_is_accepted_in_a_settings_file(
 def test_a_caches_map_reads_in_a_settings_file(tmp_path: Path, scope: str) -> None:
     """The CONTROL: a legal dest-keyed map under a leaf category reads, and is not judged."""
     doc = {scope: {"caches": {"/opt/x": ["/src/a"]}}}
-    _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+    parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
 
 
 def test_a_transform_settings_table_reads_in_a_settings_file(tmp_path: Path) -> None:
     doc = {"agent": {"claude": {"transform_settings": {"a": 1}}}}
-    _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+    parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
 
 
 def test_a_scalar_at_a_table_valued_agent_leaf_refuses_in_a_settings_file(
@@ -408,7 +408,7 @@ def test_a_scalar_at_a_table_valued_agent_leaf_refuses_in_a_settings_file(
     doc = {"agent": {"claude": {"transform_settings": 5}}}
     path = _settings_file(tmp_path, doc)
     with pytest.raises(SettingsError) as exc:
-        _parse_naming_file(doc, file_path=path)
+        parse_naming_file(doc, file_path=path)
     message = str(exc.value)
     assert "'agent.claude.transform_settings'" in message
     assert str(path) in message
@@ -424,12 +424,12 @@ def test_a_scalar_at_a_table_valued_agent_leaf_refuses_in_a_settings_file(
 def test_the_leaf_s_name_away_from_its_position_is_data(tmp_path: Path, doc: dict) -> None:
     """Only ``agent.<node>.transform_settings`` is the leaf: the same word as a family's
     entry or inside the table's own payload is DATA, and a scalar there is legal."""
-    _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+    parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
 
 
 def test_a_null_table_valued_agent_leaf_is_accepted_in_a_settings_file(tmp_path: Path) -> None:
     doc = {"agent": {"claude": {"transform_settings": None}}}
-    store = _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+    store = parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
     assert store["agent"]["claude"]["transform_settings"] is None
 
 
@@ -442,7 +442,7 @@ def test_a_scalar_that_merely_ENDS_in_a_category_token_is_not_a_category(
     token — otherwise a declared path key would start refusing on its name alone.
     """
     doc = {"system": {"channels": {"common": "/tmp/x"}}}
-    store = _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+    store = parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
     assert store["system"]["channels"]["common"] == "/tmp/x"
 
 
@@ -492,7 +492,7 @@ def test_refuse_dest_spelled_twice_is_the_per_map_check_on_its_own() -> None:
 # ``settings_prefs.agent_segment_reason`` — the same judgment the deferred path reaches —
 # so an entry whose only defect is its agent segment is never reported as a shape fault.
 #
-# ``_file_partial`` is the reader under test: the settings tier's own builder, so these
+# ``file_partial`` is the reader under test: the settings tier's own builder, so these
 # rows also pin the SEGMENT EXTRACTION, not just the check that consumes it.
 
 #: Both bind-map spellings, as ``(id, category)`` — the arm arrives at the same checker
@@ -528,7 +528,7 @@ def test_a_bogus_agent_name_is_refused_before_the_entry_shape_is(
     doc = _pref_agent_doc("zippity", category, "/src/a")
     path = _settings_file(tmp_path, doc)
     with pytest.raises(SettingsError) as exc:
-        _file_partial(doc, path=path)
+        file_partial(doc, path=path)
     message = str(exc.value)
     assert "it names agent 'zippity', which is not a valid agent" in message
     assert "not a valid agent" in message
@@ -553,7 +553,7 @@ def test_a_valid_agents_entry_keeps_its_shape_refusal(
     doc = _pref_agent_doc("claude", category, "/src/a")
     path = _settings_file(tmp_path, doc)
     with pytest.raises(SettingsError) as exc:
-        _file_partial(doc, path=path)
+        file_partial(doc, path=path)
     message = str(exc.value)
     assert "Dest-keyed binding entry must be a structured entry" in message
     assert "not a valid agent" not in message
@@ -577,7 +577,7 @@ def test_a_valid_agents_retired_sub_table_keeps_its_parse_time_refusal(
     doc = _pref_agent_doc("claude", category, {"old_name": {"src": "/s"}})
     path = _settings_file(tmp_path, doc)
     with pytest.raises(SettingsError) as exc:
-        _file_partial(doc, path=path)
+        file_partial(doc, path=path)
     message = str(exc.value)
     assert "holds a sub-table" in message
     assert "not a valid agent" not in message
@@ -600,7 +600,7 @@ def test_a_reserved_pseudo_agent_name_is_not_named_as_a_bad_agent(
     doc = _pref_agent_doc(reserved, "seeded", "/src/a")
     path = _settings_file(tmp_path, doc)
     with pytest.raises(SettingsError) as exc:
-        _file_partial(doc, path=path)
+        file_partial(doc, path=path)
     message = str(exc.value)
     assert "Dest-keyed binding entry must be a structured entry" in message
     assert "not a valid agent" not in message
@@ -620,7 +620,7 @@ def test_the_deferred_read_still_carries_a_valid_agents_bare_scalar(
     INVERT: judge the carried entry's shape here -> this row goes red on the raise.
     """
     doc = _pref_agent_doc("claude", category, "/src/a")
-    store = _file_partial(doc, path=_settings_file(tmp_path, doc), for_pref_requests=True)
+    store = file_partial(doc, path=_settings_file(tmp_path, doc), for_pref_requests=True)
     assert store["pref"]["agent"]["claude"] is not None
 
 
@@ -646,7 +646,7 @@ def test_the_deferred_read_names_the_agent_for_every_shape(
     doc = _pref_agent_doc("zippity", category, entry)
     path = _settings_file(tmp_path, doc)
     with pytest.raises(SettingsError) as exc:
-        _file_partial(doc, path=path, for_pref_requests=True)
+        file_partial(doc, path=path, for_pref_requests=True)
     message = str(exc.value)
     assert "it names agent 'zippity', which is not a valid agent" in message
     assert "structured entry" not in message
@@ -674,5 +674,5 @@ def test_a_map_outside_pref_agent_reaches_no_agent_verdict(tmp_path: Path, doc: 
     INVERT: judge the segment for every map -> the ``agent.<node>.bindings.<arm>`` row goes
     red, naming a name this map never wrote.
     """
-    store = _file_partial(doc, path=_settings_file(tmp_path, doc))
+    store = file_partial(doc, path=_settings_file(tmp_path, doc))
     assert len(store) == 1

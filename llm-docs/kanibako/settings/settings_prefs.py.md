@@ -140,7 +140,7 @@ MATCH the malformed `agent.claude.` — the very zero-length tail the convention
 
 ⚑ **The dotted-leaf raise.** Flattening walks NESTED tables ONLY. A leaf whose own segment contains
 a dot (`pref: {"system.agent": x}`) is an ERROR, not a second accepted spelling.
-`settings_assemble._parse_node` decides bind-shapes by ANCESTOR segment, so under the dotted
+`settings_assemble.parse_node` decides bind-shapes by ANCESTOR segment, so under the dotted
 spelling `pref: {"agent.claude.common.plugins": [src, dest]}` the value would stay a raw `list` and
 never become a `kanibako.settings.kb_store.Bind` — the same request behaving differently depending
 on how it was spelled. One form, enforced (§0 convention 0).
@@ -167,7 +167,7 @@ carried verbatim, including `None` (spec §2h). This layer performs NO emptiness
 any kind: present-`None`, terminal `""` and the COPY-disable sentinel all forward untouched, so the
 pref does not become a FOURTH place deciding what "empty" means.
 
-`collect_prefs` parses through `settings_assemble._file_partial` — the SAME parse the cascade uses —
+`collect_prefs` parses through `settings_assemble.file_partial` — the SAME parse the cascade uses —
 so a bind-shaped pref value arrives as a `Bind`, exactly as it would at its target key. Re-reading
 the file is deliberate: it is ONE spelling of the parse, called from one collector.
 

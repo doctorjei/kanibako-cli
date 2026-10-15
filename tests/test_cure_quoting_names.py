@@ -350,7 +350,7 @@ def test_a_plain_operand_prints_the_same_bytes_it_did():
 
 @pytest.mark.parametrize("name", _HOSTILE)
 class TestTheRetiredKeySubjectIsQuoted:
-    """``settings_assemble._cure_subject`` is the cure's required positional.
+    """``settings_assemble.cure_subject`` is the cure's required positional.
 
     ⚑ A real box name is a value the reader PASTS, so it must arrive as one
     shell word.  Its PLACEHOLDER branch is the opposite and is pinned by
@@ -358,11 +358,11 @@ class TestTheRetiredKeySubjectIsQuoted:
     """
 
     def test_the_printed_subject_pastes_to_one_argv(self, name, tmp_path):
-        from kanibako.settings.settings_assemble import _retired_key_cure
+        from kanibako.settings.settings_assemble import retired_key_cure
 
         # *box_ref* is ``paths.project_cure_ref``'s answer, already quoted: the cure
         # uses it as given, so it reaches the shell quoted EXACTLY once.
-        cure = _retired_key_cure("box.agent_name", level="box", value="claude",
+        cure = retired_key_cure("box.agent_name", level="box", value="claude",
                                  box_ref=shlex.quote(name))
 
         assert f"kanibako box set {shlex.quote(name)} pref.system.agent=claude" in cure
@@ -377,13 +377,13 @@ def test_the_cure_subject_placeholder_is_left_unquoted():
     the reader replaces, and a quoted placeholder would print ``'<box>'`` —
     literally what the reader is then required to type.
     """
-    from kanibako.settings.settings_assemble import _cure_subject
+    from kanibako.settings.settings_assemble import cure_subject
 
-    assert _cure_subject("box", None) == "<box>"
-    assert _cure_subject("workset", None) == "<workset>"
+    assert cure_subject("box", None) == "<box>"
+    assert cure_subject("workset", None) == "<workset>"
     # At workset scope a name is not the positional either, so the placeholder
     # wins over a name it would otherwise splice in.
-    assert _cure_subject("workset", "any name") == "<workset>"
+    assert cure_subject("workset", "any name") == "<workset>"
 
 
 # ---------------------------------------------------------------------------
@@ -513,10 +513,10 @@ def test_the_undropped_registry_row_cure_pastes_to_one_argv(name, tmp_path):
 
 def test_a_plain_cure_subject_prints_bare():
     """``shlex.quote`` is a no-op for the ordinary box, so nothing else moves."""
-    from kanibako.settings.settings_assemble import _cure_subject
+    from kanibako.settings.settings_assemble import cure_subject
 
-    assert _cure_subject("box", "plainbox") == "plainbox"
-    assert _cure_subject("box", "/data/boxes/plainbox") == "/data/boxes/plainbox"
+    assert cure_subject("box", "plainbox") == "plainbox"
+    assert cure_subject("box", "/data/boxes/plainbox") == "/data/boxes/plainbox"
 
 
 @pytest.mark.parametrize("name", _HOSTILE)

@@ -1877,7 +1877,7 @@ def table_leaf_read_cure(canonical: str, active_agent: str | None = None) -> str
     ⚑ It replaces the generic "your settings file may carry this entry" cure rather than
     following it: that cure prescribes a HAND DELETION, and the entry this key names is
     legitimate one scope up.  The head of the message — the key, then the §0 reason — is
-    untouched, for the reason ``settings_assemble._parse_naming_file`` states: the key
+    untouched, for the reason ``settings_assemble.parse_naming_file`` states: the key
     must stay the first thing the user reads on ``cli.main``'s ``Error: {e}`` line.
     """
     if canonical not in TABLE_VALUED_AGENT_LEAVES:

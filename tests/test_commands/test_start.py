@@ -1280,7 +1280,7 @@ class TestEffectiveTransformSettings:
 
     def test_the_agent_file_outranks_the_system_file(self, tmp_path):
         # ``self.transform_settings`` reaches the cascade on the agent file's own level, the
-        # more specific tier. (Mutation: drop ``level.state`` from ``_agent_partial`` → the
+        # more specific tier. (Mutation: drop ``level.state`` from ``agent_file_partial`` → the
         # system value wins → RED.)
         system = {"agent": {"claude": {"transform_settings": {"enabled": True}}}}
         agent = {"self": {"transform_settings": {"enabled": False}}}

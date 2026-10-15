@@ -206,7 +206,7 @@ def collect_prefs(
     launch path holds BEFORE it resolves the agent. That is what lets agent
     SELECTION consult ``pref.system.agent`` without a resolution loop.
 
-    Parses through ``settings_assemble._file_partial`` — the SAME parse the
+    Parses through ``settings_assemble.file_partial`` — the SAME parse the
     cascade uses — so a bind-shaped pref value arrives as a
     :class:`~kanibako.settings.kb_store.Bind`, exactly as it would at its target
     key. Re-reading the file is deliberate.
@@ -228,7 +228,7 @@ def collect_prefs(
     cascade applies.
     """
     from kanibako.settings.config_io import load_doc
-    from kanibako.settings.settings_assemble import _file_partial
+    from kanibako.settings.settings_assemble import file_partial
 
     out: list[PrefRequest] = []
     for level, path in zip(PREF_LEGAL_LEVELS, (workset_path, box_path)):
@@ -248,7 +248,7 @@ def collect_prefs(
                 # bare-scalar entry's verdict waits for the agent segment rather than
                 # pre-empting it here; the cascade's own read of the same file is NOT that
                 # reader and still judges it.
-                _file_partial(
+                file_partial(
                     {PREF_ROOT: table}, path=path, for_pref_requests=True,
                 ),
                 level=level, path=path,

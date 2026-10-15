@@ -6164,7 +6164,7 @@ def _build_config_env(env_slots: "CollapsedEnvs") -> dict[str, str]:
 
     ⚑ THE AGENT UNDER-LAYER IS GONE (MBR-1 P3) and must not come back. It was
     ``AgentConfig.env`` — the per-agent FILE's ``self.env`` table, handed in
-    separately because ``_agent_partial`` re-rooted the file's ``secret_path`` and
+    separately because ``agent_file_partial`` re-rooted the file's ``secret_path`` and
     not its ``env``, so those variables were on no cascade level at all. Being an
     under-layer put them BELOW ``system``, inverting the bracket in which agent
     outranks system, and being off the snapshot skipped the expand pass. The re-root

@@ -18,7 +18,7 @@ message is what a user reads.
 
 The other doors in the same audit (``box set``, config ``set`` at system/agent,
 ``workset share list``) reach the identical parse, which
-:mod:`tests.test_settings.test_bind_map_checks` pins through ``_file_partial`` — one judgment,
+:mod:`tests.test_settings.test_bind_map_checks` pins through ``file_partial`` — one judgment,
 one refusal, so pinning the parse pins those doors too. Only the rows below claim a command's
 own output.
 """

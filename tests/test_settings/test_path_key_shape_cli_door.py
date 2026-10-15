@@ -174,7 +174,7 @@ def test_a_list_at_workset_channels_common_gets_the_path_key_refusal(
     Spec §2a: the ``channels.`` segment discriminates the CHANNEL type-root from the
     ``<scope>.common`` MOUNT category.
 
-    Mutation: key ``_parse_node``'s bind-leaf branch on the bare ``common`` token again →
+    Mutation: key ``parse_node``'s bind-leaf branch on the bare ``common`` token again →
     the bind parser's arity refusal answers instead.
     """
     root = _registered_ws(tmp_home, capsys)

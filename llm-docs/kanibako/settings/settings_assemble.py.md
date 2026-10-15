@@ -97,14 +97,14 @@ AGENT scope (or higher) survives the merge by its own name — but a box file ma
 
 ⚑⚑ **The agent file's SHAPE is not this module's** — `settings/agent_file.py` owns it (the root
 table, the flat-category splice, the nested refusal, the address a leaf writes to). What is left
-here is the STORE COERCION and the §2d wrap: `_agent_partial` takes an `AgentFileLevel` from
+here is the STORE COERCION and the §2d wrap: `agent_file_partial` takes an `AgentFileLevel` from
 `agent_file.level_table` — which owns both refusals that precede it, the nested `self:` and the
 stray top-level key — and turns its raw table into a `KeyStore` under `agent.<sub_key>`. The
 seam is cut at the SHAPE so the boundary never imports `KeyStore` and the import edge stays
 one-way. See `agent_file.py.md`.
 
 ⚑ **THE FILE'S `agent:` TABLE IS READ (Q92)** — the level carries it RAW as `scope`, and
-`_scope_nodes` parses it with `_file_partial`, the scope files' own builder (node fold, bind
+`_scope_nodes` parses it with `file_partial`, the scope files' own builder (node fold, bind
 parse, file named in every refusal). The all-agents tier takes its `default` node; the active tier
 takes every other node, merged beside the re-rooted `self:` (`_overlay`). What that means, BY
 CONSTRUCTION, since the file is read only while its agent is active: in foo's file,
@@ -140,7 +140,7 @@ a bind category is 2-element-legal in BOTH shapes with OPPOSITE meanings (`(host
 That is the arity trap `kb_store.BindEntry` documents, and spec §2a calls the loud refusal of
 the stale shape load-bearing for exactly this reason.
 
-⚑ The depth is derived from the CATEGORY token `_parse_node` walks past, so `_file_partial` needs no
+⚑ The depth is derived from the CATEGORY token `parse_node` walks past, so `file_partial` needs no
 flag of its own and there is no flag for a caller to get wrong (P6, P3).
 
 ## Retired spellings — refusing by name
@@ -180,7 +180,7 @@ discriminator.** Both are manifest `renamed` rows:
   SURVIVES is the RO read-back `meta.box.agent.<key>` (§2b) — a different key, not a tweak channel.
 
 One cure for both would send half of these users at the wrong key, so `refuse_retired_keys` reads
-the shape and hands `_retired_key_cure` a *mirror* argument that selects between the two. The
+the shape and hands `retired_key_cure` a *mirror* argument that selects between the two. The
 FRAMING SENTENCE forks with it, which is why there are TWO story constants: *"a box no longer names
 its agent with a key of its own"* is wrong for someone who was tweaking an agent rather than naming
 one.
@@ -217,7 +217,7 @@ rule" above for why this set is not redundant with `BIND_CATEGORY_TOKENS`.
 ```_MARKER_LEAF_CATEGORIES: frozenset[str]```
 The dest-keyed terminal categories whose token is the whole key but whose value is the 3-state MARKER
 rather than a `BindMap` — `{"masks"}`, DERIVED as every one-segment `TERMINAL_CATEGORY_TAILS` entry that
-is not a bind leaf. `_parse_node` and `_insert_dotted` hand such a map to `_parse_marker_map`, which
+is not a bind leaf. `parse_node` and `_insert_dotted` hand such a map to `parse_marker_map`, which
 canonicalizes each dest with `normalize_bind_dest` (spec §2a "A MOUNT DESTINATION IS CANONICALIZED")
 and keeps each value as authored, so `masks: {/m/: true}` and a lower scope's `{/m: null}` are one
 entry and the unmask meets the mask. Like `parse_bind_map`, two spellings of one dest inside ONE map
@@ -313,13 +313,13 @@ CLI parses. A nested TABLE has no single-token spelling at all, so its tail stay
 level deeper (`<sub>.<key>=<value>`) rather than a repr that cannot work. Probe the emitted
 commands rather than reading them; a cure is a command a user pastes.
 
-```_cure_subject(level: str, box_ref: str | None) -> str```
+```cure_subject(level: str, box_ref: str | None) -> str```
 The REQUIRED subject positional for `kanibako <level> set` — ONE derivation, shared by every cure
 this module emits.
 
 ⚑ **THE VERB IS THE LEVEL, and the subject is never optional.** Both pref-legal verbs take a
 subject — `box set <box>`, `workset set <workset>` — and only a box-level refusal knows what it is
-(`_retired_key_cure`'s *box_ref*, `paths.project_cure_ref`'s answer, used as given because it is
+(`retired_key_cure`'s *box_ref*, `paths.project_cure_ref`'s answer, used as given because it is
 already quoted). Anything else renders `<box>` / `<workset>`: a PLACEHOLDER, never nothing.
 
 Why nothing is the worst of the three options, and why it is not caught by reading: dropping the
@@ -340,13 +340,13 @@ One `_cure_assignment` tail per leaf in the stored table (an empty table falls b
 form; elsewhere it is the same REMOVE-it refusal the scalar cure gives at base / system / agent
 scope, offering `kanibako agent set` for a user who meant to tweak the agent everywhere.
 
-⚑ The agent renders as the `<agent>` PLACEHOLDER — the `_retired_behavior_cure` shape. This seam
+⚑ The agent renders as the `<agent>` PLACEHOLDER — the `retired_behavior_cure` shape. This seam
 runs BEFORE selection, so naming an agent here would be a GUESS, and it is exactly the guess a box
 carrying this table most needs kanibako not to make.
 
-⚑ The verb and its subject come from `_cure_subject`.
+⚑ The verb and its subject come from `cure_subject`.
 
-```_retired_key_cure(key: str, *, level: str, value: str, box_ref: str | None = None, mirror: dict[Any, Any] | None = None) -> str```
+```retired_key_cure(key: str, *, level: str, value: str, box_ref: str | None = None, mirror: dict[Any, Any] | None = None) -> str```
 The LEVEL-APPROPRIATE fix for a retired key.
 
 *mirror* is the TABLE a `box.agent` leaf holds when that is its shape — the ONE discriminator
@@ -362,7 +362,7 @@ agent file has no legal pref equivalent — flag it rather than silently relocat
 *box_ref* is the addressable box the cure is FOR: `kanibako box set` takes the box as a REQUIRED
 `[project]` positional unless the caller's cwd already resolves to that box, so a cure that omits it
 fails from anywhere else. Threaded ONLY for a box-level refusal — `None` at any other *level*,
-where no single box is being refused for. The verb and its subject then come from `_cure_subject`,
+where no single box is being refused for. The verb and its subject then come from `cure_subject`,
 so a WORKSET file's cure is `workset set <workset> …`, not `box set …`.
 
 ⚑ The base / system / agent REMOVE-it arm names no single box either, so the "if you meant one box"
@@ -390,7 +390,7 @@ constant that opens it, and the *mirror* argument that steers the cure.
 The cure carries the value the user ACTUALLY has, so it is copy-pasteable rather than a shape to fill
 in; a present-`None` (an empty `agent_name:` leaf) has no value to quote, so it gets the shape.
 
-*box_ref* is passed straight through to `_retired_key_cure`, and is only meaningful at
+*box_ref* is passed straight through to `retired_key_cure`, and is only meaningful at
 `level="box"`.
 
 ```_behavior_leaf_sites(raw: Any, leaf: str) -> list[tuple[tuple[str, ...], Any]]```
@@ -399,14 +399,14 @@ Every (nested path, value) where *leaf* is present in *raw*.
 Walks exactly the `_BEHAVIOR_TABLE_SHAPES` — no free-form recursion, so an unrelated user key that
 happens to be spelled `auto_approve` deeper in some other table is not swept up.
 
-```_retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_ref: str | None = None, node: str | None = None) -> str```
+```retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_ref: str | None = None, node: str | None = None) -> str```
 The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key.
 
 ⚑ **The cure's agent is the node the entry is STORED under** (*node*, read from the entry's own
 path), never the agent being resolved (*subject*): a file may store another agent's entry. Only the
 agent file's root stores no node and falls back to *subject*; with neither, the cure renders
 `<agent>`. `access` is an AGENT-scope key (spec §2d), so where it may be WRITTEN depends on the file
-the stale value was found in — the same asymmetry `_retired_key_cure` handles for the selection
+the stale value was found in — the same asymmetry `retired_key_cure` handles for the selection
 keys:
 
 * `base` / `system` — `kanibako system set agent.<agent>.access=<tier>`; for the reserved `default`
@@ -417,7 +417,7 @@ keys:
   `kanibako <level> set <subject> pref.agent.<agent>.access=<tier>`.
 
 ⚑ **Two different subjects.** *subject* names the AGENT node; the verb's own positional (the box or
-workset) is *box_ref*, through `_cure_subject(level, box_ref)`, or a placeholder when none is given.
+workset) is *box_ref*, through `cure_subject(level, box_ref)`, or a placeholder when none is given.
 
 ```refuse_retired_behavior_keys(raw, *, level, path, subject=None, box_ref=None) -> None```
 RAISE when *raw* still carries a RETIRED behavior key — `RETIRED_BEHAVIOR_KEYS`.
@@ -428,7 +428,7 @@ and never a silent drop: silence on the permission axis resolves to the PERMISSI
 
 *subject* is the agent being RESOLVED, used only for the agent file's root, which stores no node;
 `None` renders `<agent>`. *box_ref* is the box or workset the `set` verb needs as its positional,
-passed straight through to `_retired_behavior_cure` and meaningful only at `level="box"`. Run by
+passed straight through to `retired_behavior_cure` and meaningful only at `level="box"`. Run by
 `read_settings_files` under `ReadPurpose.RESOLVE` and by `retired_cure` (which passes neither), not
 inside `assemble_levels`.
 
@@ -527,7 +527,7 @@ refused nor delivered. Two spellings of ONE node in one file (`Claude:` beside `
 are REFUSED naming both (FA = Q103: neither may silently win) by
 `agent_file.refuse_node_spelled_twice`, the one carrier the agent file's own readers share; "one
 node" is judged on the CANONICAL node (separator and case), so `nav+Claude:` beside `nav℘claude:` is
-refused too. Called by `_file_partial` (every
+refused too. Called by `file_partial` (every
 file level, and `settings_prefs.collect_prefs`'s pref parse) and by `_file_view` AFTER its drops,
 so a table the cascade drops is neither folded nor judged. Copies only what it changes.
 
@@ -621,7 +621,7 @@ Callers: `settings_launch._refuse_undeclared_snapshot` and `refuse_undeclared_en
 
 ```agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig```
 THE ONE READER of an agent's settings file: one `read_settings_files` read, the shape judged by
-`agent_file.level_table` (the same view `_agent_partial` takes), and the record built by
+`agent_file.level_table` (the same view `agent_file_partial` takes), and the record built by
 `agent_file.record`, then `refuse_undeclared_entries` over the level's contained tables. Every
 reader — the launch, `agent show` / `info` / `list` / `get` — takes the record from here, so one
 file gets one verdict. Returns an empty record if the file does not exist. A store folder named for
@@ -632,7 +632,7 @@ through `agent_store_refusal`.
 THE refusal of folder *store* as an agent store, because of *why*. The default cure renames or moves
 the folder; *fix* replaces it when the folder can hold no agent's settings at all.
 
-```_parse_node(value, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False, path: tuple[str, ...] = (), for_pref_requests: bool = False) -> Any```
+```parse_node(value, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False, path: tuple[str, ...] = (), for_pref_requests: bool = False) -> Any```
 Recursively coerce a raw settings node into the `StoreValue` space.
 
 *in_binds* is True while descending the subtree of a bind-shaped category (`bindings.{ro,rw}` /
@@ -655,7 +655,7 @@ leaf's arity.
 *at_bindings* says "the dict I am about to descend is the `bindings` category node, so its keys are
 ARMS and each arm's value is a `BindMap`". It is set by this function itself when it walks past a
 `bindings` token, which is what wires user settings FILES onto the dest-keyed route (P6) —
-`_file_partial` needs no flag of its own, because the shape is a property of the CATEGORY, not of the
+`file_partial` needs no flag of its own, because the shape is a property of the CATEGORY, not of the
 caller. ⚑ It is deliberately NOT set for a `bindings` token encountered while already `in_binds`:
 inside a bind category the keys are names/destinations, and a user with a `caches` entry literally
 named `bindings` must not have it re-read as a category. The `not in_binds` guard on the terminal
@@ -670,9 +670,9 @@ load-bearing.
 
 *path* is the KEY PATH walked so far, doc-root first. It carries the SCOPE to
 `_declaration_root_ref`, so an abstract category's bare leaf is rooted here (spec §2a) rather than
-downstream; a caller whose document does not START at a scope token seeds it (`_agent_partial`,
+downstream; a caller whose document does not START at a scope token seeds it (`agent_file_partial`,
 because `self:` IS `agent.<node>`). *for_pref_requests* is threaded to `parse_bind_map` as
-*defer_shape* for the pref-request parse (see `_file_partial`).
+*defer_shape* for the pref-request parse (see `file_partial`).
 
 ```parse_bind_map(raw: Any, *, category: str = "bindings", root_ref: str | None = None, declared: bool = True, defer_shape: bool = False, pref_agent: str | None = None) -> KeyStore```
 Parse a raw DEST-KEYED category map into a `KeyStore` of `BindEntry`.
@@ -709,14 +709,14 @@ costs nothing and neither place is load-bearing alone.
 `{dest: [src[, opts]]}`, so a sub-table is the retired `{name: {…}}` shape (spec §2a, "STALE SHAPES
 ARE REFUSED LOUDLY"). A 3-element list is refused one level down, by `unpack_bind_entry`.
 
-```_file_partial(raw: dict, *, path: Path | None = None, for_pref_requests: bool = False) -> KeyStore```
+```file_partial(raw: dict, *, path: Path | None = None, for_pref_requests: bool = False) -> KeyStore```
 Build ONE level partial from a settings file's WHOLE nested content.
 
 *raw* is the parsed file (`load_doc` output). The full scope-ROOTED tree is mirrored into a nested
 `KeyStore` with the SCOPE TOKEN KEPT (§0: namespace orthogonal to cascade), refs raw. EVERY
 bind-shaped category is read as a DEST-KEYED `BindMap` of `BindEntry` leaves (R-5/R-6): at the ARM for
 `bindings.{ro,rw}`, at the CATEGORY TOKEN for the other four. ⚑ The DEPTH is not chosen here —
-`_parse_node` derives it from the CATEGORY token it walks past, so there is no flag for a caller to
+`parse_node` derives it from the CATEGORY token it walks past, so there is no flag for a caller to
 get wrong.
 
 *path* names the file in every refusal the parse raises — a key with no file is a cure the user
@@ -724,14 +724,14 @@ has to hunt for. *for_pref_requests* marks the one reader whose consumer judges 
 (`settings_prefs.apply_prefs`), so only there is a bare-scalar entry's verdict deferred.
 
 An empty / non-dict file yields an empty `KeyStore`. This is the rule for every NON-agent level
-(`base` / `system` / `workset` / `box`); the agent tier uses `_agent_partial`. The node segments are folded first (`fold_agent_nodes`).
+(`base` / `system` / `workset` / `box`); the agent tier uses `agent_file_partial`. The node segments are folded first (`fold_agent_nodes`).
 
-```_agent_partial(raw: dict, *, sub_key: str, path: Path | None = None, node: str | None = None) -> KeyStore```
+```agent_file_partial(raw: dict, *, sub_key: str, path: Path | None = None, node: str | None = None) -> KeyStore```
 Build an AGENT-tier level partial (`agent.default` or `agent.<active>`) — the STORE half of the
 seam.
 
 It asks `agent_file.level_table` which raw table this level reads (that call is where the nested
-refusal fires, BEFORE the flat splice), then `_parse_node`s the table and wraps it under its TRUE
+refusal fires, BEFORE the flat splice), then `parse_node`s the table and wraps it under its TRUE
 discriminated name `agent.<sub_key>`. *path* and *node* are display-only: they render the
 boundary's refusal message and are never read.
 
@@ -753,7 +753,7 @@ Build a merge LEVEL from a flat `{dotted key: value}` mapping.
 `commands/start.py` gathers it and passes it through `settings_launch.build_launch_snapshot`. Its keys
 are the same SCOPE-QUALIFIED logical keys the files use, flat dotted; dotted keys are EXPLODED to the
 nested keyspace (S7) so the floor merges uniformly with the other partials. A name-keyed bind value is
-parsed to `Bind` (reachable only for a malformed node — see `_parse_node`).
+parsed to `Bind` (reachable only for a malformed node — see `parse_node`).
 
 ⚑⚑ **DO NOT PUT A CATEGORY-ENTRY SPELLING IN THIS DOCSTRING AS AN EXAMPLE.** `_insert_dotted` REFUSES
 BY NAME every floor key that goes DEEPER than the terminal category key: `"box.bindings.rw.home"`
@@ -807,8 +807,8 @@ high→low precedence — the merge walks this order and the first scope that SE
   floor is also the SOLE sanctioned `meta.*` source: a top-level `meta:` table is dropped from every
   FILE view (base included, spec §0) before the partial is built.
 
-Each non-agent level's partial is its file's view, scope token KEPT (§0), through `_file_partial`.
-The agent file yields BOTH agent levels through `_agent_partial`, each kept under its TRUE
+Each non-agent level's partial is its file's view, scope token KEPT (§0), through `file_partial`.
+The agent file yields BOTH agent levels through `agent_file_partial`, each kept under its TRUE
 discriminated name (§2d) — NO bare-`agent` collapse. The agent file's SHAPE checks
 (`agent_file.level_table`: a stray root, a nested `self:`) judge the stored file minus its dropped
 tables (`_agent_shape_input`), so a stray still refuses by name. Binds are parsed with `@`-ref /
