@@ -4,6 +4,12 @@ _Signatures only: no comments, no docstrings, no bodies._
 **GENERATED — do not hand-edit; regenerate with `scripts/gen-api-doc.py`.**
 
 
+## Variables
+
+```
+_EMPTY_WORDS = {'emit': True, 'omit': False}
+```
+
 ## Functions
 ```
 def refuse_floorless_default(named: str, where: str='') -> None

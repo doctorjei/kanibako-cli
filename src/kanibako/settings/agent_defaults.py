@@ -290,6 +290,10 @@ def _build_access_realization(
     )
 
 
+# A ``settings:`` entry's ``empty:`` words -> ``SettingArg.emit_empty``.
+_EMPTY_WORDS = {"emit": True, "omit": False}
+
+
 def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg:
     """Build ONE :class:`SettingArg` from a declarative ``settings:`` entry.
 
@@ -328,12 +332,20 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
     """
     where = f" ({source})" if source else ""
     named = entry.get("setting_key", "<unnamed>")
-    unknown = set(entry) - {"setting_key", "channel", "flag", "env_var"}
+    unknown = set(entry) - {"setting_key", "channel", "flag", "env_var", "empty"}
     if unknown:
         raise SettingsError(
             f"settings entry {named!r}{where} declares unknown field(s) "
             f"{sorted(unknown)}; a setting arg carries only 'setting_key', "
-            f"'channel', 'flag' (FLAG channel) and 'env_var' (ENV channel)."
+            f"'channel', 'flag' (FLAG channel), 'env_var' (ENV channel) and "
+            f"'empty'."
+        )
+    empty = entry.get("empty")
+    emit_empty = _EMPTY_WORDS.get(empty) if isinstance(empty, str) else None
+    if "empty" in entry and emit_empty is None:
+        raise SettingsError(
+            f"settings entry {named!r}{where} declares 'empty: {empty!r}'; "
+            f"'empty' is 'emit' or 'omit' (leave it out for the key's default)."
         )
     channel = Channel(entry["channel"])
     env_var = entry.get("env_var", "")
@@ -359,6 +371,7 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
         channel=channel,
         flag=flag,
         env_var=env_var,
+        emit_empty=emit_empty,
     )
 
 

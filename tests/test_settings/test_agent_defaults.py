@@ -26,7 +26,12 @@ from kanibako.settings.agent_config import (
     store_dirname,
 )
 from kanibako.settings.settings_resolve import UNSET, SettingsError
-from kanibako.targets.base import TargetSetting, descriptor_floor
+from kanibako.targets.base import (
+    Channel,
+    SettingArg,
+    TargetSetting,
+    descriptor_floor,
+)
 
 
 @pytest.fixture
@@ -1214,6 +1219,69 @@ class TestFlagChannelSettingsMustNameTheirFlag:
         assert d.access_realization is not None
         assert d.access_realization.restricted is not None
         assert d.access_realization.restricted.flag == ()
+
+
+class TestSettingEntryEmptyField:
+    """``empty: emit | omit`` on a ``settings:`` entry (null-model design S5a).
+
+    The parser stores what the YAML says: ``emit`` → ``True``, ``omit`` →
+    ``False``, absent → ``None``.  The default for ``None`` lives in
+    :class:`SettingArg`, so a YAML entry and the same entry built in Python
+    compare equal."""
+
+    @staticmethod
+    def _load(declfile, key, extra=""):
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            f"    - setting_key: {key}\n"
+            "      channel: flag\n"
+            "      flag: [\"--x\"]\n" + extra
+        )
+        return agent_defaults.load_descriptor(package, filename), filename
+
+    def test_undeclared_is_none(self, declfile):
+        d, _ = self._load(declfile, "model")
+        assert d.settings[0].emit_empty is None
+
+    def test_omit_on_model_is_false(self, declfile):
+        d, _ = self._load(declfile, "model", "      empty: omit\n")
+        assert d.settings[0].emit_empty is False
+
+    def test_emit_on_provider_is_true(self, declfile):
+        d, _ = self._load(declfile, "provider", "      empty: emit\n")
+        assert d.settings[0].emit_empty is True
+
+    def test_an_unknown_word_is_refused(self, declfile):
+        with pytest.raises(SettingsError) as exc:
+            self._load(declfile, "model", "      empty: maybe\n")
+        msg = str(exc.value)
+        assert "'model'" in msg                    # names the entry
+        assert "probe-defaults.yaml" in msg        # ...and the file to fix
+        assert "maybe" in msg
+        assert "emit" in msg and "omit" in msg     # ...and the two legal words
+
+    @pytest.mark.parametrize("word", ["null", "true", "\"\"", "[emit]"])
+    def test_a_non_word_is_refused(self, declfile, word):
+        """An explicit null (or any non-word) is not "undeclared": it refuses."""
+        with pytest.raises(SettingsError) as exc:
+            self._load(declfile, "model", f"      empty: {word}\n")
+        assert "emit" in str(exc.value) and "omit" in str(exc.value)
+
+    def test_a_yaml_entry_equals_the_python_built_one(self, declfile):
+        package, filename = declfile(
+            "descriptor:\n"
+            "  command: [\"probe\"]\n"
+            "  settings:\n"
+            "    - setting_key: model\n"
+            "      channel: flag\n"
+            "      flag: [\"--model\"]\n"
+        )
+        d = agent_defaults.load_descriptor(package, filename)
+        assert d.settings[0] == SettingArg(
+            setting_key="model", channel=Channel.FLAG, flag=("--model",),
+        )
 
 
 class TestLoadBehavior:

@@ -114,6 +114,11 @@ class SettingArg:
     channel: Channel
     flag: tuple[str, ...] = ()
     env_var: str = ''
+    emit_empty: bool | None = None
+
+    @staticmethod
+    def empty_default(setting_key: str) -> bool
+    def emits(self, value: str | None) -> bool
 
 @dataclass(frozen=True)
 class AccessTierRow:

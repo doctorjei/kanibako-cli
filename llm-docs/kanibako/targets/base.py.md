@@ -168,13 +168,20 @@ class SettingArg:
     channel: Channel
     flag: tuple[str, ...] = ()
     env_var: str = ""
+    emit_empty: bool | None = None
+
+    @staticmethod
+    def empty_default(setting_key: str) -> bool: ...
+    def emits(self, value: str | None) -> bool: ...
 ```
 
 `Channel` — where a value-bearing arg is emitted: an argv flag or an environment variable.
 
 `SettingArg` — a value-bearing agent setting routed to one of those (model, provider).
 *setting_key* is the agent setting supplying the value; *flag* is the FLAG form (`("--model",)`)
-and *env_var* the ENV form (`"GOOSE_MODEL"`).
+and *env_var* the ENV form (`"GOOSE_MODEL"`). *emit_empty* says whether an empty value emits;
+`None` is undeclared and takes `empty_default(setting_key)`, true only for `model`. `emits(value)` is
+the one carrier of the rule: `None` never emits, a non-empty value always does.
 
 ## The `access` tier realization (spec §2d)
 

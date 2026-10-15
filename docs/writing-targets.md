@@ -121,9 +121,11 @@ fragment appended after `command`.  Always provide `"start"` (new session) and
 **`Operation(fragment)`** — a standalone, session-less invocation spliced after
 `command` (e.g. `{"exec": Operation(("exec",))}` for headless runs).
 
-**`SettingArg(setting_key, channel, flag=(), env_var="")`** — routes a
-value-bearing setting (e.g. `model`) to a `Channel.FLAG` argv flag
+**`SettingArg(setting_key, channel, flag=(), env_var="", emit_empty=None)`** —
+routes a value-bearing setting (e.g. `model`) to a `Channel.FLAG` argv flag
 (`("--model",)`) or a `Channel.ENV` environment variable (`"GOOSE_MODEL"`).
+An empty value emits only when `emit_empty` resolves true; undeclared (`None`),
+that is true for `model` and false otherwise.
 
 **`AccessRealization(channel, env_var="", restricted=None, editing=None,
 full=None, setting_key="")`** — how *your* harness realizes each `access`
@@ -213,6 +215,7 @@ descriptor:
     - setting_key: model
       channel: flag
       flag: ["--model"]
+      # empty: emit | omit — does an empty value emit? Default: emit for model, omit otherwise.
 
   cred_files:
     - home_rel: ".codex/auth.json"

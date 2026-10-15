@@ -381,6 +381,30 @@ class TestPluginDescriptorDataclasses:
         assert env.env_var == "GOOSE_MODEL"
         assert env.flag == ()
 
+    def test_setting_arg_emits(self):
+        """``emits``: S5a's one carrier of the empty-value rule."""
+        model = SettingArg(setting_key="model", channel=Channel.FLAG, flag=("--model",))
+        provider = SettingArg(setting_key="provider", channel=Channel.ENV, env_var="P")
+        assert model.emit_empty is None            # undeclared
+        # None never emits, whatever the entry declares.
+        for s in (model, provider,
+                  SettingArg("model", Channel.FLAG, ("--m",), emit_empty=True)):
+            assert s.emits(None) is False
+        # "" follows the key's default when undeclared...
+        assert model.emits("") is True
+        assert provider.emits("") is False
+        # ...and the declaration when set.
+        assert SettingArg("model", Channel.FLAG, ("--m",), emit_empty=False).emits("") is False
+        assert SettingArg("provider", Channel.ENV, env_var="P", emit_empty=True).emits("") is True
+        # An ID always emits.
+        assert model.emits("gpt-x") is True
+        assert provider.emits("openai") is True
+        assert SettingArg("model", Channel.FLAG, ("--m",), emit_empty=False).emits("gpt-x") is True
+
+    def test_setting_arg_empty_default(self):
+        assert SettingArg.empty_default("model") is True
+        assert SettingArg.empty_default("provider") is False
+
     def test_access_realization_defaults(self):
         # ⚑ R-41: EVERY tier row defaults to ``None`` = "this harness cannot
         # render that tier", so a descriptor that declares a permission channel

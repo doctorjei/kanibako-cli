@@ -151,6 +151,22 @@ class SettingArg:
     channel: Channel
     flag: tuple[str, ...] = ()        # FLAG form, e.g. ("--model",)
     env_var: str = ""                 # ENV form, e.g. "GOOSE_MODEL"
+    emit_empty: bool | None = None    # does "" emit? None = undeclared: empty_default(setting_key)
+
+    @staticmethod
+    def empty_default(setting_key: str) -> bool:
+        """Whether an undeclared entry emits an empty value: only ``model`` does."""
+        return setting_key == "model"
+
+    def emits(self, value: str | None) -> bool:
+        """Whether *value* reaches the harness: ``None`` never; ``""`` per ``emit_empty``."""
+        if value is None:
+            return False
+        if value:
+            return True
+        if self.emit_empty is not None:
+            return self.emit_empty
+        return self.empty_default(self.setting_key)
 
 
 @dataclass(frozen=True)
