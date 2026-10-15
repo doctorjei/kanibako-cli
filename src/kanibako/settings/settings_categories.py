@@ -646,8 +646,9 @@ def env_twin_refusal(var: str, claim: str, cure: str) -> str:
     (:func:`refuse_env_secret_twins`, off the entry list), a key naming a
     variable the launch realizes (``commands.start._refuse_realized_twin``, off the
     snapshot), and a user value for the variable ``--browser`` writes
-    (``commands.start._refuse_browser_env_twin``, off the collapsed slots).  *claim* says who claims the slot; *cure* is the raiser's own,
-    because each contest is cleared a different way.
+    (``commands.start._refuse_browser_env_twin``, off the collapsed slots).
+    *claim* says who claims the slot; *cure* is the raiser's own, because each
+    contest is cleared a different way.
     """
     return f"the environment variable {var!r} {claim}. {cure}"
 
