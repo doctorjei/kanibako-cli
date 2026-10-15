@@ -3972,7 +3972,7 @@ authority = "produced"
 # FACT: each descriptor `cred_files` row the manifest's `plugin_contributed`
 # `agent.<agent>.synced` tables name carries that cell's `owner:`, and carries one
 # exactly when the cell does. The view holds only the rows a cell names: the spec
-# names one per agent, and goose's other two sync rows have no cell to equal.
+# names one per agent.
 [[parity]]
 registry = "cred-entry-owners"
 command = ["{python}", "-c", """

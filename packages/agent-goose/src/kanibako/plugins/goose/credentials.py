@@ -1,4 +1,4 @@
-"""Goose config handling via YAML files.
+"""Goose YAML parsing.
 
 The host<->box sync of goose's secrets.yaml is NOT here: it is declared as a
 ``CredFileSpec`` in the goose ``PluginDescriptor`` (``goose-defaults.yaml``) and
@@ -8,8 +8,6 @@ view).  The former bespoke ``refresh_secrets`` / ``writeback_secrets`` copies
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 try:
     import yaml
@@ -25,19 +23,3 @@ def parse_yaml(text: str | bytes) -> dict:
     except yaml.YAMLError:
         return {}
     return data if isinstance(data, dict) else {}
-
-
-def read_yaml(path: Path) -> dict:
-    """Read a YAML file, returning {} on any error."""
-    if not path.is_file():
-        return {}
-    try:
-        return parse_yaml(path.read_text())
-    except OSError:
-        return {}
-
-
-def write_yaml(path: Path, data: dict) -> None:
-    """Write a dict as YAML, creating parent directories as needed."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, default_flow_style=False))

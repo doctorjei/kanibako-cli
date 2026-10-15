@@ -1242,6 +1242,15 @@ class Target(ABC):
         """
         return True
 
+    @property
+    def checks_box_login(self) -> bool:
+        """Whether :meth:`check_auth` judges the box when given *box_home*.
+
+        ``agent reauth`` skips its host check for such a target: it syncs the box
+        from its store, then runs the gate.  Default ``False`` (the host check).
+        """
+        return False
+
     def box_login_present(self, box_home: Path, delivered: frozenset[str]) -> bool:
         """Whether the box has a login: a descriptor ``login_vars`` name is in
         *delivered* (the VAR names the launch gives a non-empty value, never the

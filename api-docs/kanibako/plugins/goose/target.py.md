@@ -13,10 +13,17 @@ GOOSE_CONFIG_FILE = 'config.yaml'
 _BINARY = Path.home() / '.local' / 'bin' / 'goose'
 _DEFAULTS_PACKAGE = 'kanibako.plugins.goose'
 _DEFAULTS_FILE = 'goose-defaults.yaml'
+_BOX_CONFIG_MAX_BYTES = 1 << 20
 _HOOKS_DIR = ('.agents', 'plugins', 'kanibako', 'hooks')
 _HOOKS_FILE = 'hooks.json'
 _GOOSE_DESCRIPTOR = load_descriptor(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
 _GOOSE_BEHAVIOR = load_behavior(_DEFAULTS_PACKAGE, _DEFAULTS_FILE)
+```
+
+## Functions
+```
+def _host_secrets_present() -> bool
+def _box_provider_named(box_home: Path) -> bool
 ```
 
 ## Classes
@@ -27,7 +34,6 @@ class GooseTarget(Target):
     def descriptor(self) -> PluginDescriptor | None
     def default_category_binds(self) -> CategoryBindDefaults
     def default_envs(self) -> dict[str, str]
-    def transform_cred(self, spec: 'CredFileSpec', src: 'Path | None', dst: Path, direction: str) -> None
     def cred_writeback_error(self, spec: 'CredFileSpec', data: bytes) -> str | None
     @property
     def name(self) -> str
@@ -45,6 +51,8 @@ class GooseTarget(Target):
     @property
     def setup_args(self) -> list[str]
     def detect(self) -> AgentInstall | None
+    @property
+    def checks_box_login(self) -> bool
     def check_auth(self, *, box_home: Path | None=None, delivered: frozenset[str]=frozenset()) -> bool
     def generate_agent_config(self) -> AgentConfig
     def setting_descriptors(self) -> list[TargetSetting]

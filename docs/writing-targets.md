@@ -65,6 +65,7 @@ Optional overrides (sensible defaults provided by the base class):
 |---|---|---|
 | `has_binary` | `True` | Set `False` for a pure pip/python tool with no host binary |
 | `check_auth(*, box_home=None, delivered=frozenset())` | `True` | Validate the login before launch; `box_login_present()` checks the box |
+| `checks_box_login` | `False` | `True` when your `check_auth` judges the box; `agent reauth` then syncs the box before checking |
 | `prepare_host(install, *, auto_auth, data_path)` | no-op | Touch the host before mounts (binary update, auth refresh) — set `descriptor.host_prep=True` to enable |
 | `default_common()` | `{}` | Declare default `agent.<agent>.common` / `agent.<agent>.caches` binds |
 | `default_category_binds()` | `{}` | Declare default reference-sourced binds in any agent-scope category |
@@ -317,7 +318,7 @@ shadow a user's `agent.default.model`.
 
 For agents whose host config or auth files mix portable and non-portable
 fields, set `filtered=True` on the relevant `CredFileSpec` and override
-`transform_cred` to allowlist or merge (Claude and Goose do this).  Note that
+`transform_cred` to allowlist or merge (Claude does this).  Note that
 in 1.6.0 kanibako no longer imports your **host** agent config into a box — a
 box's non-credential config comes from the agent's curated template
 (`{agent.<agent>.template}`), not the host.
@@ -378,6 +379,13 @@ The core box test, for a `check_auth` override to call.  `True` when a
 `login_vars` name is in `delivered` or the first `cred_files` file under
 `box_home` is a non-empty regular file (a symlink, or a path that leaves
 `box_home`, fails); `True` when the descriptor declares neither.
+
+### `checks_box_login -> bool`
+
+`True` when `check_auth` judges the box given `box_home`.  `agent reauth` then
+skips its host check: a target with a `setup_entrypoint` gets a setup-only
+launch that syncs the box from its store and runs the gate, setting up only
+when it still fails.  Default `False`.
 
 ### `prepare_host(install, *, auto_auth, data_path) -> None`
 

@@ -7,6 +7,4 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Functions
 ```
 def parse_yaml(text: str | bytes) -> dict
-def read_yaml(path: Path) -> dict
-def write_yaml(path: Path, data: dict) -> None
 ```

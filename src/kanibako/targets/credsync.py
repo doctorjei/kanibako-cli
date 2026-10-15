@@ -12,8 +12,8 @@ Three primitives map onto the three lifecycle phases:
 * :func:`writeback_cred_files` — post-session project->host sync
 
 The engine owns the data-driven mtime gating / directory creation / chmod; the
-per-file transform (claude ``claudeAiOauth`` merge + ``.claude.json`` allowlist,
-goose ``config.yaml`` allowlist) stays a plugin hook reached via ``transform_cred``.
+per-file transform (claude ``claudeAiOauth`` merge + ``.claude.json`` allowlist)
+stays a plugin hook reached via ``transform_cred``.
 
 NOTE: This engine is LIVE.  ``commands/start.py`` calls :func:`seed_cred_files`
 (new boxes), :func:`refresh_cred_files` (reattach + pre-launch), and
@@ -63,8 +63,8 @@ def _chmod_600(path: Path) -> None:
 def _copy_dir(src: Path, dst: Path) -> None:
     """Recursively copy the host directory *src* into the host directory *dst*.
 
-    Merges into an existing *dst*.  Used for ``is_dir`` cred specs (e.g. goose
-    ``custom_providers/``).  A directory has no single mtime to gate on, so dir
+    Merges into an existing *dst*.  Used for ``is_dir`` cred specs (no shipped
+    plugin declares one; the ABI keeps them until ``cred_files`` goes).  A directory has no single mtime to gate on, so dir
     specs are NOT mtime-gated: the source tree is the authority and is mirrored
     wholesale on every sync.  Each copied file is chmod 0600 (these dirs hold
     config that may reference secrets).  Both sides are host trees, so links are
@@ -219,7 +219,7 @@ def _seed_one(
     if dst.parent != project_home:
         boxfs.mkdir(dst.parent, project_home, parents=True, exist_ok=True)
     if spec.is_dir:
-        # Directory spec (e.g. goose custom_providers/): recursive copy when
+        # Directory spec (``is_dir``): recursive copy when
         # a source dir exists (a private box has no source).  Never filtered.
         if src is not None and src.is_dir():
             _dir_into_box(src, dst, project_home)

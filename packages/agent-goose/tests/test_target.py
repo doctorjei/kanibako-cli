@@ -18,7 +18,6 @@ from kanibako.targets.base import (
     BindScope,
     Cadence,
     Channel,
-    CredFileSpec,
     HostSrcOrigin,
     PluginDescriptor,
 )
@@ -224,83 +223,128 @@ def _real_binary(tmp_path):
     return binary
 
 
+def _box(tmp_path: Path, *, secrets: str | None = None, config: str | None = None) -> Path:
+    """A box home with goose's ``secrets.yaml`` and ``config.yaml`` as given."""
+    box = tmp_path / "box"
+    (box / ".config" / "goose").mkdir(parents=True)
+    if secrets is not None:
+        (box / ".config" / "goose" / "secrets.yaml").write_text(secrets)
+    if config is not None:
+        (box / ".config" / "goose" / "config.yaml").write_text(config)
+    return box
+
+
+# goose 1.38 writes ``active_provider`` (measured: a goose-written config.yaml); an
+# older config names ``GOOSE_PROVIDER``.
+_CONFIGURED = "active_provider: anthropic\nproviders:\n  anthropic:\n    configured: true\n"
+
+
 class TestCheckAuth:
-    def test_returns_true_when_both_exist(self, tmp_path: Path, fake_host: Path, monkeypatch):
+    @pytest.fixture(autouse=True)
+    def _host(self, tmp_path: Path, fake_host: Path, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
         _anchor_contract(monkeypatch, _real_binary(tmp_path))
+        self.host_secrets = fake_host / ".config" / "goose" / "secrets.yaml"
 
-        config = fake_host / ".config" / "goose" / "config.yaml"
-        config.write_text("provider: anthropic\n")
-        secrets = fake_host / ".config" / "goose" / "secrets.yaml"
-        secrets.write_text("key: secret\n")
+    def test_checks_the_box(self):
+        assert GooseTarget().checks_box_login is True
 
+    def test_host_check_passes_on_host_secrets_alone(self):
+        """No host config.yaml is needed: nothing writes one back any more."""
+        self.host_secrets.write_text("key: secret\n")
         with patch.object(shutil, "which") as m_which:
             assert GooseTarget().check_auth() is True
         m_which.assert_not_called()
 
-    def test_returns_false_when_secrets_missing(self, tmp_path: Path, fake_host: Path, monkeypatch):
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-        _anchor_contract(monkeypatch, _real_binary(tmp_path))
-
-        config = fake_host / ".config" / "goose" / "config.yaml"
-        config.write_text("provider: anthropic\n")
-        # No secrets file
-
+    def test_host_check_fails_without_host_secrets(self):
         assert GooseTarget().check_auth() is False
 
-    def test_box_keywords_are_ignored(self, tmp_path: Path, fake_host: Path, monkeypatch):
-        """A box store and a delivered key do not pass a failing host check."""
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-        _anchor_contract(monkeypatch, _real_binary(tmp_path))
-        box = tmp_path / "box"
-        (box / ".config" / "goose").mkdir(parents=True)
-        (box / ".config" / "goose" / "secrets.yaml").write_text("key: secret\n")
-        (box / ".config" / "goose" / "config.yaml").write_text("provider: anthropic\n")
+    def test_box_login_and_box_provider_pass(self, tmp_path: Path):
+        box = _box(tmp_path, secrets="key: secret\n", config=_CONFIGURED)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is True
+
+    def test_an_older_config_naming_GOOSE_PROVIDER_passes(self, tmp_path: Path):
+        box = _box(tmp_path, secrets="key: secret\n", config="GOOSE_PROVIDER: openai\n")
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is True
+
+    def test_a_login_without_a_provider_fails(self, tmp_path: Path):
+        """A second box: the login synced, but its config.yaml is the template."""
+        from importlib.resources import files
+
+        template = files("kanibako.plugins.goose").joinpath(
+            "data", "base", "template", "box", "home", ".config", "goose", "config.yaml",
+        ).read_text()
+        self.host_secrets.write_text("key: secret\n")
+        # A host config.yaml naming a provider (what the old writeback left) does not count.
+        (self.host_secrets.parent / "config.yaml").write_text(_CONFIGURED)
+        box = _box(tmp_path, secrets="key: secret\n", config=template)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is False
+
+    @pytest.mark.parametrize("config", ["active_provider: ''\n", "GOOSE_PROVIDER: null\n",
+                                        "active_provider: [a]\n", "- a list\n", "{"])
+    def test_an_empty_or_malformed_provider_names_none(self, tmp_path: Path, config):
+        box = _box(tmp_path, secrets="key: secret\n", config=config)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is False
+
+    def test_a_delivered_provider_passes_without_a_box_config(self, tmp_path: Path):
+        box = _box(tmp_path, secrets="key: secret\n")
+        assert GooseTarget().check_auth(
+            box_home=box, delivered=frozenset({"GOOSE_PROVIDER"}),
+        ) is True
+
+    def test_host_secrets_count_as_the_login(self, tmp_path: Path):
+        """The refresh copies them in after the gate."""
+        self.host_secrets.write_text("key: secret\n")
+        box = _box(tmp_path, config=_CONFIGURED)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is True
+
+    def test_a_delivered_login_var_is_a_login(self, tmp_path: Path):
+        box = _box(tmp_path)
         assert GooseTarget().check_auth(
             box_home=box, delivered=frozenset({"GOOSE_PROVIDER", "ANTHROPIC_API_KEY"}),
+        ) is True
+
+    def test_no_login_fails_even_with_a_provider(self, tmp_path: Path):
+        box = _box(tmp_path, config=_CONFIGURED)
+        assert GooseTarget().check_auth(
+            box_home=box, delivered=frozenset({"GOOSE_PROVIDER"}),
         ) is False
+
+    def test_an_empty_box_secrets_is_no_login(self, tmp_path: Path):
+        box = _box(tmp_path, secrets="", config=_CONFIGURED)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is False
+
+    def test_a_planted_config_symlink_names_no_provider(self, tmp_path: Path):
+        """The box config is read through boxfs: a link to a configured file fails."""
+        planted = tmp_path / "elsewhere.yaml"
+        planted.write_text(_CONFIGURED)
+        box = _box(tmp_path, secrets="key: secret\n")
+        (box / ".config" / "goose" / "config.yaml").symlink_to(planted)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is False
+
+    def test_an_oversized_box_config_is_not_read(self, tmp_path: Path):
+        """The box writes its config.yaml; one past the cap names no provider."""
+        box = _box(tmp_path, secrets="key: secret\n")
+        big = _CONFIGURED + "# " + "x" * (2 << 20) + "\n"  # still names a provider
+        (box / ".config" / "goose" / "config.yaml").write_text(big)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is False
+
+    def test_setup_in_the_box_closes_the_loop(self, tmp_path: Path):
+        """``goose configure`` writes the box's config.yaml; the next start passes."""
+        box = _box(tmp_path, secrets="key: secret\n")
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is False
+        (box / ".config" / "goose" / "config.yaml").write_text(_CONFIGURED)
+        assert GooseTarget().check_auth(box_home=box, delivered=frozenset()) is True
 
     def test_returns_true_when_binary_not_found(self, tmp_path: Path, monkeypatch):
         """No contract binary -> True (defers to later warnings), no which."""
-        _anchor_contract(monkeypatch, tmp_path / "goose")  # never created
+        _anchor_contract(monkeypatch, tmp_path / "absent" / "goose")  # never created
         with patch.object(shutil, "which") as m_which:
             assert GooseTarget().check_auth() is True
+            assert GooseTarget().check_auth(
+                box_home=_box(tmp_path), delivered=frozenset(),
+            ) is True
         m_which.assert_not_called()
-
-    def test_returns_false_when_config_missing(self, tmp_path: Path, fake_host: Path, monkeypatch):
-        """The bug condition: secrets present but host config.yaml absent -> False.
-
-        Before the config-persistence fix this was the steady state after every
-        in-box ``goose configure`` (config.yaml lived only in the box), so the
-        host check_auth re-failed and kanibako re-ran setup on each start.
-        """
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-        _anchor_contract(monkeypatch, _real_binary(tmp_path))
-
-        secrets = fake_host / ".config" / "goose" / "secrets.yaml"
-        secrets.write_text("key: secret\n")
-        # No config.yaml on the host.
-
-        assert GooseTarget().check_auth() is False
-
-    def test_loop_closes_after_config_written_back(self, tmp_path: Path, fake_host: Path, monkeypatch):
-        """End-to-end of the fix: once writeback lands config.yaml on the host (in
-        addition to the already-synced secrets.yaml), the NEXT-start check_auth
-        passes -> no re-prompt.  This simulates writeback_cred_files having mirrored
-        the box's config.yaml back to the host.
-        """
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
-        _anchor_contract(monkeypatch, _real_binary(tmp_path))
-
-        # secrets.yaml is synced today; before the fix config.yaml was not.
-        (fake_host / ".config" / "goose" / "secrets.yaml").write_text("key: secret\n")
-        assert GooseTarget().check_auth() is False  # bug state: config absent
-
-        # writeback now mirrors the box's config.yaml to the host.
-        (fake_host / ".config" / "goose" / "config.yaml").write_text(
-            "GOOSE_PROVIDER: custom_navigator\nGOOSE_MODEL: gemma-4-31b-it\n"
-        )
-        assert GooseTarget().check_auth() is True  # fixed: no re-prompt
 
 
 class TestGenerateAgentConfig:
@@ -490,147 +534,29 @@ class TestDescriptor:
         }
 
     def test_cred_files(self):
-        # The old host config.yaml IMPORT (SEED_ONCE, filtered) stays removed.
-        # As of the 2026-06-24 config-persistence fix, goose two-way SYNCs three
-        # things: secrets.yaml + config.yaml (files) and custom_providers/ (dir),
-        # so in-box ``goose configure`` persists back to the host (host check_auth
-        # then passes -> no re-prompt).  secrets.yaml + custom_providers/ are
-        # unfiltered; config.yaml is FILTERED (D Part 4) so the
-        # box-local GOOSE_MODE is not written back over the host's own.
+        # Only secrets.yaml syncs.  config.yaml is the box's own (the template, then
+        # whatever ``goose configure`` writes there); custom_providers/ is not synced.
         d = GooseTarget().descriptor
-        specs = {s.home_rel: s for s in d.cred_files}
-        assert set(specs) == {
-            ".config/goose/secrets.yaml",
-            ".config/goose/config.yaml",
-            ".config/goose/custom_providers",
-        }
-
-        secrets = specs[".config/goose/secrets.yaml"]
+        assert [s.home_rel for s in d.cred_files] == [".config/goose/secrets.yaml"]
+        secrets = d.cred_files[0]
         assert secrets.host_rel == ".config/goose/secrets.yaml"
         assert secrets.cadence == Cadence.SYNC
         assert secrets.mtime_gate is True
         assert secrets.filtered is False
         assert secrets.is_dir is False
 
-        config = specs[".config/goose/config.yaml"]
-        assert config.host_rel == ".config/goose/config.yaml"
-        assert config.cadence == Cadence.SYNC
-        assert config.filtered is True
-        assert config.is_dir is False
-
-        providers = specs[".config/goose/custom_providers"]
-        assert providers.host_rel == ".config/goose/custom_providers"
-        assert providers.cadence == Cadence.SYNC
-        assert providers.filtered is False
-        assert providers.is_dir is True
+    def test_login_vars(self):
+        """goose's provider key variables; the persona token variable is one."""
+        d = GooseTarget().descriptor
+        assert {"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"} <= set(d.login_vars)
+        assert d.persona is not None and d.persona.token_var in d.login_vars
+        assert "GOOSE_PROVIDER" not in d.login_vars
+        assert len(set(d.login_vars)) == len(d.login_vars)
 
     def test_host_prep_and_init_dirs(self):
         d = GooseTarget().descriptor
         assert d.host_prep is False
         assert d.init_dirs == (".config/goose", ".local/share/goose/sessions")
-
-
-class TestTransformCred:
-    """transform_cred — goose FILTERS config.yaml (D Part 4), plain-copies the rest.
-
-    The host config.yaml IMPORT (the extensions/instructions allowlist filter) stays
-    removed, but goose now overrides transform_cred for ONE reason: config.yaml is a
-    two-way SYNC file, and a box's ``GOOSE_MODE`` stays in that box: it must NOT be
-    written back over the host's own GOOSE_MODE.  A non-config.yaml filtered spec still plain-copies.
-    """
-
-    _SECRETS_SPEC = CredFileSpec(
-        ".config/goose/secrets.yaml", ".config/goose/secrets.yaml",
-        cadence=Cadence.SYNC, mtime_gate=True, filtered=False,
-    )
-    _CONFIG_SPEC = CredFileSpec(
-        ".config/goose/config.yaml", ".config/goose/config.yaml",
-        cadence=Cadence.SYNC, mtime_gate=True, filtered=True,
-    )
-
-    def test_non_config_spec_plain_copies(self, tmp_path):
-        """A non-config.yaml filtered spec still gets a plain wholesale copy."""
-        src = tmp_path / "secrets.yaml"
-        src.write_text("api_key: secret123\n")
-        dst = tmp_path / "home" / ".config" / "goose" / "secrets.yaml"
-
-        GooseTarget().transform_cred(self._SECRETS_SPEC, src, dst, "in")
-
-        assert dst.is_file()
-        assert dst.read_text() == "api_key: secret123\n"
-
-    def test_config_in_wholesale_copies(self, tmp_path):
-        """direction 'in' (host->box): config.yaml is copied verbatim."""
-        src = tmp_path / "config.yaml"
-        src.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n")
-        dst = tmp_path / "box" / ".config" / "goose" / "config.yaml"
-
-        GooseTarget().transform_cred(self._CONFIG_SPEC, src, dst, "in")
-
-        import yaml
-        got = yaml.safe_load(dst.read_text())
-        assert got == {"GOOSE_PROVIDER": "openai", "GOOSE_MODE": "approve"}
-
-    def test_config_out_preserves_host_goose_mode(self, tmp_path):
-        """direction 'out' (writeback): the HOST's GOOSE_MODE is preserved.
-
-        Mutation-proof: the box has a DIFFERENT GOOSE_MODE plus a real
-        user change (provider); writeback must carry the provider change but keep the
-        host's own GOOSE_MODE untouched.
-        """
-        import yaml
-        box = tmp_path / "config.yaml"
-        box.write_text("GOOSE_PROVIDER: anthropic\nGOOSE_MODE: auto\n")  # box: auto
-        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
-        host.parent.mkdir(parents=True)
-        host.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n")  # host: approve
-
-        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
-
-        got = yaml.safe_load(host.read_text())
-        assert got["GOOSE_MODE"] == "approve"       # host's OWN mode preserved
-        assert got["GOOSE_PROVIDER"] == "anthropic"  # real user change still flowed
-
-    def test_config_out_drops_box_mode_when_host_has_none(self, tmp_path):
-        """direction 'out': when the host has NO GOOSE_MODE, the box-local one is dropped."""
-        import yaml
-        box = tmp_path / "config.yaml"
-        box.write_text("GOOSE_PROVIDER: anthropic\nGOOSE_MODE: auto\n")
-        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
-        host.parent.mkdir(parents=True)
-        host.write_text("GOOSE_PROVIDER: openai\n")  # no GOOSE_MODE
-
-        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
-
-        got = yaml.safe_load(host.read_text())
-        assert "GOOSE_MODE" not in got               # box-local mode NOT introduced
-        assert got["GOOSE_PROVIDER"] == "anthropic"
-
-    def test_config_out_noop_when_only_goose_mode_differs(self, tmp_path):
-        """direction 'out': if only the box-local GOOSE_MODE differs, host is untouched."""
-        box = tmp_path / "config.yaml"
-        box.write_text("GOOSE_PROVIDER: openai\nGOOSE_MODE: auto\n")   # box: auto
-        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
-        host.parent.mkdir(parents=True)
-        original = "GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n"     # host: approve
-        host.write_text(original)
-
-        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
-
-        assert host.read_text() == original          # byte-identical: true no-op
-
-    def test_config_out_malformed_box_does_not_clobber_host(self, tmp_path):
-        """direction 'out': an unparseable box config.yaml must NOT wipe the host file."""
-        box = tmp_path / "config.yaml"
-        box.write_text("this: is: not: valid: yaml\n  - broken")  # read_yaml -> {}
-        host = tmp_path / "host" / ".config" / "goose" / "config.yaml"
-        host.parent.mkdir(parents=True)
-        original = "GOOSE_PROVIDER: openai\nGOOSE_MODE: approve\n"
-        host.write_text(original)
-
-        GooseTarget().transform_cred(self._CONFIG_SPEC, box, host, "out")
-
-        assert host.read_text() == original          # host preserved, not truncated
 
 
 class TestDescriptorAssembly:

@@ -4703,6 +4703,16 @@ def _run_container(
         # (the box must be assembled first — image/mounts/env are built below).  An
         # agent with no setup command (claude, by default) errors out here as
         # before.  ``needs_inbox_setup`` carries the decision to the launch block.
+        #
+        # ``agent reauth`` (``setup_only``) syncs the box from its store BEFORE the gate,
+        # so a login the store holds counts and only what it lacks is set up.  Only a
+        # target with a setup command reaches here that way, and its gate never bails.
+        if setup_only and target and auth_src.creds_shared and desc is not None:
+            credsync.refresh_box_credentials(
+                desc, target, auth=auth_src, host_home=Path.home(),
+                project_home=proj.shell_path,
+                suppress_oauth=suppress_oauth,
+            )
         needs_inbox_setup = False
         if target and install and auth_src.creds_shared:
             if not target.check_auth(box_home=proj.shell_path, delivered=delivered):
@@ -4719,7 +4729,7 @@ def _run_container(
 
         # Credential refresh via the descriptor (skip for a private/distinct box,
         # and for the descriptor-less built-in shell, which has no credentials)
-        if target and auth_src.creds_shared and desc is not None:
+        if not setup_only and target and auth_src.creds_shared and desc is not None:
             credsync.refresh_box_credentials(
                 desc, target, auth=auth_src, host_home=Path.home(),
                 project_home=proj.shell_path,
@@ -5238,9 +5248,8 @@ def _run_container(
         # proceed to the REAL launch and let it validate the config.  A
         # post-launch :meth:`Target.should_run_setup` match against the session
         # logs (below, at the same persistent-path site as the resume retry) is
-        # the ground-truth detector for "config did not take".  ``check_auth`` is
-        # HOST-side and cannot see box-only state (goose/codex), so it is NOT
-        # re-probed on the launch path.
+        # the ground-truth detector for "config did not take", so ``check_auth``
+        # is NOT re-probed on the launch path.
         if target is not None and needs_inbox_setup:
             setup_ep = target.setup_entrypoint
             assert setup_ep is not None  # needs_inbox_setup implies it is set
@@ -5291,9 +5300,14 @@ def _run_container(
                     )
                 return 0
 
-        # ``agent reauth`` reaches here only when setup was NOT needed (auth was
-        # already OK); nothing more to do — don't launch a session.
+        # ``agent reauth`` reaches here only when setup was NOT needed: the login and
+        # what the gate needs were synced from the store.  Don't launch a session.
         if setup_only:
+            if target is not None:
+                print(
+                    f"{target.display_name}: authenticated (synced).",
+                    file=sys.stderr,
+                )
             return 0
 
         # SECRET export shim (spec §2a secret_path): when the box has secret_path

@@ -7763,10 +7763,9 @@ credential store.**
 **What changed.** When a session ends, a box's credential file (claude `.credentials.json`, codex
 `auth.json`, goose `secrets.yaml`) replaces the store copy only if it parses as that agent's format: JSON
 with a `claudeAiOauth` object for claude, a non-empty JSON object for codex, a non-empty YAML mapping for
-goose. A box file that is a symlink, or sits under one, is refused, and so is a link inside goose's
-`custom_providers/`. A refusal keeps the store copy and logs a warning naming the box file. Any synced
-file a writeback changes, goose's `config.yaml` included, keeps its previous content as `<file>.bak`
-(0600), overwriting the last one.
+goose. A box file that is a symlink, or sits under one, is refused. A refusal keeps the store copy and
+logs a warning naming the box file. Any synced file a writeback changes keeps its previous content as
+`<file>.bak` (0600), overwriting the last one.
 
 **What to do.** Nothing, unless you linked a credential file inside a box home: make it a regular file,
 or the store stops receiving that box's logins. To undo a bad writeback, copy `<file>.bak` over the file.
@@ -7828,8 +7827,8 @@ from the seed template, which sets `bypassPermissions`, so its panel runs withou
 a read-only sandbox. kanibako still forces codex's `sandbox_mode = "danger-full-access"` in the file, because a
 nested sandbox hangs the panel.
 
-**What you must do.** To set a panel's mode, set the key in the file. For goose, set `GOOSE_MODE` in your host
-`~/.config/goose/config.yaml`; kanibako copies that file into the box. For claude, edit the box's
+**What you must do.** To set a panel's mode, set the key in the file. For goose, set `GOOSE_MODE` in the box's
+`~/.config/goose/config.yaml` (*goose's `config.yaml` stays in the box, and `custom_providers/` is not synced*). For claude, edit the box's
 `~/.claude/settings.json`. For codex, set `approval_policy` in the box's `~/.codex/config.toml`. A box started
 under an earlier release keeps the value kanibako last wrote there. For a codex box started at `restricted`, that
 value is `approval_policy = "untrusted"`, and codex 0.158 refuses it in the panel ("no longer supported"). Change
@@ -8054,6 +8053,34 @@ model, unless the harness plugin declares `empty: omit`. For goose this also mea
 
 **What you must do.** If such a persona relied on `agent.default.model`, remove the store's `model`
 line or set `agent.<agent>.model`.
+
+### goose's `config.yaml` stays in the box, and `custom_providers/` is not synced
+
+**Read this if you use goose.**
+
+**What changed.** kanibako syncs only goose's `secrets.yaml` now. A box's `~/.config/goose/config.yaml`
+starts as the template and stays in that box; `~/.config/goose/custom_providers/` is not synced. Your
+host `config.yaml`, its `GOOSE_MODE` included, no longer reaches a box, and nothing is written back to it.
+The start check reads the box: it wants a login (a non-empty `secrets.yaml` in the box or on the host,
+or a provider key variable such as `ANTHROPIC_API_KEY` delivered) and a provider (`agent.goose.provider`,
+or one the box's `config.yaml` names). Without both, the start runs `goose configure` in the box, once.
+`kanibako agent reauth` for goose syncs the box first and prints "authenticated (synced)" when that is
+enough.
+
+**What you lose.** A provider chosen with `goose configure` in one box no longer reaches the next box.
+
+**What you must do.** Set the provider once, and bind your custom providers if you have any:
+
+```yaml
+# agents/goose/agent.yaml
+self:
+  provider: anthropic
+  bindings:
+    ro:
+      ~/.config/goose/custom_providers: ["~/.config/goose/custom_providers"]
+```
+
+Without `provider`, each new box asks once.
 
 ---
 
@@ -9730,14 +9757,8 @@ What you must now do instead:
 **Credential SYNC** (separate from host-config import): claude `.credentials.json`,
 codex `auth.json`, and goose `secrets.yaml` are two-way synced on every launch.
 
-> **Update (post-1.6.0):** goose additionally two-way syncs `~/.config/goose/config.yaml`
-> and `~/.config/goose/custom_providers/`. This is *not* the removed host-config
-> import (which seeded your host config into a fresh box at init). Instead, when you
-> run `goose configure` **inside a box**, the provider/model selection and any custom
-> provider definition now persist back to the host so the host-side auth check sees a
-> configured goose on the next start (no repeated `goose configure` prompt) — parity
-> with how claude/codex write their config back. The values these files reference are
-> env-var *names*; the secret value still lives only in `secrets.yaml`.
+> **Update (1.8.0):** goose syncs only `secrets.yaml` (*goose's `config.yaml` stays in the box,
+> and `custom_providers/` is not synced*).
 
 ---
 

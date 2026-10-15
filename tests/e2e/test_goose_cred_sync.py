@@ -2,8 +2,8 @@
 
 These guard the step-4 goose-credsync consolidation: the goose plugin's bespoke
 ``refresh_secrets`` / ``writeback_secrets`` overrides were DELETED, and goose now
-declares ``secrets.yaml`` / ``config.yaml`` / ``custom_providers/`` as SYNC
-``CredFileSpec`` entries in ``goose-defaults.yaml``, realized by the shared
+declares ``secrets.yaml`` as its one SYNC ``CredFileSpec`` in
+``goose-defaults.yaml`` (``config.yaml`` is the box's own), realized by the shared
 credsync engine (``seed_cred_files`` / ``refresh_cred_files`` /
 ``writeback_cred_files``).  If that consolidation ever regresses (e.g. a spec
 dropped, the mtime gate inverted, the engine not wired into start/stop), these
@@ -105,6 +105,15 @@ class TestGooseCredSync:
         assert GOOSE_SECRETS_TOKEN in cat_result.stdout, (
             f"expected host token {GOOSE_SECRETS_TOKEN!r} in box secrets.yaml, "
             f"got:\n{cat_result.stdout}"
+        )
+
+        # The host config.yaml does not reach the box: the box keeps the template.
+        box_config = podman_exec(
+            box_container("e2e_goose_seed"),
+            ["cat", "/home/agent/.config/goose/config.yaml"],
+        )
+        assert "claude-e2e-stub" not in box_config.stdout, (
+            f"host config.yaml reached the box:\n{box_config.stdout}"
         )
 
     def test_goose_secrets_writeback_to_host(self, goose_e2e_env):

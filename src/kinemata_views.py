@@ -1485,7 +1485,7 @@ class _TailRegistry(_ViewRegistry):
 class AgentCredFiles(_TailRegistry):
     """The HOST-side agent credential files: every plugin descriptor's `cred_files` row,
     keyed by its `host_rel`. `[claims] declared_in` names this registry, so a doc citing
-    `auth.json` or `custom_providers/` settles against the descriptors that declare them
+    `auth.json` or `secrets.yaml` settles against the descriptors that declare them
     -- the claims store never holds a host user's credentials.
     """
 

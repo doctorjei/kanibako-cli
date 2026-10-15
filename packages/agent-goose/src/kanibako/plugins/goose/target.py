@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -49,6 +48,8 @@ _DEFAULTS_FILE = "goose-defaults.yaml"
 
 #: goose's own config file, under ``~/.config/goose/`` -- goose's name, not a kanibako key.
 GOOSE_CONFIG_FILE = "config.yaml"
+#: The largest box ``config.yaml`` the start check reads; the box writes that file.
+_BOX_CONFIG_MAX_BYTES = 1 << 20
 
 #: Where goose (1.38: plugins only) finds kanibako's hooks, under the box home; the
 #: one file written there is ``data/agents-plugin/hooks/hooks.json``.
@@ -80,59 +81,11 @@ class GooseTarget(Target):
         """
         return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
-    def transform_cred(
-        self,
-        spec: "CredFileSpec",
-        src: "Path | None",
-        dst: Path,
-        direction: str,
-    ) -> None:
-        """Filter goose ``config.yaml`` so the box-local GOOSE_MODE is not written back.
-
-        ⚑ A writeback never overwrites the host's own ``GOOSE_MODE``: a box's
-        permission mode stays in that box.  Every other key the user changed in-box
-        still flows to the host.  Defensive throughout: a missing source
-        or malformed YAML degrades to a no-op, never raises.  Cases: llm-doc.
-        """
-        import shutil
-
-        from kanibako.plugins.goose.credentials import read_yaml, write_yaml
-
-        if src is None or not Path(src).is_file():
-            return
-        if not spec.home_rel.endswith(GOOSE_CONFIG_FILE):
-            # Defensive: any other filtered spec falls back to a wholesale copy.
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(src), str(dst))
-            return
-        if direction == "in":
-            # host->box: wholesale copy.
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(src), str(dst))
-            return
-        # direction "out": box->host writeback, preserving the host's own GOOSE_MODE.
-        box_cfg = read_yaml(Path(src))
-        if not box_cfg:
-            # ⚑ An empty / unparseable box config.yaml must NOT clobber the host's real
-            # config down to an empty file — a no-op writeback, never host data loss.
-            return
-        host_cfg = read_yaml(dst)
-        if "GOOSE_MODE" in host_cfg:
-            box_cfg["GOOSE_MODE"] = host_cfg["GOOSE_MODE"]
-        else:
-            # Host had no GOOSE_MODE: drop the box-local one rather than introduce it.
-            box_cfg.pop("GOOSE_MODE", None)
-        if box_cfg == host_cfg:
-            # Nothing but the box-local GOOSE_MODE differed — leave the host file (and
-            # its mtime) untouched.
-            return
-        write_yaml(dst, box_cfg)
-
     def cred_writeback_error(self, spec: "CredFileSpec", data: bytes) -> str | None:
         """Refuse a box ``secrets.yaml`` that is not a non-empty YAML mapping.
 
-        The mapping is what :func:`~kanibako.plugins.goose.credentials.read_yaml`
-        reads; an empty one is refused as the ``config.yaml`` writeback refuses one.
+        The mapping is what :func:`~kanibako.plugins.goose.credentials.parse_yaml`
+        returns; an empty one is refused.
         """
         from kanibako.plugins.goose.credentials import parse_yaml
 
@@ -264,37 +217,31 @@ class GooseTarget(Target):
     # NOTE: goose's cred SYNC is the ``CredFileSpec`` set in ``goose-defaults.yaml``,
     # realized by the credsync engine.
 
+    @property
+    def checks_box_login(self) -> bool:
+        """True: :meth:`check_auth` judges the box."""
+        return True
+
     def check_auth(
         self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
     ) -> bool:
-        """Check if Goose is configured with API keys — binary, config.yaml, secrets.yaml.
+        """Whether goose has a login and a provider to launch with.
 
-        Returns True when the binary is absent (defers to later warnings).  Anchors to
-        the contract path (``_BINARY``); never consults ``$PATH``.  *box_home* and
-        *delivered* are accepted and ignored: goose's verdict is this host check, not
-        the core box test.
+        With *box_home* (the launch gate): a login is :meth:`box_login_present`, or a
+        non-empty host ``secrets.yaml`` (the refresh copies it in after the gate);
+        a provider is ``GOOSE_PROVIDER`` in *delivered*, or one named by the box's
+        ``config.yaml``, read through :mod:`kanibako.boxfs`.  Without *box_home*:
+        the host ``secrets.yaml`` alone.  True when the binary is absent (later
+        warnings cover it); anchored to ``_BINARY``, never ``$PATH``.
         """
         if not (_BINARY.exists() or _BINARY.is_symlink()):
             return True
-
-        secrets = Path.home() / ".config" / "goose" / "secrets.yaml"
-        config = Path.home() / ".config" / "goose" / GOOSE_CONFIG_FILE
-
-        if not secrets.is_file() or secrets.stat().st_size == 0:
-            print(
-                "Goose is not configured. Run 'goose configure' to set up.",
-                file=sys.stderr,
-            )
-            return False
-
-        if not config.is_file():
-            print(
-                "Goose is not configured. Run 'goose configure' to set up.",
-                file=sys.stderr,
-            )
-            return False
-
-        return True
+        if box_home is None:
+            return _host_secrets_present()
+        login = self.box_login_present(box_home, delivered) or _host_secrets_present()
+        return login and (
+            "GOOSE_PROVIDER" in delivered or _box_provider_named(box_home)
+        )
 
     def generate_agent_config(self) -> AgentConfig:
         """Return default Goose agent configuration.
@@ -325,3 +272,38 @@ class GooseTarget(Target):
         """
         return list(_GOOSE_BEHAVIOR)
 
+
+def _host_secrets_present() -> bool:
+    """Whether the host's goose ``secrets.yaml`` is a non-empty file."""
+    secrets = Path.home() / ".config" / "goose" / "secrets.yaml"
+    try:
+        return secrets.is_file() and secrets.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _box_provider_named(box_home: Path) -> bool:
+    """Whether the box's goose ``config.yaml`` names a provider.
+
+    goose 1.38 writes ``active_provider`` (with a ``providers`` map); an older
+    config names ``GOOSE_PROVIDER``.  Either, non-empty, counts.  Read through
+    :mod:`kanibako.boxfs`: a symlink on the path, a file over
+    ``_BOX_CONFIG_MAX_BYTES``, or any read error names none.
+    """
+    from kanibako import boxfs
+    from kanibako.plugins.goose.credentials import parse_yaml
+
+    path = box_home / ".config" / "goose" / GOOSE_CONFIG_FILE
+    try:
+        if boxfs.stat(path, box_home).st_size > _BOX_CONFIG_MAX_BYTES:
+            return False
+        data = boxfs.read_bytes(path, box_home)
+    except (OSError, ValueError):
+        return False
+    if len(data) > _BOX_CONFIG_MAX_BYTES:
+        return False
+    cfg = parse_yaml(data)
+    return any(
+        isinstance(cfg.get(key), str) and cfg[key].strip()
+        for key in ("active_provider", "GOOSE_PROVIDER")
+    )

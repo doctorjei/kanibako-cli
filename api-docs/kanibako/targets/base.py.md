@@ -272,6 +272,8 @@ class Target(ABC):
     @property
     def descriptor(self) -> 'PluginDescriptor | None'
     def check_auth(self, *, box_home: Path | None=None, delivered: frozenset[str]=frozenset()) -> bool
+    @property
+    def checks_box_login(self) -> bool
     def box_login_present(self, box_home: Path, delivered: frozenset[str]) -> bool
     def prepare_host(self, install: 'AgentInstall', *, auto_auth: bool, data_path: Path) -> None
     def default_common(self) -> dict[str, BindArm]

@@ -1208,9 +1208,20 @@ def run_reauth(args: argparse.Namespace) -> int:
     suppress_oauth = active_endpoint is not None
 
     if not auth_src.creds_shared:
-        # Private box: check project's own credentials instead of the source.
+        # Private box: check project's own credentials instead of the source, through
+        # the box-file seam (a planted symlink is no credential).
+        import stat as _stat
+
+        from kanibako import boxfs
+
         creds_path = target.credential_check_path(proj.shell_path)
-        if creds_path and creds_path.is_file():
+        try:
+            present = creds_path is not None and _stat.S_ISREG(
+                boxfs.stat(creds_path, proj.shell_path).st_mode
+            )
+        except (OSError, ValueError):
+            present = False
+        if present:
             print(
                 f"{target.display_name}: distinct auth (project credentials exist).",
                 file=sys.stderr,
@@ -1224,7 +1235,11 @@ def run_reauth(args: argparse.Namespace) -> int:
             )
             return 1
 
-    if target.check_auth():
+    # A target whose check judges the box (goose) with a setup command skips this
+    # host check: the setup-only launch below syncs the box from its store first, then
+    # runs the gate, and sets up only what the sync could not supply.
+    box_check = target.checks_box_login and target.setup_entrypoint is not None
+    if not box_check and target.check_auth():
         # Sync refreshed credentials to the project shell directory through the
         # credsync engine (descriptor.cred_files), mirroring the start.py gate.
         # Only the built-in shell has no descriptor, and it has no credentials.
@@ -1242,10 +1257,10 @@ def run_reauth(args: argparse.Namespace) -> int:
         print(f"{target.display_name}: authenticated.", file=sys.stderr)
         return 0
 
-    # Auth failed.  If the agent declares an interactive in-box setup command
-    # (goose ``configure`` / codex ``login``), run it in the box so the user can
-    # configure / log in there (host-side reauth can't do it — the credential
-    # lives in box-state), then re-check.  ``_run_container(setup_only=True)``
+    # Auth failed, or the target checks the box.  If the agent declares an
+    # interactive in-box setup command (goose ``configure`` / codex ``login``), run
+    # it in the box so the user can configure / log in there (host-side reauth can't
+    # do it — the credential lives in box-state), then re-check.  ``_run_container(setup_only=True)``
     # assembles the box, hits the same FIX-2 in-box-setup path, and returns
     # WITHOUT launching a full agent session.  Agents with no setup command
     # (claude by default) fall through to the existing failure message.

@@ -3230,9 +3230,8 @@ plugin_contributed:
     codex: "synced.auth · binary bind {binary} + managed_pointer · settings
             {model (flag), endpoint (SettingArg; config-file delivery via the
             config.toml [model_providers] projection, not env)}"
-    goose: "synced.secrets (+ descriptor-only sync members config.yaml
-            [filtered: GOOSE_MODE preserved] and custom_providers/ — descriptor
-            MEMBERS, not spec-named instances) · binary bind {binary} +
+    goose: "synced.secrets (config.yaml and custom_providers/ are not
+            synced; config.yaml is the box's own) · binary bind {binary} +
             managed_pointer · settings {provider (env GOOSE_PROVIDER), model
             (env GOOSE_MODEL), endpoint (env OPENAI_HOST)} — provider/model
             default '' (never pinned by kanibako)"

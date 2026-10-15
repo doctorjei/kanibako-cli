@@ -2,53 +2,25 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
+import pytest
 import yaml
 
-from kanibako.plugins.goose.credentials import (
-    read_yaml,
-    write_yaml,
-)
+from kanibako.plugins.goose.credentials import parse_yaml
 
 
-class TestReadYaml:
-    def test_file_not_found_returns_empty(self, tmp_path: Path):
-        result = read_yaml(tmp_path / "nonexistent.yaml")
-        assert result == {}
-
-    def test_invalid_yaml_returns_empty(self, tmp_path: Path):
-        bad = tmp_path / "bad.yaml"
-        bad.write_text(":\n  :\n  - :\n    bad: [unterminated")
-        result = read_yaml(bad)
-        assert result == {}
-
-    def test_valid_yaml_returns_dict(self, tmp_path: Path):
-        f = tmp_path / "good.yaml"
+class TestParseYaml:
+    def test_mapping_is_returned(self):
         data = {"provider": "anthropic", "model": "claude-4"}
-        f.write_text(yaml.safe_dump(data))
-        result = read_yaml(f)
-        assert result == data
+        assert parse_yaml(yaml.safe_dump(data)) == data
 
-    def test_non_dict_yaml_returns_empty(self, tmp_path: Path):
-        f = tmp_path / "list.yaml"
-        f.write_text(yaml.safe_dump(["a", "b", "c"]))
-        result = read_yaml(f)
-        assert result == {}
+    def test_bytes_are_accepted(self):
+        assert parse_yaml(b"key: value\n") == {"key": "value"}
 
-
-class TestWriteYaml:
-    def test_creates_parent_dirs(self, tmp_path: Path):
-        target = tmp_path / "a" / "b" / "c" / "out.yaml"
-        write_yaml(target, {"key": "value"})
-        assert target.parent.is_dir()
-
-    def test_writes_valid_yaml(self, tmp_path: Path):
-        target = tmp_path / "out.yaml"
-        data = {"provider": "openai", "model": "gpt-4"}
-        write_yaml(target, data)
-        loaded = yaml.safe_load(target.read_text())
-        assert loaded == data
+    @pytest.mark.parametrize("text", [
+        ":\n  :\n  - :\n    bad: [unterminated", yaml.safe_dump(["a", "b"]), "", "just text",
+    ], ids=["invalid", "list", "empty", "scalar"])
+    def test_anything_but_a_mapping_is_empty(self, text):
+        assert parse_yaml(text) == {}
 
 
 # NOTE: the host config.yaml allowlist filter (filter_config) was removed in
@@ -57,4 +29,5 @@ class TestWriteYaml:
 # NOTE: the bespoke ``refresh_secrets`` / ``writeback_secrets`` host<->box
 # secrets.yaml copies were folded into the goose descriptor's ``secrets.yaml``
 # ``CredFileSpec`` (realized by the credsync engine); their tests moved to the
-# engine-level credsync coverage and are deleted here.
+# engine-level credsync coverage and are deleted here.  ``read_yaml`` and
+# ``write_yaml`` went with the ``config.yaml`` sync, their only user.

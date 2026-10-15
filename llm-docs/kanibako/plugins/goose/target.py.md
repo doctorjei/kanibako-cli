@@ -54,8 +54,8 @@ field; everything below was empirically verified against **goose 1.37.0**:
   goose falls back to its own `config.yaml` written by `goose configure`;
 * the declared `env:` keys (`agent.goose.env.*`) — `GOOSE_DISABLE_KEYRING`, `CONTEXT_FILE_NAMES`
   and the `KANIBAKO_DIRECTIVE_FINAL` slot;
-* the three two-way SYNC cred files — `secrets.yaml`, `config.yaml` and `custom_providers/` — which
-  persist an in-box `goose configure` back to the host.
+* the one two-way SYNC cred file, `secrets.yaml`, and the `login_vars` — goose's provider key
+  variables, any one of which delivered is a login.
 
 ⚑ The one CRITICAL thing that stays code-resolved rather than declared is the host binary path
 (`_BINARY`, above), read in `detect()`.
@@ -87,28 +87,11 @@ These are the PLUGIN-REQUIRED variables that §2d keeps plugin-declared. The use
 `GOOSE_PROVIDER` and `GOOSE_MODEL` — are deliberately NOT declared, because goose owns those in its
 own persistent config.
 
-## `config.yaml` is GOOSE's own file
+## `config.yaml` is the box's own file
 
-The rule: a box's `GOOSE_MODE` stays in that box; every other key syncs both ways.
-
-`transform_cred` is the credsync engine's per-spec filter hook. Only `config.yaml` is FILTERED —
-`secrets.yaml` and `custom_providers/` stay unfiltered wholesale copies — and the engine calls this
-hook for that spec alone:
-
-* **`"in"` (host → box seed/refresh)** — wholesale copy. The box gets the host's `config.yaml`
-  verbatim.
-* **`"out"` (box → host writeback)** — merge the box's `config.yaml` back to the host BUT preserve
-  the host's OWN `GOOSE_MODE`: a box's permission mode never overwrites the host's. Every OTHER key
-  the user changed in-box — provider, model, extensions, … — still flows to the host. If the host
-  had no `GOOSE_MODE` at all, the box-local one is dropped rather than introduced.
-
-It is defensive throughout, matching the warn-and-skip credential helpers: a missing source or a
-malformed YAML degrades to a safe no-op or an empty dict, never raises. Two of those degradations
-are deliberate protections rather than tidiness — an empty or unparseable box `config.yaml`
-(`read_yaml` degrades to `{}`) must not clobber the host's real config down to an empty file, and a
-writeback whose only difference was the box-local `GOOSE_MODE` leaves the host file, and its mtime,
-untouched. Any other filtered spec that ever reaches the hook falls back to a plain wholesale copy,
-the base-class default.
+goose's `config.yaml` is not synced: a box starts with the template's and keeps whatever
+`goose configure` writes there, `GOOSE_MODE` included. Nothing is written back to the host, so goose
+has no `transform_cred`. `custom_providers/` is not synced either; a user binds it.
 
 ## Panel and directive seams
 
@@ -173,13 +156,18 @@ Stop stdin has no transcript, so notebook stop hooks that read one see nothing.
 bootable config. goose's verbatim line is *"Goose is not configured. Run 'goose configure' to set
 up."*, and the check matches case-insensitively on EITHER the `not configured` phrase or the
 `goose configure` remediation hint, so a phrasing tweak in one half still trips the detector.
-`check_auth` prints that same sentence when the host's `secrets.yaml` is missing or empty, or
-`config.yaml` is missing; it returns True when the binary is absent, deferring to later warnings.
+`check_auth` judges the box (`checks_box_login` is True). With `box_home` it wants a login —
+`box_login_present`, or a non-empty host `secrets.yaml` that the refresh copies in after the gate —
+and a provider: `GOOSE_PROVIDER` delivered, or the box's `config.yaml`, read through `boxfs`, naming
+one in `active_provider` (what goose 1.38 writes) or `GOOSE_PROVIDER` (older configs). Without
+`box_home` it checks the host `secrets.yaml` alone. It returns True when the binary is absent,
+deferring to later warnings.
 
 `setup_entrypoint` / `setup_args` name `goose configure`, goose's one-time interactive provider
 setup. When the pre-launch `check_auth` probe fails, `start.py` runs it interactively IN THE BOX so
 the user can select a provider/model and enter a key, then proceeds with the launch. Box state
-persists across reattach, so this is a one-time step per box.
+persists across reattach, so this is a one-time step per box. `agent reauth` skips its host check
+for goose: its setup-only launch syncs the box first and runs the setup only if the gate still fails.
 
 ## Resume detection
 
@@ -216,8 +204,7 @@ by the credsync engine (`seed_cred_files` / `refresh_cred_files` / `writeback_cr
 `~/.config/goose/secrets.yaml`, the file whose presence stands for "goose has credentials".
 
 `cred_writeback_error` refuses to write back a box `secrets.yaml` that is not a non-empty YAML
-mapping — the mapping `credentials.read_yaml` reads; an empty one is refused as the `config.yaml`
-writeback refuses one.
+mapping — the mapping `credentials.parse_yaml` returns; an empty one is refused.
 
 ## Provider and model are NEVER pinned by kanibako
 

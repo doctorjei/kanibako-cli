@@ -435,6 +435,7 @@ def _reap_subuid_owned_tmp(tmp_path):
 
 def write_e2e_settings_files(
     config_home: Path, data_home: Path, *, home: Path, agent: str | None = None,
+    agent_keys: dict[str, dict[str, str]] | None = None,
 ) -> None:
     """Pre-seed the two files an e2e env starts from: the bootstrap config and the settings.
 
@@ -490,6 +491,9 @@ def write_e2e_settings_files(
     ⚑ Creates the settings file's parent — by default ``$XDG_DATA_HOME/kanibako/global``, and
     so ``$XDG_DATA_HOME/kanibako`` with it — so a caller that also mkdirs one of those must
     pass ``exist_ok``.
+
+    *agent_keys* writes ``agent.<node>.<key>`` values into the same file (the system
+    tier), as ``kanibako system set agent.<node>.<key>=...`` would.
     """
     from kanibako.settings.config import config_file_path, write_global_config
     from kanibako.settings.config_io import dump_doc
@@ -498,9 +502,11 @@ def write_e2e_settings_files(
     config_file = config_file_path(config_home)
     write_global_config(config_file)
 
-    doc: dict[str, dict[str, str]] = {"box": {"image": E2E_IMAGE}}
+    doc: dict[str, dict] = {"box": {"image": E2E_IMAGE}}
     if agent is not None:
         doc["system"] = {"agent": agent}
+    if agent_keys:
+        doc["agent"] = agent_keys
     resolved = load_system_config(config_file, data_home=data_home, home=home)
     dump_doc(resolved["config.settings"], doc)
 
@@ -660,9 +666,13 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
       - the goose stub placed at ``~/.local/bin/goose`` so
         ``GooseTarget.detect()`` (which anchors to that exact contract path,
         NOT ``$PATH``) resolves it
-      - host ``~/.config/goose/secrets.yaml`` + ``config.yaml`` seeded with
-        KNOWN content (GOOSE_SECRETS_CONTENT / GOOSE_CONFIG_CONTENT) so the
-        credsync engine has real SYNC cred files to deliver / write back
+      - host ``~/.config/goose/secrets.yaml`` seeded with KNOWN content
+        (GOOSE_SECRETS_CONTENT) so the credsync engine has a real SYNC cred file to
+        deliver / write back; a host ``config.yaml`` (GOOSE_CONFIG_CONTENT) that must
+        NOT reach the box (goose's config.yaml is the box's own)
+      - ``agent.goose.provider`` set at the system tier, so the start gate finds a
+        provider (``GOOSE_PROVIDER`` delivered) and never runs ``goose configure``,
+        which the stub would run as a long-running session
       - the e2e image pinned at the SYSTEM settings tier (``write_e2e_settings_files``)
       - the same ``CONTAINERS_STORAGE_CONF`` pin as ``e2e_env`` so the
         kanibako-launched podman sees the host's image store
@@ -706,7 +716,10 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
     # file this fixture has always written (write_e2e_settings_files).
     # ⚑ No agent pin here, matching what this fixture has always written: the goose
     # tests force selection with an explicit ``--agent goose`` on the launch.
-    write_e2e_settings_files(config_home, data_home, home=home)
+    write_e2e_settings_files(
+        config_home, data_home, home=home,
+        agent_keys={"goose": {"provider": "anthropic"}},
+    )
 
     env = os.environ.copy()
     env.update({

@@ -1608,6 +1608,7 @@ class TestRunReauth:
             target = MagicMock()
             target.has_binary = True
             target.check_auth.return_value = True
+            target.checks_box_login = False
             target.display_name = "Claude Code"
             target.descriptor = None
             mock_target.return_value = target
@@ -1653,6 +1654,7 @@ class TestRunReauth:
             target = MagicMock()
             target.has_binary = True
             target.check_auth.return_value = True
+            target.checks_box_login = False
             target.display_name = "Claude Code"
             target.descriptor = None
             mock_target.return_value = target
@@ -1726,6 +1728,7 @@ class TestRunReauth:
             target = MagicMock()
             target.has_binary = True
             target.check_auth.return_value = True
+            target.checks_box_login = False
             target.display_name = "Claude Code"
             desc = MagicMock()
             target.descriptor = desc
@@ -1778,6 +1781,7 @@ class TestRunReauth:
             target = MagicMock()
             target.has_binary = True
             target.check_auth.return_value = True
+            target.checks_box_login = False
             target.display_name = "Claude Code"
             desc = MagicMock()
             target.descriptor = desc
@@ -1796,12 +1800,16 @@ class TestRunReauth:
             suppress_oauth=True,
         )
 
-    def test_reauth_skips_refresh_for_distinct(self, config_file, tmp_home, capsys):
-        """Distinct auth does not trigger credential refresh."""
+    def _run_private(self, tmp_path: Path, plant):
+        """reauth on a PRIVATE box whose credential file *plant* sets up; rc, target."""
         from kanibako.commands.agent_cmd import run_reauth
 
         args = argparse.Namespace(project=None)
         from kanibako.settings.agent_select import AgentSelection
+        home = tmp_path / "box-home"
+        creds = home / ".claude" / ".credentials.json"
+        creds.parent.mkdir(parents=True)
+        plant(creds, tmp_path)
         with (
             patch(
                 "kanibako.settings.agent_select.select_agent",
@@ -1815,24 +1823,36 @@ class TestRunReauth:
                 autospec=True,
                 return_value=(_PRIVATE_AUTH, None, None, {}),
             ),
+            patch("kanibako.settings.paths.resolve_box_target") as mock_proj,
         ):
             target = MagicMock()
             target.has_binary = True
             target.display_name = "Claude Code"
+            target.credential_check_path.return_value = creds
             mock_target.return_value = target
+            mock_proj.return_value = MagicMock(shell_path=home)
+            rc = run_reauth(args)
+        return rc, target
 
-            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
-                proj = MagicMock()
-                # Distinct auth with credentials present returns 0 before check_auth
-                creds_path = MagicMock()
-                creds_path.is_file.return_value = True
-                target.credential_check_path.return_value = creds_path
-                mock_proj.return_value = proj
-
-                rc = run_reauth(args)
-
+    def test_reauth_skips_refresh_for_distinct(self, config_file, tmp_home, tmp_path):
+        """Distinct auth does not trigger credential refresh."""
+        rc, target = self._run_private(tmp_path, lambda creds, _: creds.write_text("{}"))
         assert rc == 0
         # The distinct-auth branch returns before the auth check that gates refresh.
+        target.check_auth.assert_not_called()
+
+    def test_reauth_private_box_credentials_are_read_through_the_seam(
+        self, config_file, tmp_home, tmp_path, capsys,
+    ):
+        """A planted symlink at the private box's credential file is no credential."""
+        def plant(creds, tmp):
+            real = tmp / "elsewhere.json"
+            real.write_text("{}")
+            creds.symlink_to(real)
+
+        rc, target = self._run_private(tmp_path, plant)
+        assert rc == 1
+        assert "no credentials found" in capsys.readouterr().err
         target.check_auth.assert_not_called()
 
     def test_reauth_runs_inbox_setup_when_auth_fails_and_setup_declared(
@@ -1845,7 +1865,7 @@ class TestRunReauth:
 
         args = argparse.Namespace(project=None)
         with (
-            patch("kanibako.settings.config.resolve_agent", return_value="goose"),
+            patch("kanibako.settings.config.resolve_agent", return_value="codex"),
             patch("kanibako.targets.resolve_target") as mock_target,
             patch(
                 "kanibako.commands.start._run_container", return_value=0,
@@ -1861,8 +1881,9 @@ class TestRunReauth:
             target = MagicMock()
             target.has_binary = True
             target.check_auth.return_value = False
-            target.setup_entrypoint = "goose"
-            target.display_name = "Goose"
+            target.checks_box_login = False
+            target.setup_entrypoint = "codex"
+            target.display_name = "Codex"
             mock_target.return_value = target
 
             with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
@@ -1879,6 +1900,64 @@ class TestRunReauth:
         assert rc == 0
         m_run.assert_called_once()
         assert m_run.call_args.kwargs.get("setup_only") is True
+        target.check_auth.assert_called_once_with()
+
+    def _run_setup_target(self, *, checks_box: bool, host_ok: bool):
+        """reauth on a SHARING box of a setup target; (rc, target, run mock, refresh mock)."""
+        from kanibako.commands.agent_cmd import run_reauth
+
+        args = argparse.Namespace(project=None)
+        from kanibako.settings.agent_select import AgentSelection
+        name = "goose" if checks_box else "codex"
+        with (
+            patch(
+                "kanibako.settings.agent_select.select_agent",
+                return_value=AgentSelection(node=name, source="settings"),
+            ),
+            patch("kanibako.targets.resolve_target") as mock_target,
+            patch("kanibako.commands.start._run_container", return_value=0) as m_run,
+            patch("kanibako.targets.credsync.refresh_box_credentials") as m_refresh,
+            patch(
+                "kanibako.commands.start._resolve_box_launch_decisions",
+                autospec=True,
+                return_value=(_SHARED_AUTH, None, None, {}),
+            ),
+            patch("kanibako.settings.paths.resolve_box_target") as mock_proj,
+        ):
+            target = MagicMock()
+            target.has_binary = True
+            target.check_auth.return_value = host_ok
+            target.checks_box_login = checks_box
+            target.setup_entrypoint = name
+            target.display_name = name.capitalize()
+            mock_target.return_value = target
+            mock_proj.return_value = MagicMock()
+            rc = run_reauth(args)
+        return rc, target, m_run, m_refresh
+
+    def test_reauth_of_a_box_checking_target_skips_the_host_check(
+        self, config_file, tmp_home, capsys,
+    ):
+        """goose: no host check, even one that would pass; the setup-only launch
+        syncs the box from its store, then runs the gate (§ 5, 189-AR (c))."""
+        rc, target, m_run, m_refresh = self._run_setup_target(checks_box=True, host_ok=True)
+        assert rc == 0
+        target.check_auth.assert_not_called()
+        m_refresh.assert_not_called()
+        m_run.assert_called_once()
+        assert m_run.call_args.kwargs.get("setup_only") is True
+        assert "authenticated" not in capsys.readouterr().err
+
+    def test_reauth_of_a_host_checking_setup_target_is_unchanged(
+        self, config_file, tmp_home, capsys,
+    ):
+        """codex keeps the host check: a pass refreshes and says so, with no launch."""
+        rc, target, m_run, m_refresh = self._run_setup_target(checks_box=False, host_ok=True)
+        assert rc == 0
+        target.check_auth.assert_called_once_with()
+        m_refresh.assert_called_once()
+        m_run.assert_not_called()
+        assert "Codex: authenticated." in capsys.readouterr().err
 
     def test_reauth_no_setup_when_auth_fails_and_no_setup_cmd(
         self, config_file, tmp_home, capsys,

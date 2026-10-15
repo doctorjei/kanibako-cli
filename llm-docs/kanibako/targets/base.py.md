@@ -943,6 +943,9 @@ def descriptor(self) -> "PluginDescriptor | None"    # default None
 def check_auth(self, *, box_home: Path | None = None,
                delivered: frozenset[str] = frozenset()) -> bool   # default True
 
+@property
+def checks_box_login(self) -> bool   # default False
+
 def box_login_present(self, box_home: Path, delivered: frozenset[str]) -> bool
 ```
 
@@ -953,6 +956,8 @@ whether the agent has a login (default `True`; `box_home=None` is the host check
 `box_login_present` is the box test an override calls: a descriptor `login_vars` name in
 *delivered* (names, never values), or a non-empty regular `credential_check_path(box_home)` stat'd
 through `boxfs` (a symlink or a path leaving *box_home* fails); a target declaring neither passes.
+`checks_box_login` is True for a target whose `check_auth` judges the box; `agent reauth` then skips
+its host check and syncs the box before the gate.
 
 `descriptor` is the declarative plugin descriptor, `None` ONLY for the built-in `shell`
 pseudo-agent. Core assembles launch argv, bindings, container env and credential sync declaratively
@@ -1345,7 +1350,7 @@ whether to write a default *dst* or do nothing.
 
 The default is a plain copy when *src* exists, so a plugin that flags a file `filtered` but does
 not override still gets a sensible wholesale copy. Plugins override to filter/merge (claude merges
-`claudeAiOauth`; goose filters `config.yaml` and preserves the host's `GOOSE_MODE` on writeback).
+`claudeAiOauth`).
 Claude's `.claude.json` handling is `writeback_extra`, below, not `transform_cred`.
 
 #### `writeback_extra`

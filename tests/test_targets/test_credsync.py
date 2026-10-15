@@ -184,8 +184,8 @@ GOOSE_DESC = PluginDescriptor(
 )
 
 
-# A descriptor exercising the is_dir spec path (mirrors the real goose
-# custom_providers/ DIRECTORY sync added in the 2026-06-24 config-persistence fix).
+# A descriptor exercising the is_dir spec path.  No shipped plugin declares a
+# directory spec now (goose's custom_providers/ row is gone); the ABI keeps them.
 DIR_DESC = PluginDescriptor(
     command=("goose",),
     bindings=(),
@@ -904,18 +904,15 @@ class TestEndpointCredFork:
 
     def test_goose_sync_creds_dropped_when_endpoint_set(self, tmp_path: Path) -> None:
         # INC G1 confirm: a goose persona (endpoint set → suppress_oauth=True) DROPS
-        # ALL of goose's SYNC-cadence cred files (secrets.yaml + config.yaml +
-        # custom_providers/) via the SAME generic fork, so a bare goose login never
-        # reaches an OpenAI-compatible-endpoint box.  Uses the REAL goose descriptor.
+        # goose's SYNC-cadence cred file (secrets.yaml) via the SAME generic fork, so
+        # a bare goose login never reaches an OpenAI-compatible-endpoint box.  Uses the
+        # REAL goose descriptor; the host config.yaml and custom_providers/ are not
+        # synced at all, so they stay out either way.
         from kanibako.plugins.goose.target import GooseTarget
         desc = GooseTarget().descriptor
-        # All three shipped goose cred_files are SYNC (the fork drops SYNC).
+        # The one shipped goose cred_file is SYNC (the fork drops SYNC).
         sync_rels = [s.home_rel for s in desc.cred_files if s.cadence is Cadence.SYNC]
-        assert sorted(sync_rels) == [
-            ".config/goose/config.yaml",
-            ".config/goose/custom_providers",
-            ".config/goose/secrets.yaml",
-        ]
+        assert sync_rels == [".config/goose/secrets.yaml"]
         host, proj = tmp_path / "host", tmp_path / "proj"
         _write(host / ".config/goose/secrets.yaml", "SECRETS")
         _write(host / ".config/goose/config.yaml", "CONFIG")

@@ -1836,6 +1836,61 @@ class TestAuthGatePosition:
             assert calls[1].kwargs["box_home"] is m.proj.shell_path
             assert isinstance(calls[1].kwargs["delivered"], frozenset)
 
+    def _goose_setup_only(self, m, order):
+        from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
+
+        m.target.name = "goose"
+        m.target.display_name = "Goose"
+        m.target.default_entrypoint = "goose"
+        m.target.descriptor = _GOOSE_DESCRIPTOR
+        m.target.setting_descriptors.return_value = []
+        m.target.setup_entrypoint = "goose"
+        m.target.setup_args = ["configure"]
+        m.agent_cfg.state = {}
+        m.load_agent_config.return_value = m.agent_cfg
+        m.credsync.refresh_box_credentials.side_effect = (
+            lambda *a, **k: order.append("refresh")
+        )
+        return _run_container(
+            **{**self._RUN, "persistent": False}, explicit_agent="goose",
+            setup_only=True,
+        )
+
+    def test_reauth_syncs_the_box_before_the_gate(self, start_mocks, capsys):
+        """189-AR (c): a login (and provider) the sync supplies needs no setup."""
+        order: list[str] = []
+        with start_mocks() as m:
+            m.target.check_auth.side_effect = lambda **_: order.append("gate") or True
+            assert self._goose_setup_only(m, order) == 0
+            m.runtime.run.assert_not_called()
+        assert order == ["refresh", "gate"]
+        assert "Goose: authenticated (synced)." in capsys.readouterr().err
+
+    def test_reauth_with_nothing_synced_sets_up_and_never_says_authenticated(
+        self, start_mocks, capsys,
+    ):
+        """No provider after the sync and none after setup: setup runs once, and the
+        re-probe's miss reports "setup complete", never "authenticated"."""
+        order: list[str] = []
+        with start_mocks() as m:
+            m.target.check_auth.side_effect = lambda **_: order.append("gate") or False
+            assert self._goose_setup_only(m, order) == 0
+            assert m.runtime.run.call_count == 1  # the in-box setup
+        assert order == ["refresh", "gate", "gate"]
+        err = capsys.readouterr().err
+        assert "Goose: setup complete." in err
+        assert "authenticated" not in err
+
+    def test_a_launch_refreshes_after_the_gate(self, start_mocks):
+        order: list[str] = []
+        with start_mocks() as m:
+            m.target.check_auth.side_effect = lambda **_: order.append("gate") or True
+            m.credsync.refresh_box_credentials.side_effect = (
+                lambda *a, **k: order.append("refresh")
+            )
+            assert _run_container(**self._RUN) == 0
+        assert order[:2] == ["gate", "refresh"]
+
 
 class TestAgentBinaryValidation:
     """Verify the launch path fails fast on a corrupt/empty host binary."""

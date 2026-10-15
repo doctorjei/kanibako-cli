@@ -40,6 +40,48 @@ def _goose():
     return GooseTarget()
 
 
+_FILTERED = ".config/goose/extra.yaml"
+_DIR = ".config/goose/providers"
+
+
+def _synthetic():
+    """goose plus a filtered file spec and a directory spec.
+
+    goose no longer declares either shape, but credsync still realizes both for a
+    plugin that does, so the engine's checks are tested on this synthetic target.
+    Its filter keeps the store's own ``MODE`` and takes everything else from the box.
+    """
+    import dataclasses
+
+    import yaml
+
+    from kanibako.plugins.goose.credentials import parse_yaml
+    from kanibako.plugins.goose.target import GooseTarget
+    from kanibako.targets.base import Cadence, CredFileSpec
+
+    class Synthetic(GooseTarget):
+        @property
+        def descriptor(self):
+            base = GooseTarget().descriptor
+            assert base is not None
+            return dataclasses.replace(base, cred_files=base.cred_files + (
+                CredFileSpec(_FILTERED, _FILTERED, cadence=Cadence.SYNC,
+                             mtime_gate=True, filtered=True),
+                CredFileSpec(_DIR, _DIR, cadence=Cadence.SYNC, mtime_gate=True,
+                             filtered=False, is_dir=True),
+            ))
+
+        def transform_cred(self, spec, src, dst, direction):
+            box = parse_yaml(Path(src).read_bytes())
+            store = parse_yaml(dst.read_bytes()) if dst.is_file() else {}
+            box.pop("MODE", None)
+            if "MODE" in store:
+                box["MODE"] = store["MODE"]
+            dst.write_text(yaml.safe_dump(box, default_flow_style=False))
+
+    return Synthetic()
+
+
 # (target factory, credential relpath, a valid newer file, a wrong-format file)
 HARNESSES = [
     pytest.param(_claude, ".claude/.credentials.json", _CLAUDE_OK,
@@ -234,79 +276,70 @@ class TestWritebackChecks:
 
 
 def _providers(tmp_path: Path) -> tuple[Path, Path]:
-    return (tmp_path / "proj/.config/goose/custom_providers",
-            tmp_path / "host/.config/goose/custom_providers")
+    return tmp_path / "proj" / _DIR, tmp_path / "host" / _DIR
 
 
-def _goose_writeback(tmp_path: Path) -> None:
-    target = _goose()
+def _dir_writeback(tmp_path: Path) -> None:
+    target = _synthetic()
     writeback_cred_files(target.descriptor, target, source_root=tmp_path / "host",
                          project_home=tmp_path / "proj")
 
 
-def test_goose_custom_providers_over_256_entries_is_refused(
-    tmp_path: Path, caplog,
-) -> None:
+def test_dir_spec_over_256_entries_is_refused(tmp_path: Path, caplog) -> None:
     box, out = _providers(tmp_path)
     box.mkdir(parents=True)
     for i in range(257):
         (box / f"p{i}.json").write_text("{}")
     with caplog.at_level(logging.WARNING):
-        _goose_writeback(tmp_path)
+        _dir_writeback(tmp_path)
     assert not out.exists()
     assert str(box) in caplog.text
 
 
-def test_goose_custom_providers_over_4_mib_is_refused(tmp_path: Path, caplog) -> None:
+def test_dir_spec_over_4_mib_is_refused(tmp_path: Path, caplog) -> None:
     box, out = _providers(tmp_path)
     box.mkdir(parents=True)
     with open(box / "big.json", "wb") as fh:
         fh.truncate((4 << 20) + 1)
     with caplog.at_level(logging.WARNING):
-        _goose_writeback(tmp_path)
+        _dir_writeback(tmp_path)
     assert not out.exists()
     assert str(box) in caplog.text
 
 
-def test_goose_custom_providers_at_the_caps_is_copied(tmp_path: Path) -> None:
+def test_dir_spec_at_the_caps_is_copied(tmp_path: Path) -> None:
     box, out = _providers(tmp_path)
     box.mkdir(parents=True)
     for i in range(255):
         (box / f"p{i}.json").write_text("{}")
     with open(box / "big.json", "wb") as fh:
         fh.truncate((4 << 20) - 2 * 255)
-    _goose_writeback(tmp_path)
+    _dir_writeback(tmp_path)
     assert len(list(out.iterdir())) == 256
 
 
-def test_goose_custom_providers_skips_planted_links(tmp_path: Path, caplog) -> None:
-    """A link in the synced goose dir would copy the host file it names: skipped."""
-    host, proj = tmp_path / "host", tmp_path / "proj"
+def test_dir_spec_skips_planted_links(tmp_path: Path, caplog) -> None:
+    """A link in a synced dir would copy the host file it names: skipped."""
     secret = _write(tmp_path / "host-secret", "HOST-SECRET", mtime=100)
-    providers = proj / ".config/goose/custom_providers"
-    _write(providers / "real.json", "{}", mtime=200)
-    (providers / "leak.json").symlink_to(secret)
-    target = _goose()
+    box, out = _providers(tmp_path)
+    _write(box / "real.json", "{}", mtime=200)
+    (box / "leak.json").symlink_to(secret)
     with caplog.at_level(logging.WARNING):
-        writeback_cred_files(target.descriptor, target, source_root=host, project_home=proj)
-    out = host / ".config/goose/custom_providers"
+        _dir_writeback(tmp_path)
     assert (out / "real.json").read_text() == "{}"
     assert not (out / "leak.json").exists()
-    assert str(providers / "leak.json") in caplog.text
+    assert str(box / "leak.json") in caplog.text
 
 
-def test_goose_custom_providers_dir_itself_a_link_is_refused(
-    tmp_path: Path, caplog,
-) -> None:
-    host, proj = tmp_path / "host", tmp_path / "proj"
+def test_dir_spec_dir_itself_a_link_is_refused(tmp_path: Path, caplog) -> None:
     elsewhere = tmp_path / "elsewhere"
     _write(elsewhere / "x.json", "HOST-SECRET", mtime=100)
-    (proj / ".config/goose").mkdir(parents=True)
-    (proj / ".config/goose/custom_providers").symlink_to(elsewhere)
-    target = _goose()
+    box, out = _providers(tmp_path)
+    box.parent.mkdir(parents=True)
+    box.symlink_to(elsewhere)
     with caplog.at_level(logging.WARNING):
-        writeback_cred_files(target.descriptor, target, source_root=host, project_home=proj)
-    assert not (host / ".config/goose/custom_providers").exists()
+        _dir_writeback(tmp_path)
+    assert not out.exists()
     assert "symlink" in caplog.text
 
 
@@ -326,8 +359,8 @@ def _engine_writeback(target, tmp_path: Path, monkeypatch) -> Path:
 
 
 @pytest.mark.parametrize("rel, host_text, box_text", [
-    pytest.param(".config/goose/config.yaml", "GOOSE_MODE: approve\nX: 1\n",
-                 "GOOSE_MODE: auto\nX: 1\n", id="goose-filtered-noop"),
+    pytest.param(_FILTERED, "MODE: approve\nX: 1\n",
+                 "MODE: auto\nX: 1\n", id="filtered-noop"),
     pytest.param(".config/goose/secrets.yaml", _GOOSE_OK, _GOOSE_OK,
                  id="goose-unfiltered-same"),
 ])
@@ -337,7 +370,7 @@ def test_unchanged_result_leaves_the_store_file_alone(
     store = _write(tmp_path / "host" / rel, host_text, mtime=1000)
     _write(tmp_path / "proj" / rel, box_text, mtime=2000)
     before = store.stat()
-    _engine_writeback(_goose(), tmp_path, monkeypatch)
+    _engine_writeback(_synthetic(), tmp_path, monkeypatch)
     after = store.stat()
     assert (after.st_ino, after.st_mtime) == (before.st_ino, 1000)
     assert store.read_text() == host_text
@@ -350,9 +383,9 @@ def test_a_failed_spec_skips_only_itself_and_keeps_the_dirty_flag(
     from kanibako.launch.creds_watcher import creds_dirty_flag_path
 
     secrets = _write(tmp_path / "host/.config/goose/secrets.yaml", "STORE-OLD", mtime=100)
-    config = _write(tmp_path / "host/.config/goose/config.yaml", "X: 1\n", mtime=100)
+    config = _write(tmp_path / "host" / _FILTERED, "X: 1\n", mtime=100)
     _write(tmp_path / "proj/.config/goose/secrets.yaml", _GOOSE_OK, mtime=200)
-    _write(tmp_path / "proj/.config/goose/config.yaml", "X: 2\n", mtime=200)
+    _write(tmp_path / "proj" / _FILTERED, "X: 2\n", mtime=200)
     flag = creds_dirty_flag_path(tmp_path / "proj")
     flag.parent.mkdir(parents=True, exist_ok=True)
     flag.write_text("")
@@ -365,13 +398,13 @@ def test_a_failed_spec_skips_only_itself_and_keeps_the_dirty_flag(
 
     monkeypatch.setattr(credsync.tempfile, "mkstemp", no_space_for_secrets_bak)
     with caplog.at_level(logging.WARNING):
-        proj = _engine_writeback(_goose(), tmp_path, monkeypatch)
+        proj = _engine_writeback(_synthetic(), tmp_path, monkeypatch)
     assert secrets.read_text() == "STORE-OLD"
     assert config.read_text() == "X: 2\n"
     assert str(proj / ".config/goose/secrets.yaml") in caplog.text
     assert flag.exists()
 
     monkeypatch.setattr(credsync.tempfile, "mkstemp", real_mkstemp)
-    _engine_writeback(_goose(), tmp_path, monkeypatch)
+    _engine_writeback(_synthetic(), tmp_path, monkeypatch)
     assert secrets.read_text() == _GOOSE_OK
     assert not flag.exists()
