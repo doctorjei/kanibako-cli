@@ -289,3 +289,34 @@ def test_a_blank_finish_reason_is_unknown_and_still_recorded_verbatim(
   assert failure is None and text is not None, "a blank finish_reason must not fail a section"
   assert attempts[-1].finish_reason == "", "the record keeps the endpoint's own value"
   assert "UNKNOWN" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("store_model", ["PERSONA_DEFAULT_MODEL", ""])
+def test_a_null_or_empty_store_model_names_no_model_and_the_metadata_serializes(
+  monkeypatch: pytest.MonkeyPatch, store_model: str,
+) -> None:
+  """A store ``null`` (the marker) and a store ``""`` both reach the request as NO model.
+
+  ⚑ CI does not type-check ``scripts/``, so this test is the check: read raw, the marker
+  survives ``model or store_model`` and raises in ``json.dumps`` when the run's metadata
+  is written; the ``""`` would name an empty model.
+  """
+  from types import SimpleNamespace
+
+  from kanibako.persona_store import PersonaBundle, SecretPathResult
+  from kanibako.targets.base import PERSONA_DEFAULT_MODEL
+
+  model = PERSONA_DEFAULT_MODEL if store_model == "PERSONA_DEFAULT_MODEL" else store_model
+  bundle = PersonaBundle(endpoint="https://example.invalid", model=model)
+  monkeypatch.setattr(
+    keyspec, "resolve_secret_path", lambda entry: SecretPathResult(path=Path("/dev/null"), error=None),
+  )
+  monkeypatch.setattr(keyspec, "get_target", lambda harness: lambda: object())
+  monkeypatch.setattr(keyspec, "read_persona_bundle", lambda ref, target: bundle)
+  entry = SimpleNamespace(harness="claude", config_dir=Path("/nonexistent"))
+
+  conn = keyspec.resolve_connection(
+    entry, "p+claude", endpoint=None, model=None, path="/v1/chat/completions",
+  )
+  assert conn.model is None
+  json.dumps({"model": conn.model, "url": conn.url})

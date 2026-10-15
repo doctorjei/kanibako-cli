@@ -326,7 +326,7 @@ def resolve_connection(
     if bundle.reject_reason is not None:
       raise SystemExit(f"persona '{ref}': {bundle.reject_reason}")
     if not bundle.no_reader:
-      store_endpoint, store_model = bundle.endpoint, bundle.model
+      store_endpoint, store_model = bundle.endpoint, bundle.request_model
 
   base = endpoint or store_endpoint
   if not base:
