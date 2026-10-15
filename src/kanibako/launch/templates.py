@@ -44,7 +44,7 @@ _SEED_DEST_HOME = "~/"
 #: source; ``canon/handbook`` is read by the host-side copy (2026-08-07g), which is
 #: why the two constants no longer sit in the same table.
 _SEED_SRC_HOME = "box/home"
-_SEED_SRC_HANDBOOK = "box/canon/handbook"
+_SEED_SRC_HANDBOOK = f"box/{CANON_GUEST_ROOT}/{HANDBOOK_REL}"
 
 #: The ``template`` entry of a SCOPE STORE.  ⚑ Two things must agree on it: the
 #: layer-2/3 source key defaults, and the whitelist entry that permits it.
@@ -492,9 +492,9 @@ AGENT_MOLD_DIRNAME = "agent"
 #: repointable ``workset.template`` RESOLVES to.  Fold the ``template/`` prefix back in
 #: here and the workset half silently ignores that key again.
 _BOX_TEMPLATE_SKELETON = (
-    "box/home/canon/notebook",
-    "box/home/canon/workbook",
-    "box/canon/handbook",
+    f"{_SEED_SRC_HOME}/{CANON_GUEST_ROOT}/notebook",
+    f"{_SEED_SRC_HOME}/{CANON_GUEST_ROOT}/workbook",
+    _SEED_SRC_HANDBOOK,
 )
 
 #: The CANON HALF of the workset stamp ON THE MOLD SIDE — the subtree of
