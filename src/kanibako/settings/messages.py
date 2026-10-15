@@ -369,9 +369,23 @@ CURE_LOOP_SOURCE_REMAP = "\nOr record where the workspace is with `kanibako box 
 # ⚑ SHELL_D_FILE + "/" is _upgrade_shell's already-seamed test: renaming the DIR re-appends.
 _SHELL_D_SOURCE_LINE =   'for _f in ~/.shell.d/*.sh; do [ -r "$_f" ] && . "$_f"; done\nunset _f'
 
+# ⚑ Debian's bash reads /etc/bash.bashrc itself; only the Red Hat /etc/bashrc is sourced here.
+# The default prompt is colored only in an interactive shell on a terminal of 8+ colors (else
+# plain, same text); the aliases never replace one the image's rc file already defined.
 BASHRC_CONTENTS =        ("# kanibako shell environment\n" +
                           "[ -f /etc/bashrc ] && . /etc/bashrc\n" +
-                          'export PS1="${KANIBAKO_PS1:-(kanibako) \\u@\\h:\\w\\$ }"\n' +
+                          "_ps1='(kanibako) \\u@\\h:\\w$ '\n" +
+                          "case $- in *i*)\n" +
+                          '  if [ "$(tput colors 2>/dev/null)" -ge 8 ] 2>/dev/null; then\n' +
+                          "    _ps1='\\[\\e[1;32m\\]" +   # split: the api-doc would read `](` as a link
+                          "(kanibako)\\[\\e[0m\\] " +
+                          "\\[\\e[1;32m\\]\\u@\\h\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]$ '\n" +
+                          "  fi\n" +
+                          "  alias ls >/dev/null 2>&1 || alias ls='ls --color=auto'\n" +
+                          "  alias grep >/dev/null 2>&1 || alias grep='grep --color=auto'\n" +
+                          ";; esac\n" +
+                          'export PS1="${KANIBAKO_PS1:-$_ps1}"\n' +
+                          "unset _ps1\n" +
                           "# Source user init scripts\n%s\n" % _SHELL_D_SOURCE_LINE)
 
 SHELL_D_CONTENTS =        "# Source user init scripts\n%s\n" % _SHELL_D_SOURCE_LINE

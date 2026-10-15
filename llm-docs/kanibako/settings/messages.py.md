@@ -231,10 +231,10 @@ environment as an interactive one; bash reads only `.profile` in the login case 
 skip the `.shell.d` chain entirely. It first restores `$HOME/.local/bin` on `PATH` when missing,
 because a login shell's `/etc/profile` drops it, and the agent binary lives there.
 
-⚑ `BASHRC_CONTENTS`' prompt is `"${KANIBAKO_PS1:-(kanibako) \u@\h:\w\$ }"` — a parameter-expansion
-DEFAULT, not an assignment, so a `KANIBAKO_PS1` supplied through `env.KANIBAKO_PS1` wins and the
-box-marker prompt is only the fallback. The backslashes are doubled in the Python source because it
-is a regular string, not a raw one.
+⚑ `BASHRC_CONTENTS`' prompt is `"${KANIBAKO_PS1:-$_ps1}"` — a parameter-expansion DEFAULT, not an
+assignment, so a `KANIBAKO_PS1` supplied through `env.KANIBAKO_PS1` wins and the box-marker prompt
+`(kanibako) \u@\h:\w$ ` is only the fallback, colored in an interactive shell on a terminal of 8+
+colors. The backslashes are doubled in the Python source because it is a regular string, not a raw one.
 
 ⚑ **`bootstrap.SHELL_D_FILE`'s value is an UPGRADE trigger, not just a name.**
 `paths._upgrade_shell` decides whether an existing box's `.bashrc` already has the seam by testing

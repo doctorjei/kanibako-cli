@@ -1387,6 +1387,62 @@ class TestBootstrapShell:
         content = (shell / ".bashrc").read_text()
         assert "KANIBAKO_PS1" in content
 
+    @staticmethod
+    def _interactive(shell, rcfile, term, **env):
+        # Prints PS1, then one alias per line, from an interactive bash reading *rcfile* only.
+        import os
+        import subprocess
+        script = 'printf "%s\\n" "$PS1"; alias'
+        return subprocess.run(
+            ["bash", "--rcfile", str(rcfile), "-i", "-c", script],
+            env={"HOME": str(shell), "PATH": os.environ["PATH"], "TERM": term, **env},
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+
+    def test_bashrc_colors_prompt_and_aliases_on_color_terminal(self, tmp_path):
+        import re
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        _bootstrap_shell(shell)
+        ps1, *aliases = self._interactive(shell, shell / ".bashrc", "xterm-256color")
+        assert "\\[\\e[" in ps1
+        assert re.sub(r"\\\[\\e\[[0-9;]*m\\\]", "", ps1) == "(kanibako) \\u@\\h:\\w$ "
+        assert "alias ls='ls --color=auto'" in aliases
+        assert "alias grep='grep --color=auto'" in aliases
+
+    def test_bashrc_plain_prompt_without_color_terminal(self, tmp_path):
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        _bootstrap_shell(shell)
+        assert self._interactive(shell, shell / ".bashrc", "dumb")[0] == "(kanibako) \\u@\\h:\\w$ "
+
+    def test_bashrc_kanibako_ps1_overrides_colored_prompt(self, tmp_path):
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        _bootstrap_shell(shell)
+        out = self._interactive(shell, shell / ".bashrc", "xterm-256color", KANIBAKO_PS1="(mine) \\w> ")
+        assert out[0] == "(mine) \\w> "
+
+    def test_bashrc_keeps_an_alias_the_image_defined(self, tmp_path):
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        _bootstrap_shell(shell)
+        image_rc = tmp_path / "image_rc"
+        image_rc.write_text(f"alias ls='ls -F'\n. {shell / '.bashrc'}\n")
+        aliases = self._interactive(shell, image_rc, "xterm-256color")[1:]
+        assert "alias ls='ls -F'" in aliases
+        assert "alias grep='grep --color=auto'" in aliases
+
+    def test_bashrc_noninteractive_gets_no_aliases(self, tmp_path):
+        import subprocess
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        _bootstrap_shell(shell)
+        out = subprocess.run(["bash", "-c", '. "$HOME/.bashrc"; alias'],
+                             env={"HOME": str(shell), "PATH": "/usr/bin:/bin", "TERM": "xterm-256color"},
+                             capture_output=True, text=True, check=True).stdout
+        assert out == ""
+
     def test_creates_profile(self, tmp_path):
         shell = tmp_path / "shell"
         shell.mkdir()

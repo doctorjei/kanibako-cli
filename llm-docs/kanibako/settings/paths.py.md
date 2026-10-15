@@ -909,7 +909,7 @@ box); it does NOT reach the agent (exec'd directly), the agent's `bash -c` tool 
 def _bootstrap_shell(shell_path: Path) -> None
 ```
 Write minimal shell skeleton files into a new shell directory: a `.bashrc` (sourcing `/etc/bashrc`,
-setting `PS1`, and the `SHELL_D_CONTENTS` source line), a `.profile` that sources `.bashrc`, and the
+setting a colored `PS1` and `ls`/`grep` color aliases, and the `SHELL_D_CONTENTS` source line), a `.profile` that sources `.bashrc`, and the
 `.shell.d/` drop-in directory. Each file is written only when absent.
 
 ```python
