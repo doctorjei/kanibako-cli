@@ -640,12 +640,13 @@ def env_twin_refusal(var: str, claim: str, cure: str) -> str:
     """The ONE frame of every refusal of a contested environment-variable slot.
 
     ``the environment variable '<VAR>' <claim>. <cure>`` — the subject spelled once
-    for the three raisers, which stay SPLIT BY INPUT because each sees a contest
+    for the four raisers, which stay SPLIT BY INPUT because each sees a contest
     the others cannot: two scopes' ``env`` keys (``store_collapse._refuse_env_twin``,
     off the collapse's slots), the ``env`` and ``secret_path`` families
-    (:func:`refuse_env_secret_twins`, off the entry list), and a key naming a
+    (:func:`refuse_env_secret_twins`, off the entry list), a key naming a
     variable the launch realizes (``commands.start._refuse_realized_twin``, off the
-    snapshot).  *claim* says who claims the slot; *cure* is the raiser's own,
+    snapshot), and a user value for the variable ``--browser`` writes
+    (``commands.start._refuse_browser_env_twin``, off the collapsed slots).  *claim* says who claims the slot; *cure* is the raiser's own,
     because each contest is cleared a different way.
     """
     return f"the environment variable {var!r} {claim}. {cure}"

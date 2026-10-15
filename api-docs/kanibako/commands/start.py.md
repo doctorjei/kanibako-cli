@@ -27,6 +27,7 @@ _ASSEMBLY_SEEDED: 'tuple[str, ...]' = ('meta', 'assembly', 'seeded')
 _ASSEMBLY_SYNCED: 'tuple[str, ...]' = ('meta', 'assembly', 'synced')
 _ASSEMBLY_ENV: 'tuple[str, ...]' = ('meta', 'assembly', 'env')
 _COLLISION_WARNED: 'set[tuple[str, str]]' = set()
+_BROWSER_ENV_VAR = 'BROWSER_WS_ENDPOINT'
 _UNIX_SOCKET_PATH_LIMIT = 104
 _FALLBACK_LOG_TAIL = 20
 _BOOTSTRAP_SESSION = 'kanibako'
@@ -198,6 +199,7 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]
 def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None
 def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> 'str | None'
 def _refuse_realized_twin(var: str, declared_key: str, *, agent_id: str, driving_key: str, is_access: bool) -> None
+def _refuse_browser_env_twin(env_slots: 'CollapsedEnvs') -> None
 def _channel_default_categories(std, proj) -> 'core_defaults.BindArmTable'
 def _seed_channel_files(std, proj) -> None
 def _core_default_categories(std, proj, *, guarantee_create: bool=True) -> 'core_defaults.BindArmTable'

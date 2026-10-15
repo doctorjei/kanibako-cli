@@ -5187,6 +5187,85 @@ class TestBrowserSidecar:
                 )
                 assert rc == 0  # continues without sidecar
 
+    # --- a user BROWSER_WS_ENDPOINT vs --browser (191-G2) ---------------------
+    # ``--browser`` writes the variable after the collapse, so a user value for it
+    # used to be replaced silently. Spec: nothing writes a variable after the
+    # channel; the pair refuses, and only the pair.
+
+    def _launch(self, m, *, browser, cli_env=()):
+        sidecar = MagicMock()
+        sidecar.start.return_value = "ws://127.0.0.1:9222/devtools/browser/abc"
+        with (
+            patch(
+                "kanibako.browser_sidecar.BrowserSidecar", return_value=sidecar,
+            ) as sidecar_cls,
+            patch(
+                "kanibako.browser_sidecar.ws_endpoint_for_container",
+                return_value=self._CONTAINER_WS,
+            ),
+        ):
+            rc = _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[], browser=browser, cli_env=list(cli_env),
+            )
+        return rc, sidecar_cls
+
+    def test_browser_refuses_a_settings_key_for_its_variable(self, start_mocks):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with start_mocks() as m:
+            m.agent_cfg.env = {"BROWSER_WS_ENDPOINT": "ws://mine"}
+            m.load_agent_config.return_value = m.agent_cfg
+            with pytest.raises(SettingsError) as exc:
+                self._launch(m, browser=True)
+            msg = str(exc.value)
+            assert "'BROWSER_WS_ENDPOINT'" in msg and "--browser" in msg, msg
+            assert "env.BROWSER_WS_ENDPOINT'" in msg, msg  # names the key
+            assert "launch without --browser" in msg and "remove" in msg, msg
+            m.runtime.run.assert_not_called()
+
+    def test_browser_refuses_a_cli_e_for_its_variable(self, start_mocks):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with start_mocks() as m:
+            with pytest.raises(SettingsError) as exc:
+                self._launch(
+                    m, browser=True, cli_env=["BROWSER_WS_ENDPOINT=ws://mine"],
+                )
+            msg = str(exc.value)
+            assert "-e BROWSER_WS_ENDPOINT" in msg and "--browser" in msg, msg
+            assert "launch without --browser" in msg, msg
+            m.runtime.run.assert_not_called()
+
+    def test_the_refusal_names_a_key_at_any_scope(self):
+        """The check reads the collapsed slot, so a box-scope key is named as such."""
+        from kanibako.commands.start import _refuse_browser_env_twin
+        from kanibako.settings.settings_resolve import SettingsError
+        from kanibako.settings.store_collapse import CollapsedEnv
+
+        with pytest.raises(SettingsError, match="'box.env.BROWSER_WS_ENDPOINT'"):
+            _refuse_browser_env_twin({"BROWSER_WS_ENDPOINT": CollapsedEnv(
+                "ws://mine", "box", "box.env.BROWSER_WS_ENDPOINT",
+            )})
+        # Another variable is no contest.
+        _refuse_browser_env_twin({"OTHER": CollapsedEnv("x", "box", "box.env.OTHER")})
+
+    @pytest.mark.parametrize("route", ["key", "-e"])
+    def test_without_browser_a_user_value_passes_through(self, start_mocks, route):
+        with start_mocks() as m:
+            cli_env = ()
+            if route == "key":
+                m.agent_cfg.env = {"BROWSER_WS_ENDPOINT": "ws://mine"}
+                m.load_agent_config.return_value = m.agent_cfg
+            else:
+                cli_env = ("BROWSER_WS_ENDPOINT=ws://mine",)
+            rc, sidecar_cls = self._launch(m, browser=False, cli_env=cli_env)
+            assert rc == 0
+            sidecar_cls.assert_not_called()
+            box_env = m.runtime.run.call_args.kwargs["env"]
+            assert box_env["BROWSER_WS_ENDPOINT"] == "ws://mine", box_env
+
 
 class TestAgentlessRunStart:
     """Verify run_start's no-agent behavior under the W1 unified resolver.

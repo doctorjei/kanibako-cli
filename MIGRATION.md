@@ -7981,6 +7981,19 @@ it with `--no-helpers`. If you set `box.bindings.rw[~/.kanibako/state/helper.soc
 ordinary bind at that path; set `box.bindings.rw[~/.kanibako/state/hub]` instead, with a directory as
 its source. A script that reads the socket in the box reads the new path.
 
+### `--browser` refuses a `BROWSER_WS_ENDPOINT` you set yourself
+
+**Read this if you set `BROWSER_WS_ENDPOINT` in a settings file or with `-e` and also pass
+`--browser`.**
+
+**What changed.** `--browser` gives the box the sidecar's endpoint in `BROWSER_WS_ENDPOINT`. It used
+to replace your value without a word. Now the launch stops before anything starts, and the error
+names your key (or the `-e`) and `--browser`.
+
+**What you must do.** Drop one. Launch without `--browser` to keep your value, or remove your key
+and any `-e BROWSER_WS_ENDPOINT` to use the sidecar. Without `--browser`, your value reaches the box
+as before.
+
 ---
 
 ## 3. For plugin authors

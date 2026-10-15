@@ -4678,6 +4678,11 @@ def _run_container(
             # so a stored map or a display must not carry one.
             realize=_realizer,
         )
+        # ``--browser`` writes BROWSER_WS_ENDPOINT after the collapse; a user value
+        # for it (any scope's key or ``-e``) would be replaced silently. Refused
+        # here, before ``-e`` is persisted or anything starts.
+        if browser:
+            _refuse_browser_env_twin(_launch_env_map(_snapshot))
         # §1A CREATE EXCEPTION for ``-e`` (181-CX1 (a) [Jei:2026-10-13]): the collapse above is the
         # first point that knows which key owns each variable — its env slots, and the
         # entry list's ``secret_path`` names — and nothing has run in the box yet.  The
@@ -5202,7 +5207,7 @@ def _run_container(
                 )
                 ws_url = browser_sidecar.start()
                 container_ws = ws_endpoint_for_container(ws_url)
-                container_env["BROWSER_WS_ENDPOINT"] = container_ws
+                container_env[_BROWSER_ENV_VAR] = container_ws
                 logger.info("Browser sidecar started: %s", container_ws)
             except Exception as exc:
                 logger.warning("Browser sidecar failed to start: %s", exc)
@@ -10525,6 +10530,42 @@ def _refuse_realized_twin(
         f"this refusal — no flag does, because the launch stops here, before any of "
         f"them is applied. Once the key is gone, choose the value with: "
         f"{'; '.join(routes)}.",
+    ))
+
+
+#: The variable ``--browser`` writes into the box env, after the collapse.
+_BROWSER_ENV_VAR = "BROWSER_WS_ENDPOINT"
+
+
+def _refuse_browser_env_twin(env_slots: "CollapsedEnvs") -> None:
+    """``--browser`` and a user value both claim BROWSER_WS_ENDPOINT: refuse, naming both.
+
+    The sidecar's endpoint is written after the collapse, so it cannot take part in
+    the collapse's own refusal; without this check it would silently replace the
+    user's value. Only this pair refuses: without ``--browser`` the user value
+    passes through unchanged.
+    """
+    slot = env_slots.get(_BROWSER_ENV_VAR)
+    if slot is None:
+        return
+    from kanibako.settings.settings_categories import env_twin_refusal
+    from kanibako.settings.settings_keyspace import shown_key
+    from kanibako.settings.settings_resolve import SettingsError
+    from kanibako.settings.store_collapse import CLI_PROVENANCE_SCOPE
+
+    if slot.scope == CLI_PROVENANCE_SCOPE:
+        # No key owns it: the value came from -e alone.
+        setter, remove = f"-e {_BROWSER_ENV_VAR}", f"the -e {_BROWSER_ENV_VAR}"
+    else:
+        owner = shown_key(slot.key)
+        setter = f"{owner!r} (or a -e for it)"
+        remove = f"{owner!r} and any -e {_BROWSER_ENV_VAR}"
+    raise SettingsError(env_twin_refusal(
+        _BROWSER_ENV_VAR,
+        f"is set by {setter}, and --browser writes it as well",
+        f"A variable is written ONCE, so one value would silently replace the "
+        f"other. Drop one: launch without --browser to keep your value, or remove "
+        f"{remove} to use the browser sidecar's endpoint.",
     ))
 
 
