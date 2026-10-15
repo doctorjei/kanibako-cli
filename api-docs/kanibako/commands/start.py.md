@@ -143,6 +143,7 @@ def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: str | No
 def _persona_endpoint_refusal(display: str, endpoint: str, missing: str, detail: str, cure: str) -> str
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str
 def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, keyspace_model: str | None, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _provider_model(target, model: str | None) -> str | None
 def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str, *, cli_env: 'Mapping[str, str] | None'=None) -> 'str | None'
 def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')

@@ -346,7 +346,7 @@ and the launch cannot disagree about what the user typed.
 By the spec's `env.<VAR>` block and system-design § "Delivery at launch" (the refusals ship, no
 carve-out). The five realized variables — goose `GOOSE_MODE` (unconditional, every launch) ·
 `GOOSE_MODEL` · `GOOSE_PROVIDER` · `OPENAI_HOST`, and claude `ANTHROPIC_BASE_URL` (each conditional
-on its driving key resolving truthy); **codex and core realize none** — are **launch-derived
+on its driving key resolving truthy, except that a `""` `model` realizes `GOOSE_MODEL=`); **codex and core realize none** — are **launch-derived
 `agent.<node>.env.<VAR>` keys**, and `_assemble_launch_env` is a TOTAL projection of the leaf.
 
 **The seam is a POSITION, and that is the design.** A realization cannot be a floor default: its
@@ -901,8 +901,8 @@ floor (`agent_behavior_floor`) in a single call, so the box's sharing decision
 * **`endpoint`** — the resolved PERSONA endpoint URL, or `None` when unset (`<None>` / empty / no
   descriptors / no target) — the cred-fork signal (non-None ⇒ suppress the OAuth cred).
 * **`model`** — the cascade-resolved active-node `agent.<node>.model` (`effective_behavior`): a
-  resolved `str` id, or `None` for no model — unset (incl. no descriptors / no target), `null`, or
-  blank alike.
+  resolved `str` id; `""`, the empty model; or `None` for no model — unset (incl. no descriptors /
+  no target), `null`, or whitespace-only alike.
 
 The plugin's behavior floor folds in as `agent.<node>.<key>` (core's floor is not passed — its
 `endpoint` is `<None>`, which the pick omits like an absent key) and the per-agent FILE state as the
@@ -965,7 +965,10 @@ persona as the bare host harness on the user's real account. A resolved endpoint
 is ALSO a hard error (a bearer endpoint with no token 401s inside the box).
 
 **`keyspace_model`** is the box-level cascade-resolved `agent.<node>.model`, harness default excluded
-(see `_resolve_box_launch_decisions`): a model id, or `None`. No model is refused, for any harness:
+(see `_resolve_box_launch_decisions`): a model id, `""`, or `None`. The probe sends only an ID. For
+codex, `_provider_model` maps `""` through the descriptor's `model` entry (`SettingArg.emits`; with
+no entry, `SettingArg.empty_default`): root `model = ""` when it emits, else no root `model`, so the
+file and `--model` follow one declaration. No model is refused, for any harness:
 kanibako passes none, and the harness and its endpoint decide. For codex the provider then carries no
 model, so `config.toml` gets no root `model`, there is no `--model`, and codex uses its own default; a
 goose persona uses its own config's model or refuses to start.

@@ -6693,6 +6693,7 @@ def _persona_probe_error(
 
     if target is None:
         return None
+    model = model or None  # the empty model probes as no model: only an ID is sent
     if token is not None and not _verify_takes_token(target.verify_persona):
         print(
             f"Note: persona '{display}': its harness plugin cannot take a token from -e, "
@@ -6818,9 +6819,10 @@ def _resolve_codex_persona_provider(
       delivered through), so codex reads the key kanibako exports.
     * *model* — the CASCADE-resolved active-node model (``agent.<node>.model`` off the
       box-level launch snapshot, harness default excluded — see
-      :func:`_resolve_box_launch_decisions`), passed in by the caller: a model id, or
-      ``None`` when the persona sets ``model: null`` (no root ``model`` is written,
-      so codex uses its own default).
+      :func:`_resolve_box_launch_decisions`), passed in by the caller through
+      :func:`_provider_model`: a model id, ``""`` (root ``model = ""``, the empty
+      model), or ``None`` when the persona sets no model (no root ``model`` is
+      written, so codex uses its own default).
     """
     from kanibako.vscode.vscode_config import CodexModelProvider
 
@@ -7100,8 +7102,9 @@ def _preflight_config_file_persona(
          names the provider ``env_key``.
 
     There is no ``model`` gate: *keyspace_model* (the box-level cascade read) is a
-    model id, or ``None`` when the persona sets none, which means no root ``model`` in
-    ``config.toml`` and no ``--model``, so codex uses its own default.
+    model id; ``""``, the empty model, which :func:`_provider_model` maps through the
+    descriptor; or ``None`` when the persona sets none, which means no root ``model``
+    in ``config.toml`` and no ``--model``, so codex uses its own default.
 
     On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
     for INC 3.  Every value is resolved live through the cascade before this seam.
@@ -7130,9 +7133,31 @@ def _preflight_config_file_persona(
         if probe_err is not None:
             return None, probe_err, None
     provider = _resolve_codex_persona_provider(
-        agent_id, endpoint, env_key, keyspace_model, wiring,
+        agent_id, endpoint, env_key, _provider_model(target, keyspace_model), wiring,
     )
     return endpoint, None, provider
+
+
+def _provider_model(target, model: str | None) -> str | None:
+    """The provider ``model`` for a resolved *model*: ``""`` follows the descriptor.
+
+    An ID or ``None`` passes through.  ``""`` stays ``""`` (root ``model = ""``)
+    when the harness's ``model`` entry emits it (:meth:`SettingArg.emits`), else
+    ``None`` (no root ``model``), so the file and the ``--model`` flag follow one
+    declaration.  A descriptor with no ``model`` entry takes the undeclared
+    default, :meth:`SettingArg.empty_default`.
+    """
+    from kanibako.targets.base import SettingArg
+
+    if model != "":
+        return model
+    desc = target.descriptor if target is not None else None
+    entry = next(
+        (s for s in (desc.settings if desc is not None else ()) if s.setting_key == "model"),
+        None,
+    )
+    emits = entry.emits("") if entry is not None else SettingArg.empty_default("model")
+    return "" if emits else None
 
 
 def _codex_persona_token_error(
@@ -7419,8 +7444,9 @@ def _resolve_box_launch_decisions(
     expanded snapshot so there is
     no duplicate build.  The table keeps a present ``null`` (a keyless declaration).
 
-    The *model* is the effective read: a model id, or ``None`` when no model is set,
-    the persona's ``model: null`` and a blank alike (no gate tells them apart).
+    The *model* is the effective read: a model id; ``""`` for an empty model; or
+    ``None`` when no model is set, the persona's ``model: null`` and a
+    whitespace-only value alike (no gate tells them apart).
 
     ⚑ *selection_level* is the SELECTION only — deliberately NOT the full §1A CLI
     level (P8).  The *model* this returns is WRITTEN TO DISK (the codex
@@ -7484,9 +7510,13 @@ def _resolve_box_launch_decisions(
         )
         endpoint = effective.get("endpoint", "") or None
         # The harness default was excluded from the floor, so an unset persona model
-        # reads as no model here, not a bogus default; a ``null`` (omitted by
-        # ``effective_behavior``) and a blank read the same.
-        model = effective.get("model", "").strip() or None
+        # reads as no model here, not a bogus default, as does a ``null`` (omitted by
+        # ``effective_behavior``) and a whitespace-only value.  A ``""`` stays ``""``:
+        # the empty model, which the provider read maps through the descriptor
+        # (:func:`_provider_model`).
+        model = effective.get("model")
+        if model:
+            model = model.strip() or None
     secret_paths = _persona_secret_table(
         snapshot, agent_name, inputs.ctx, cli_env=cli_env,
     )

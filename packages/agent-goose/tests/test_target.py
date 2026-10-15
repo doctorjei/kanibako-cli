@@ -732,16 +732,16 @@ class TestDescriptorAssembly:
         assert "GOOSE_MODEL" not in env
         assert env["GOOSE_MODE"] == "auto"
 
-    def test_env_omits_provider_model_when_empty_string(self):
-        """Empty-string values (the resolver floor for the unset case) are
-        falsy and so are omitted, exactly like a missing key."""
+    def test_an_empty_model_emits_GOOSE_MODEL_and_an_empty_provider_nothing(self):
+        """The shipped entries declare no ``empty:``: ``""`` emits for ``model``
+        (``GOOSE_MODEL=``, the empty model) and not for ``provider``."""
         d = GooseTarget().descriptor
         env = assembly.assemble_env(
             d, access="full",
             setting_values={"model": "", "provider": ""},
         )
         assert "GOOSE_PROVIDER" not in env
-        assert "GOOSE_MODEL" not in env
+        assert env["GOOSE_MODEL"] == ""
 
     def test_the_declared_variables_are_not_assembled_here(self):
         """The assembly emits REALIZATIONS only; the declared keys are elsewhere.

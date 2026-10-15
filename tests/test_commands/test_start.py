@@ -487,6 +487,86 @@ class TestAnUndeclaredBoxKeyGetsTheLaunchsOwnRefusal:
         run.assert_not_called()
 
 
+class TestAnEmptyModelReachesTheContainerArgv:
+    """A ``""`` goose ``model`` in a settings file reaches ``podman run`` as
+    ``-e GOOSE_MODEL=`` (keyspec §2d ``agent.goose.*``).
+
+    ⚑ NOTHING ON THE ENV CHAIN IS STUBBED: the snapshot and its install,
+    ``snapshot_category_entries``, ``collapse_env``, ``_launch_env_map``,
+    ``_build_config_env``, and ``ContainerRuntime.run`` all run.  ``start_mocks`` is
+    not used: it replaces the snapshot and the runtime.  The two stubs are off that
+    chain: the goose install (``Target.detect``) and the image's executable probe.
+    The recorded boundary is ``subprocess.run`` inside the runtime.  After the faked
+    ``run`` the session cannot attach, so ``start`` exits 1.
+    """
+
+    def _start_argv(self, tmp_home, config_file, capsys, model: str) -> list[str]:
+        """``create`` a goose box, set ``pref.agent.goose.model``, ``start``; the ``run`` argv."""
+        import subprocess
+
+        from kanibako import cli
+        from kanibako.plugins.goose.target import GooseTarget
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import load_std_paths
+        from kanibako.targets.base import AgentInstall
+
+        bindir = tmp_home / "bin"
+        bindir.mkdir()
+        binary = bindir / "goose"
+        binary.write_text("#!/bin/sh\necho goose 1.38.0\n")
+        binary.chmod(0o755)
+        install = AgentInstall(name="goose", binary=bindir / "goose", install_dir=bindir)
+        box_dir = tmp_home / "gbox"
+        box_dir.mkdir()
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, *args, **kwargs):
+            calls.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch.object(GooseTarget, "detect", return_value=install):
+            with pytest.raises(SystemExit) as created:
+                cli.main(["create", str(box_dir), "--agent", "goose"])
+            assert created.value.code == 0, capsys.readouterr().err
+            box_file = load_std_paths(load_config(config_file)).boxes / "gbox" / "box.yaml"
+            doc = load_doc(box_file)
+            doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
+                "goose", {})["model"] = model
+            dump_doc(box_file, doc)
+            with (
+                patch("kanibako.runtime.container.subprocess.run", side_effect=fake_run),
+                patch("kanibako.commands.start.probe_missing_executables", return_value=[]),
+            ):
+                with pytest.raises(SystemExit) as started:
+                    cli.main(["start", str(box_dir)])
+        err = capsys.readouterr().err
+        assert started.value.code == 1, err
+        runs = [c for c in calls if c[1:3] == ["run", "-dt"]]
+        assert len(runs) == 1, (err, [c[:3] for c in calls])
+        return runs[0]
+
+    @staticmethod
+    def _goose_envs(argv: list[str]) -> list[str]:
+        return [argv[i + 1] for i, t in enumerate(argv[:-1])
+                if t == "-e" and argv[i + 1].startswith("GOOSE_")]
+
+    def test_an_empty_model_reaches_the_argv_as_an_empty_variable(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        envs = self._goose_envs(self._start_argv(tmp_home, config_file, capsys, ""))
+        assert "GOOSE_MODE=auto" in envs, envs  # the harness reached the main run
+        assert "GOOSE_MODEL=" in envs, envs
+
+    def test_a_model_id_reaches_the_argv(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Control: the same path carries an ID, so a GREEN above is the ``""``."""
+        envs = self._goose_envs(
+            self._start_argv(tmp_home, config_file, capsys, "some-model"))
+        assert "GOOSE_MODEL=some-model" in envs, envs
+
+
 class TestBootstrapNoneInRunContainer:
     """`none` opt-out at the _run_container consumer: the AGENT-scope ``bootstrap``
     value resolves to ``none`` (spec §2d) and forces a clean error under
@@ -8676,6 +8756,76 @@ class TestPreflightCodexPersona:
         assert provider.model is None
         assert provider.env_key == "NAVIGATOR_API_KEY"
 
+    def _provider_for(self, tmp_path, target, model):
+        from kanibako.commands.start import _preflight_persona_load
+        key = tmp_path / "navkey"
+        key.write_text("nv-secret\n")
+        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
+        endpoint, err, provider = _preflight_persona_load(
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
+            target=target, keyspace_model=model,
+        )
+        assert err is None and provider is not None
+        return provider
+
+    def _codex_with_model_entry(self, transform):
+        """A codex target whose descriptor's ``settings`` pass through *transform*."""
+        from kanibako.plugins.codex.target import CodexTarget
+        desc = CodexTarget().descriptor
+        changed = dataclasses.replace(desc, settings=transform(desc.settings))
+
+        class _Codex(CodexTarget):
+            @property
+            def descriptor(self):
+                return changed
+
+        return _Codex()
+
+    def test_an_empty_model_gives_the_empty_provider_model(self, tmp_path):
+        # ``""`` is the empty model: root ``model = ""``, as ``--model ""`` (one
+        # declaration, the descriptor's ``model`` entry, undeclared ``empty:``).
+        provider = self._provider_for(tmp_path, self._codex(), "")
+        assert provider.model == ""
+
+    def test_an_empty_model_under_empty_omit_gives_no_provider_model(self, tmp_path):
+        # ``empty: omit`` on the ``model`` entry: no root ``model``, as no ``--model``.
+        target = self._codex_with_model_entry(lambda settings: tuple(
+            dataclasses.replace(s, emit_empty=False) if s.setting_key == "model" else s
+            for s in settings
+        ))
+        assert self._provider_for(tmp_path, target, "").model is None
+        assert self._provider_for(tmp_path, target, "gpt-x").model == "gpt-x"
+
+    def test_a_descriptor_with_no_model_entry_gives_the_empty_model(self, tmp_path):
+        # No ``model`` entry: the undeclared default, ``SettingArg.empty_default``.
+        target = self._codex_with_model_entry(lambda settings: tuple(
+            s for s in settings if s.setting_key != "model"
+        ))
+        assert not any(s.setting_key == "model" for s in target.descriptor.settings)
+        assert self._provider_for(tmp_path, target, "").model == ""
+
+    @pytest.mark.parametrize(("stored", "read"), [
+        ('""', ""), ("gpt-x", "gpt-x"), ("null", None), ('"  "', None),
+    ])
+    def test_the_box_launch_read_keeps_an_empty_model(
+        self, stored, read, std, config, project_dir, tmp_path,
+    ):
+        # ``_resolve_box_launch_decisions`` hands ``""`` on as ``""``; ``null`` and a
+        # whitespace-only value read as no model.
+        from kanibako.commands import start as start_cmd
+        from kanibako.settings.paths import resolve_project
+
+        system_file = tmp_path / "settings.yaml"
+        system_file.write_text(f"agent:\n  codex:\n    model: {stored}\n")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        selection = AgentSelection(node="codex", source="settings").selection_level
+        _auth, _endpoint, model, _secrets = start_cmd._resolve_box_launch_decisions(
+            std=std, proj=proj, target=self._codex(), agent_name="codex",
+            system_settings_path=system_file, agent_cfg_path=None,
+            selection_level=selection,
+        )
+        assert model == read
+
     def test_no_endpoint_config_file_error(self, tmp_path, monkeypatch):
         # No resolved endpoint → hard error pointing at the keyspace route, and —
         # config-file delivery resolving its key downstream — naming no API-key
@@ -10768,11 +10918,11 @@ class TestPersonaLiveTierWiring:
         assert endpoint == self._ENDPOINT
         assert model is None
 
-    def test_a_real_empty_model_file_resolves_to_none(
+    def test_a_real_empty_model_file_resolves_to_the_empty_model(
         self, std, config_file, tmp_home,
     ):
-        """An agent FILE ``model: ""`` (or a blank) reads as no model, ``None``: the
-        truthy rule, until the empty model gets its own meaning.
+        """An agent FILE ``model: ""`` reads as ``""``, the empty model; a
+        whitespace-only value reads as no model, ``None``.
         """
         from kanibako.commands.start import (
             _persona_values_for,
@@ -10784,7 +10934,7 @@ class TestPersonaLiveTierWiring:
         target = self._target()
         path = agent_settings_path(std.agents, self._NODE)
         path.parent.mkdir(parents=True, exist_ok=True)
-        for blank in ('""', '"   "'):
+        for blank, read in (('""', ""), ('"   "', None)):
             path.write_text(f'self:\n  model: {blank}\n')
             _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
                 std=std,
@@ -10797,7 +10947,7 @@ class TestPersonaLiveTierWiring:
                 persona_values=_persona_values_for(self._NODE, target),
             )
             assert endpoint == self._ENDPOINT
-            assert model is None
+            assert model == read
 
     def test_the_stores_own_model_still_resolves_normally(
         self, std, config_file, tmp_home,

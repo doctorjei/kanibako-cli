@@ -248,6 +248,7 @@ this module: a default written in plugin code is a second declaration site for s
 file already owns.
 
 The translation half is the descriptor, not a method: `provider` → `GOOSE_PROVIDER` and `model` →
-`GOOSE_MODEL` are ENV `SettingArg` rows in `goose-defaults.yaml`, emitted by `assemble_env` only
-when the resolved value is non-empty. Goose overrides provider/model by env var rather than CLI
+`GOOSE_MODEL` are ENV `SettingArg` rows in `goose-defaults.yaml`, emitted by `assemble_env` when
+the resolved value is non-empty, and for `model` also when it is `""` (`GOOSE_MODEL=`, the empty
+model; neither row declares `empty:`). Goose overrides provider/model by env var rather than CLI
 flag, so neither contributes an argv token. The descriptor rows are the whole route.

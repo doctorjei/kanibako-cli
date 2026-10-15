@@ -525,6 +525,8 @@ inside boxes. In order of likely impact:
 58. **A persistent box (a plain `start`, or `start --detach`) has helpers; the helper hub keeps running
     until the box stops. In a box the socket is `~/.kanibako/state/hub/helper.sock`** — see *A
     persistent box has helpers, and the helper socket moved into `~/.kanibako/state/hub/`*.
+59. **A `model: ""` in a settings file now passes the empty model; write `null` to pass none** — see
+    *An empty `model` now passes the empty model*.
 
 ---
 
@@ -2606,7 +2608,8 @@ cascade.
 **The variables kanibako does NOT declare are deliberate.** goose's `GOOSE_PROVIDER` / `GOOSE_MODEL`
 stay undeclared, because goose owns those in its own persistent config and a kanibako default would
 overwrite your choice on every launch. Set them yourself with `agent.goose.env.GOOSE_MODEL` if you
-want kanibako to own them.
+want kanibako to own them, and leave `model` unset or `null`: a `model` that resolves to a value,
+`""` included, realizes `GOOSE_MODEL` itself, and the two refuse (*Realized variables are settings entries, and setting one by hand now refuses*).
 
 ### 2.35 An agent's own environment variables now resolve where an agent-scope key should
 
@@ -3053,7 +3056,7 @@ mode is `GOOSE_MODE`, computed from the `access` key with `-S` / `-A` folded in;
 | variable | agent | derived from | set when |
 |---|---|---|---|
 | `GOOSE_MODE` | goose | `access` (+ `-S` / `-A`) | **always** — every goose launch |
-| `GOOSE_MODEL` | goose | `model` | when `model` resolves to a value |
+| `GOOSE_MODEL` | goose | `model` | when `model` resolves to a value, `""` included |
 | `GOOSE_PROVIDER` | goose | `provider` | when `provider` resolves to a value |
 | `OPENAI_HOST` | goose | `endpoint` | when `endpoint` resolves to a value |
 | `ANTHROPIC_BASE_URL` | claude | `endpoint` | when `endpoint` resolves to a value |
@@ -3081,7 +3084,7 @@ the key that drives the variable.
 | what you have | what happens now | the cure |
 |---|---|---|
 | `agent.goose.env.GOOSE_MODE: auto` (or at any other scope) | refuses on **every** goose launch | set `access` (`kanibako agent set goose access=full`), or pass `-S` / `-A` per launch |
-| `agent.goose.env.GOOSE_MODEL: …` | refuses **whenever `model` resolves to a value** | set `model` instead — `kanibako agent set goose model=…`, or `-M` per launch |
+| `agent.goose.env.GOOSE_MODEL: …` | refuses **whenever `model` resolves to a value**, `""` included | set `model` instead — `kanibako agent set goose model=…`, or `-M` per launch |
 | `agent.goose.env.GOOSE_PROVIDER: …` | refuses whenever `provider` resolves | set `provider` |
 | `agent.goose.env.OPENAI_HOST: …` / `agent.claude.env.ANTHROPIC_BASE_URL: …` | refuses whenever `endpoint` resolves | set `endpoint` (or use a persona, which supplies it) |
 
@@ -3094,7 +3097,9 @@ yesterday one of the two was being thrown away.
 ⚑ **There is no `env` spelling for a realized variable at any scope.** A twin at a *different*
 scope (`box.env.GOOSE_MODE` against the agent-scope realization) meets the ordinary one-owner
 refusal of *An environment variable may be declared at ONE scope only*; at the *same* scope you get
-the message above. Both say the same thing: drive the variable through its key.
+the message above. Both say the same thing: drive the variable through its key. Nor a
+`secret_path` one: `secret_path.<VAR>` beside a realized variable refuses, naming the variable with
+both families, whenever the driving key resolves to a value, `""` included.
 
 ⚑ **For one launch and no file change, `-e` still works** — `kanibako start -e GOOSE_MODE=chat`
 overrides the realized value for that run, writing nothing. It is not a way around the refusal
@@ -7996,6 +8001,19 @@ names your key (or the `-e`) and `--browser`.
 and any `-e BROWSER_WS_ENDPOINT` to use the sidecar. Without `--browser`, your value reaches the box
 as before.
 
+### 2.119 An empty `model` now passes the empty model
+
+**Read this if a settings file of yours sets `model: ""`** (`agent.<agent>.model` or
+`agent.default.model`).
+
+**What changed.** A `""` `model` used to pass nothing. Now kanibako passes `--model ""` (claude,
+codex), root `model = ""` in codex's `config.toml`, or `GOOSE_MODEL=` (goose), so the request names no
+model, unless the harness plugin declares `empty: omit`. For goose this also means `model` now drives
+`GOOSE_MODEL`, so a hand-set `env.GOOSE_MODEL` or `secret_path.GOOSE_MODEL` beside it refuses (see
+*Realized variables are settings entries, and setting one by hand now refuses*).
+
+**What you must do.** To pass no model, write `null` instead of `""`.
+
 ---
 
 ## 3. For plugin authors
@@ -8531,7 +8549,7 @@ pin.
      settings:
        - setting_key: model
          channel: env
-         env_var: MY_AGENT_MODEL     # env channel: emitted only when the resolved value is non-empty
+         env_var: MY_AGENT_MODEL     # env channel: an empty value emits only under `empty: emit`, the default for `model`
        - setting_key: provider
          channel: flag
          flag: ["--provider"]        # flag channel: contributes an argv token
@@ -8541,6 +8559,10 @@ pin.
    reaches a row is the RESOLVED one off the settings cascade — so a user can override it by key.
    That is why the translation moved out of plugin code: a value computed inside your target was
    one nothing in the keyspace could name, and therefore one nobody could change.
+
+   **`empty:` decides whether a `""` value reaches the harness** (`SettingArg.emit_empty`). A row may
+   declare `empty: emit` or `empty: omit`; undeclared, it is `emit` for `model` and `omit` for every
+   other key. It is legal on any row. A non-empty value always emits, and an unset one never does.
 
 ---
 
@@ -9624,7 +9646,7 @@ import is removed:
 |---|---|---|
 | claude | `~/.claude.json` (the `oauthAccount` / `hasCompletedOnboarding` / `installMethod` allowlist) | a curated static `.claude.json` onboarding stub (`{"hasCompletedOnboarding": true}`) in the claude template + your synced `~/.claude/.credentials.json` |
 | codex | `~/.codex/config.toml` | a curated `config.toml` in the codex template (or codex's built-in defaults) |
-| goose | `~/.config/goose/config.yaml` (the provider/model/**extensions**/**instructions** allowlist) | provider/model via the `agent.goose.env.GOOSE_PROVIDER` / `GOOSE_MODEL` settings; extensions/instructions = the **curated goose template set** |
+| goose | `~/.config/goose/config.yaml` (the provider/model/**extensions**/**instructions** allowlist) | provider/model via the `agent.goose.env.GOOSE_PROVIDER` / `GOOSE_MODEL` settings, with `model` unset or `null` (below); extensions/instructions = the **curated goose template set** |
 
 What you must now do instead:
 
@@ -9632,7 +9654,9 @@ What you must now do instead:
   (still synced every launch) plus the template's onboarding stub. Your host
   `~/.claude.json` settings (including `oauthAccount`) no longer seed the box.
 - **goose:** set provider/model as settings (`agent.goose.env.GOOSE_PROVIDER`,
-  `agent.goose.env.GOOSE_MODEL`) rather than relying on your host `config.yaml`.
+  `agent.goose.env.GOOSE_MODEL`) rather than relying on your host `config.yaml`, and leave `model`
+  unset or `null`: a `model` that resolves to a value, `""` included, realizes `GOOSE_MODEL`
+  itself, and the two refuse (*Realized variables are settings entries, and setting one by hand now refuses*).
   ⚑ **Your host goose `extensions` and `instructions` are NOT carried into boxes** —
   this is an accepted loss; boxes use the template's curated set. Place any extension
   config you want in boxes into the goose template (`@agent.goose.template`).

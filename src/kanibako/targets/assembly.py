@@ -204,7 +204,9 @@ def assemble_argv(
     *mode_fragment*; then the FLAG-channel ``access_realization`` row for the
     *access* tier — an EMPTY row emits nothing, a MISSING row RAISES
     (:func:`access_row`), so no tier falls through to another tier's emission; then
-    each FLAG-channel :class:`SettingArg` with a truthy value; then *extra_args*.
+    each FLAG-channel :class:`SettingArg` whose value it emits
+    (:meth:`SettingArg.emits`: a non-empty value, or ``""`` where the entry's
+    ``empty:`` resolves to emit, the default for ``model``); then *extra_args*.
 
     ⚑ The ``and s.flag`` guard (twin of :func:`assemble_env`'s ``and s.env_var``):
     without it a flagless FLAG entry extends by ``()`` and the value lands as a BARE
@@ -233,7 +235,7 @@ def assemble_argv(
     for s in descriptor.settings:
         if s.channel is Channel.FLAG and s.flag:
             value = setting_values.get(s.setting_key)
-            if value:
+            if value is not None and s.emits(value):
                 argv.extend(s.flag)
                 argv.append(value)
 
@@ -254,8 +256,10 @@ def assemble_env(
     (``agent.<agent>.env.<VAR>``, ``Target.default_envs``) and never come through
     here; this is the per-launch translation of RESOLVED values onto the ENV
     channel — the ENV-channel ``access_realization`` row for the *access* tier, then
-    each ENV-channel :class:`SettingArg` with a truthy value.  An EMPTY row emits
-    nothing; a MISSING row RAISES (:func:`access_row`).
+    each ENV-channel :class:`SettingArg` whose value it emits
+    (:meth:`SettingArg.emits`, as in :func:`assemble_argv`: ``""`` emits only where
+    ``empty:`` resolves to emit, so a ``""`` goose ``model`` gives ``GOOSE_MODEL=``).
+    An EMPTY access row emits nothing; a MISSING row RAISES (:func:`access_row`).
 
     ⚑ Where an agent's UNSET env default is itself permissive (goose's
     ``GOOSE_MODE`` defaults to ``auto``), every renderable tier must carry a value:
@@ -280,7 +284,7 @@ def assemble_env(
     for s in descriptor.settings:
         if s.channel is Channel.ENV and s.env_var:
             value = setting_values.get(s.setting_key)
-            if value:
+            if value is not None and s.emits(value):
                 env[s.env_var] = value
 
     return env

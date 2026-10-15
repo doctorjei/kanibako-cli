@@ -125,11 +125,31 @@ def resolve_realized(
     autonomous: bool = False, agent_behavior_floor=None, model=None, cli_env=None,
     **files,
 ):
-    """The same chain WITH the launch REALIZATION installed — the P4c-2 seam, BY CALL.
+    """The same chain WITH the launch REALIZATION installed, collapsed to ``env``.
+
+    :func:`realized_entries`, then ``collapse_env`` (with *cli_env*, the ``-e`` map).
+    """
+    return collapse_env(
+        realized_entries(
+            target, node=node, safe_mode=safe_mode, autonomous=autonomous,
+            agent_behavior_floor=agent_behavior_floor, model=model, **files,
+        ),
+        cli_env,
+    )
+
+
+def realized_entries(
+    target, *, node: str | None = None, safe_mode: bool = False,
+    autonomous: bool = False, agent_behavior_floor=None, model=None, **files,
+):
+    """The chain WITH the launch REALIZATION installed — the P4c-2 seam, BY CALL.
+
+    Returns the category entry list, the input both ``collapse_env`` and
+    ``launch_deliveries`` read.
 
     ⚑⚑ THE SEAM IS THE POSITION, so this helper reproduces the position and nothing
     else: build the snapshot, run ``_LaunchRealizer`` against it, install what it
-    derived, THEN adapt to entries and collapse. Every step is a CALL to the one
+    derived, THEN adapt to entries. Every step is a CALL to the one
     production implementation — a hand-made realized map here would pin the harness.
 
     *model*, *safe_mode* and *autonomous* (``-M``, ``-S``, ``-A``) ride the §1A CLI
@@ -162,10 +182,7 @@ def resolve_realized(
     _install_realized_env(
         snapshot, realizer(snapshot).env, agent_id=node, desc=desc,
     )
-    return collapse_env(
-        snapshot_category_entries(snapshot, active_agent=node, box_ctx=ctx),
-        cli_env,
-    )
+    return snapshot_category_entries(snapshot, active_agent=node, box_ctx=ctx)
 
 
 def write_yaml(path, doc):
@@ -1028,6 +1045,115 @@ class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
         slots = resolve_realized(target_for("goose"))
         assert slots["GOOSE_MODE"].value == "auto"
         assert slots["GOOSE_DISABLE_KEYRING"].value == "true"
+
+
+class TestAnEmptyModelRealizesTheEmptyModel:
+    """A ``""`` ``model`` from a settings file drives ``GOOSE_MODEL=`` (keyspec §2d
+    ``agent.goose.*``; system-design § "Delivery at launch").
+
+    So ``model`` drives the variable, and a hand-set ``GOOSE_MODEL`` beside it meets
+    the existing twin refusals: the conflict rule (his 190-GM), with no new check.
+    """
+
+    @staticmethod
+    def _empty_model_agent_file(tmp_path, **extra):
+        return write_yaml(
+            tmp_path / "agent.yaml", {"self": {"model": "", **extra}},
+        )
+
+    def test_an_empty_model_in_an_agent_file_realizes_an_empty_variable(self, tmp_path):
+        slots = resolve_realized(
+            target_for("goose"), agent_path=self._empty_model_agent_file(tmp_path),
+        )
+        assert slots["GOOSE_MODEL"].value == ""
+        assert slots["GOOSE_MODEL"].key == "agent.goose.env.GOOSE_MODEL"
+
+    def test_a_same_scope_env_twin_refuses_naming_both_keys(self, tmp_path):
+        agent_file = self._empty_model_agent_file(
+            tmp_path, env={"GOOSE_MODEL": "mine"},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(target_for("goose"), agent_path=agent_file)
+        message = str(excinfo.value)
+        assert "agent.goose.env.GOOSE_MODEL" in message
+        assert "agent.goose.model" in message
+
+    def test_an_all_agents_env_twin_refuses_naming_itself(self, tmp_path):
+        system_file = write_yaml(
+            tmp_path / "system.yaml",
+            {"agent": {"default": {"env": {"GOOSE_MODEL": "mine"}}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(
+                target_for("goose"), system_path=system_file,
+                agent_path=self._empty_model_agent_file(tmp_path),
+            )
+        message = str(excinfo.value)
+        assert "agent.default.env.GOOSE_MODEL" in message
+        assert "agent.goose.model" in message
+
+    def test_an_env_twin_at_another_scope_meets_the_ordinary_refusal(self, tmp_path):
+        """``store_collapse._refuse_env_twin``'s message (row G1 may reword it)."""
+        box_file = write_yaml(
+            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_realized(
+                target_for("goose"), box_path=box_file,
+                agent_path=self._empty_model_agent_file(tmp_path),
+            )
+        message = str(excinfo.value)
+        assert "is claimed by two keys" in message
+        assert "agent.goose.env.GOOSE_MODEL" in message
+        assert "box.env.GOOSE_MODEL" in message
+
+    @staticmethod
+    def _secret_box_file(tmp_path):
+        secret = tmp_path / "goose-model.txt"
+        secret.write_text("mine\n")
+        return write_yaml(
+            tmp_path / "box.yaml",
+            {"box": {"secret_path": {"GOOSE_MODEL": str(secret)}}},
+        )
+
+    def test_a_secret_path_twin_refuses_naming_both_families(self, tmp_path):
+        """``refuse_env_secret_twins``, through its production caller (row G4 may reword it)."""
+        from kanibako.settings.settings_categories import launch_deliveries
+
+        entries = realized_entries(
+            target_for("goose"), box_path=self._secret_box_file(tmp_path),
+            agent_path=self._empty_model_agent_file(tmp_path),
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            launch_deliveries(entries, agent_dests=frozenset())
+        message = str(excinfo.value)
+        assert "named by BOTH scalar families" in message
+        assert "agent.goose.env.GOOSE_MODEL" in message
+        assert "box.secret_path.GOOSE_MODEL" in message
+
+    def test_an_unset_model_leaves_a_secret_path_alone(self, tmp_path):
+        """Control: the refusal above comes from the ``""`` ``model``, nothing else."""
+        from kanibako.settings.settings_categories import launch_deliveries
+
+        entries = realized_entries(
+            target_for("goose"), box_path=self._secret_box_file(tmp_path),
+        )
+        launch_deliveries(entries, agent_dests=frozenset())
+
+    @pytest.mark.parametrize("model", ["unset", None])
+    def test_an_unset_or_null_model_delivers_the_hand_set_value(self, tmp_path, model):
+        """Controls: a ``model`` that drives nothing is no conflict."""
+        box_file = write_yaml(
+            tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},
+        )
+        files = {"box_path": box_file}
+        if model != "unset":
+            files["agent_path"] = write_yaml(
+                tmp_path / "agent.yaml", {"self": {"model": model}},
+            )
+        slots = resolve_realized(target_for("goose"), **files)
+        assert slots["GOOSE_MODEL"].value == "mine"
+        assert slots["GOOSE_MODEL"].key == "box.env.GOOSE_MODEL"
 
 
 class TestThePerRunFlagStillBeatsARealization:

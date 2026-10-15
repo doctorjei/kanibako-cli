@@ -143,8 +143,9 @@ Build order, after `command[1:]`:
    *access* TIER. An EMPTY row emits nothing — that is the claude/codex `restricted`
    realization, since their own default already prompts. A MISSING row RAISES (`access_row`, the
    un-rendered-tier rule), so no tier can ever fall through to a different tier's emission.
-4. For each FLAG-channel `SettingArg` WITH A `flag` whose value in *setting_values* is truthy:
-   `flag + [value]`.
+4. For each FLAG-channel `SettingArg` WITH A `flag` whose value in *setting_values* it emits
+   (`SettingArg.emits`: a non-empty value, or `""` where the entry's `empty:` resolves to emit, the
+   default for `model` only): `flag + [value]`. So a `""` `model` gives `--model ""`.
 5. *extra_args*, appended last.
 
 ⚑ The `and s.flag` test in step 4 is the exact twin of `assemble_env`'s `and s.env_var`, and
@@ -173,8 +174,9 @@ ENV channel:
   ⚑ For an agent whose UNSET env default is itself permissive — goose's `GOOSE_MODE` defaults to
   `auto` — every renderable tier must carry a value. Emitting nothing there would BE the bypass,
   which is why the un-rendered tier refuses instead of falling through.
-* For each ENV-channel `SettingArg` with an `env_var` and a truthy value in *setting_values*: set
-  `env_var` to that value.
+* For each ENV-channel `SettingArg` with an `env_var` and a value in *setting_values* it emits
+  (`SettingArg.emits`, as in `assemble_argv`): set `env_var` to that value. So a `""` goose `model`
+  gives `GOOSE_MODEL=`; an empty `provider` emits nothing.
 
 FLAG-channel access rows and settings are argv and are emitted by `assemble_argv` instead.
 

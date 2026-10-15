@@ -448,7 +448,21 @@ def test_argv_claude_safe_on_omits_bypass_flag() -> None:
     assert "--dangerously-skip-permissions" not in argv
 
 
-def test_argv_model_absent_when_value_falsy() -> None:
+def test_argv_model_absent_when_value_none() -> None:
+    d = _claude_descriptor()
+    argv = assemble_argv(
+        d,
+        mode_fragment=d.mode["start"],
+        access="restricted",
+        setting_values={},
+        extra_args=[],
+    )
+    # start mode = empty fragment, no model -> empty argv.
+    assert argv == []
+
+
+def test_argv_an_empty_model_passes_the_empty_model() -> None:
+    """An undeclared ``empty:`` on ``model`` emits ``""``: ``--model ""``."""
     d = _claude_descriptor()
     argv = assemble_argv(
         d,
@@ -457,7 +471,26 @@ def test_argv_model_absent_when_value_falsy() -> None:
         setting_values={"model": ""},
         extra_args=[],
     )
-    # start mode = empty fragment, no model -> empty argv.
+    assert argv == ["--model", ""]
+
+
+def _omit_empty_model(d: PluginDescriptor) -> PluginDescriptor:
+    """*d* with its ``model`` entry declaring ``empty: omit``."""
+    return dataclasses.replace(d, settings=tuple(
+        dataclasses.replace(s, emit_empty=False) if s.setting_key == "model" else s
+        for s in d.settings
+    ))
+
+
+def test_argv_an_empty_model_under_empty_omit_emits_nothing() -> None:
+    d = _omit_empty_model(_claude_descriptor())
+    argv = assemble_argv(
+        d,
+        mode_fragment=d.mode["start"],
+        access="restricted",
+        setting_values={"model": ""},
+        extra_args=[],
+    )
     assert argv == []
 
 
@@ -760,8 +793,21 @@ def test_env_goose_model_env_set() -> None:
     assert env["GOOSE_MODEL"] == "gpt-4o"
 
 
-def test_env_goose_model_absent_when_value_falsy() -> None:
+def test_env_goose_model_absent_when_value_none() -> None:
     d = _goose_descriptor()
+    env = assemble_env(d, access="restricted", setting_values={})
+    assert "GOOSE_MODEL" not in env
+
+
+def test_env_goose_an_empty_model_emits_an_empty_variable() -> None:
+    """An undeclared ``empty:`` on ``model`` emits ``""``: ``GOOSE_MODEL=``."""
+    d = _goose_descriptor()
+    env = assemble_env(d, access="restricted", setting_values={"model": ""})
+    assert env["GOOSE_MODEL"] == ""
+
+
+def test_env_goose_an_empty_model_under_empty_omit_emits_nothing() -> None:
+    d = _omit_empty_model(_goose_descriptor())
     env = assemble_env(d, access="restricted", setting_values={"model": ""})
     assert "GOOSE_MODEL" not in env
 
