@@ -11661,6 +11661,20 @@ class TestPersonaPreflightBundle:
         assert err is None and ep == self._ENDPOINT
         assert target.calls == [(self._ENDPOINT, None, "gemma4")]
 
+    @pytest.mark.parametrize(("model", "sent"), [("", None), ("gemma4", "gemma4")])
+    def test_the_probe_sends_only_a_model_id(self, model, sent):
+        """A ``""`` model (the empty model) probes as no model: ``verify_persona``
+        gets ``model=None``; an ID is sent as itself. (Mutation: pass *model*
+        through unchanged in ``_persona_probe_error`` → ``""`` arrives → RED.)
+        """
+        target = self._Target()
+        _ep, err, _p = self._run(
+            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": None}),
+            probe=True, target=target, model=model,
+        )
+        assert err is None
+        assert target.calls == [(self._ENDPOINT, None, sent)]
+
     def test_a_present_null_token_that_the_endpoint_rejects_still_hard_errors(
         self,
     ):
