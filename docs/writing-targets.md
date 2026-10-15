@@ -64,7 +64,7 @@ Optional overrides (sensible defaults provided by the base class):
 | Member | Default | When to override |
 |---|---|---|
 | `has_binary` | `True` | Set `False` for a pure pip/python tool with no host binary |
-| `check_auth(*, box_home=None, delivered=frozenset())` | box test | Replace the login check before launch |
+| `check_auth(*, box_home=None, delivered=frozenset())` | `True` | Validate the login before launch; `box_login_present()` checks the box |
 | `prepare_host(install, *, auto_auth, data_path)` | no-op | Touch the host before mounts (binary update, auth refresh) — set `descriptor.host_prep=True` to enable |
 | `default_common()` | `{}` | Declare default `agent.<agent>.common` / `agent.<agent>.caches` binds |
 | `default_category_binds()` | `{}` | Declare default reference-sourced binds in any agent-scope category |
@@ -369,11 +369,15 @@ binary, no credentials).  Every real agent plugin returns a descriptor.
 Called before box launch with the box's home and `delivered`, the names (never
 the values) of the variables the launch gives the box a non-empty value.  Return
 `True` if the agent has a login, `False` to fail the launch (or, with a
-`setup_entrypoint`, to run setup in the box).  The default is the box test: `True`
-when a `login_vars` name is in `delivered` or the first `cred_files` file under
-`box_home` is a non-empty regular file (a symlink fails); `True` when the
-descriptor declares neither; `True` when `box_home` is `None`.  An override
-accepts both keywords.
+`setup_entrypoint`, to run setup in the box).  `box_home` is `None` for the host
+check.  The default returns `True`.  An override accepts both keywords.
+
+### `box_login_present(box_home, delivered) -> bool`
+
+The core box test, for a `check_auth` override to call.  `True` when a
+`login_vars` name is in `delivered` or the first `cred_files` file under
+`box_home` is a non-empty regular file (a symlink, or a path that leaves
+`box_home`, fails); `True` when the descriptor declares neither.
 
 ### `prepare_host(install, *, auto_auth, data_path) -> None`
 

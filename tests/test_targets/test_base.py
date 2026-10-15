@@ -704,8 +704,8 @@ class TestCredentialCheckPath:
         assert target.credential_check_path(tmp_path) == tmp_path / ".x" / "auth.json"
 
 
-class TestCheckAuthBoxTest:
-    """The core box test in ``Target.check_auth``: a delivered login VAR or a box store."""
+class TestBoxLoginPresent:
+    """The core box test ``Target.box_login_present``: a delivered login VAR or a box store."""
 
     _STORE = CredFileSpec(home_rel=".x/auth.json", host_rel=".x/auth.json")
 
@@ -723,33 +723,39 @@ class TestCheckAuthBoxTest:
 
         return LoginShell()
 
-    def test_no_box_home_is_the_host_check(self):
+    def test_default_check_auth_passes_on_the_host(self):
         assert self._target(login_vars=("TOKEN",)).check_auth() is True
+
+    def test_default_check_auth_passes_a_cred_files_plugin_with_an_empty_box_store(self, tmp_path):
+        # Today's verdict: the gate runs before the host->box refresh, so a plugin
+        # that does not override check_auth must not fail on a box with no store.
+        target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
+        assert target.check_auth(box_home=tmp_path, delivered=frozenset()) is True
 
     def test_a_delivered_login_var_passes(self, tmp_path):
         target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
-        assert target.check_auth(box_home=tmp_path, delivered=frozenset({"TOKEN"})) is True
+        assert target.box_login_present(tmp_path, frozenset({"TOKEN"})) is True
 
     def test_an_undeclared_delivered_var_does_not_pass(self, tmp_path):
         target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
-        assert target.check_auth(box_home=tmp_path, delivered=frozenset({"OTHER"})) is False
+        assert target.box_login_present(tmp_path, frozenset({"OTHER"})) is False
 
     def test_a_non_empty_store_passes(self, tmp_path):
         (tmp_path / ".x").mkdir()
         (tmp_path / ".x" / "auth.json").write_text("{}")
-        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is True
+        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is True
 
     def test_an_empty_store_fails(self, tmp_path):
         (tmp_path / ".x").mkdir()
         (tmp_path / ".x" / "auth.json").write_text("")
-        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is False
+        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
 
     def test_a_missing_store_fails(self, tmp_path):
-        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is False
+        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
 
     def test_a_directory_at_the_store_fails(self, tmp_path):
         (tmp_path / ".x" / "auth.json").mkdir(parents=True)
-        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is False
+        assert self._target(cred_files=(self._STORE,)).box_login_present(tmp_path, frozenset()) is False
 
     def test_a_planted_leaf_symlink_is_refused(self, tmp_path):
         outside = tmp_path / "outside.json"
@@ -757,7 +763,7 @@ class TestCheckAuthBoxTest:
         home = tmp_path / "home"
         (home / ".x").mkdir(parents=True)
         (home / ".x" / "auth.json").symlink_to(outside)
-        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=home) is False
+        assert self._target(cred_files=(self._STORE,)).box_login_present(home, frozenset()) is False
 
     def test_a_planted_parent_symlink_is_refused(self, tmp_path):
         outside = tmp_path / "outside"
@@ -766,13 +772,22 @@ class TestCheckAuthBoxTest:
         home = tmp_path / "home"
         home.mkdir()
         (home / ".x").symlink_to(outside)
-        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=home) is False
+        assert self._target(cred_files=(self._STORE,)).box_login_present(home, frozenset()) is False
 
     def test_declared_login_vars_with_no_store_fail_undelivered(self, tmp_path):
-        assert self._target(login_vars=("TOKEN",)).check_auth(box_home=tmp_path) is False
+        assert self._target(login_vars=("TOKEN",)).box_login_present(tmp_path, frozenset()) is False
 
     def test_a_target_declaring_no_login_passes(self, tmp_path):
         from kanibako.targets.shell import ShellTarget
 
-        assert ShellTarget().check_auth(box_home=tmp_path) is True
-        assert self._target().check_auth(box_home=tmp_path) is True
+        assert ShellTarget().box_login_present(tmp_path, frozenset()) is True
+        assert self._target().box_login_present(tmp_path, frozenset()) is True
+
+    def test_a_home_rel_leaving_the_box_fails_closed(self, tmp_path):
+        outside = tmp_path / "outside.json"
+        outside.write_text('{"token": "host"}')
+        home = tmp_path / "home"
+        home.mkdir()
+        for home_rel in (str(outside), "../outside.json"):
+            spec = CredFileSpec(home_rel=home_rel, host_rel=".x/auth.json")
+            assert self._target(cred_files=(spec,)).box_login_present(home, frozenset()) is False

@@ -1234,17 +1234,22 @@ class Target(ABC):
     def check_auth(
         self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
     ) -> bool:
-        """Whether the agent has a login to launch with.
+        """Whether the agent has a login to launch with.  Returns True if ok.
 
-        *box_home* ``None`` is the host check, which passes here.  Otherwise the box
-        test: a descriptor ``login_vars`` name is in *delivered* (the VAR names the
-        launch gives a non-empty value, never the values), or
-        :meth:`credential_check_path` under *box_home* is a non-empty regular file,
-        stat'd through :mod:`kanibako.boxfs` so a planted symlink fails it.  A target
-        that declares neither has nothing to check and passes.
+        The launch gate passes the box's *box_home* and the *delivered* VAR names
+        (``None`` is the host check).  This default ignores both and passes; an
+        override calls :meth:`box_login_present` to check the box.
         """
-        if box_home is None:
-            return True
+        return True
+
+    def box_login_present(self, box_home: Path, delivered: frozenset[str]) -> bool:
+        """Whether the box has a login: a descriptor ``login_vars`` name is in
+        *delivered* (the VAR names the launch gives a non-empty value, never the
+        values), or :meth:`credential_check_path` under *box_home* is a non-empty
+        regular file, stat'd through :mod:`kanibako.boxfs`.  A planted symlink, or a
+        ``home_rel`` that leaves *box_home*, fails it.  A target that declares
+        neither has nothing to check and passes.
+        """
         desc = self.descriptor
         if desc is not None and not delivered.isdisjoint(desc.login_vars):
             return True
@@ -1253,7 +1258,7 @@ class Target(ABC):
             return desc is None or not desc.login_vars
         try:
             st = boxfs.stat(path, box_home)
-        except OSError:
+        except (OSError, ValueError):
             return False
         return stat.S_ISREG(st.st_mode) and st.st_size > 0
 

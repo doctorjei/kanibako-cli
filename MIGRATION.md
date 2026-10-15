@@ -8746,14 +8746,14 @@ Python declarations. The shipped plugins already use the braced spellings.
 **What changed.** The launch gate calls `check_auth(*, box_home=..., delivered=...)`: the box's
 home, and the names (never the values) of the variables the launch gives the box a non-empty
 value. An override still spelled `check_auth(self)` raises `TypeError` at the gate, and the launch
-fails. The default body checks the box: it passes when a name in the new descriptor field
-`login_vars` is delivered, or when your first `cred_files` file is a non-empty regular file in the
-box home. A plugin that declares neither passes.
+fails. The default still passes. The new `box_login_present(box_home, delivered)` checks the
+box: it passes when a name in the new descriptor field `login_vars` is delivered, or when your
+first `cred_files` file is a non-empty regular file in the box home.
 
 **What you must do.** Change the signature to
 `check_auth(self, *, box_home=None, delivered=frozenset())`; ignoring both keywords keeps your
-check as it was. Or delete the override, and list your login variables under `login_vars:` in
-your descriptor.
+check as it was. To check the box, list your login variables under `login_vars:` in your
+descriptor and, when `box_home` is set, call `self.box_login_present(box_home, delivered)`.
 
 ---
 
