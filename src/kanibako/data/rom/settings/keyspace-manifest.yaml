@@ -1493,33 +1493,15 @@ keys:
     type: str
     set: cli+file
     default: null                 # "use the harness's built-in default"
-    note: "-M overrides per launch. ⚑ The token key's shape (keyspec §2a
-           secret_path.<VAR>; [Jei:2026-08-17]): a PERSONA node's model is
-           ALSO three-state, for the SAME reason (whether an endpoint NEEDS a
-           model is a property of that SERVER) — but `default: null` already
-           means 'harness default' here,
-           so ABSENT and an explicit PERSONA-level null are NOT the same
-           resolved value and must not collapse (`effective_behavior`'s
-           generic present-None-is-omitted convention is the WRONG reader for
-           this distinction; the persona model gate reads the cascade's
-           active-vs-default slot directly instead — start.py
-           `_persona_model_state`, mirroring `agent_select.
-           resolve_selected_agent` / `settings_launch.snapshot_leaf`'s
-           ABSENT-vs-PRESENT-None idiom). ABSENT ⇒ unchanged (harness default /
-           the existing empty-model refusal where `persona.model_required`
-           vetoes). PERSONA-level explicit null ⇒ 'this endpoint needs no
-           model' and SUPPRESSES the `persona.model_required` veto for an
-           ENV-delivery harness (claude, goose) — env delivery can simply omit
-           the model. It does NOT suppress the veto for a CONFIG-FILE harness
-           (codex): `targets/base.py` `PersonaSpec.model_required` NARROWS
-           rather than disappears — it still answers a HARNESS-CAPABILITY
-           question ('can this delivery mechanism express no model at all'),
-           distinct from the KEY's SERVER question, and a config-file
-           provider block cannot emit a missing/empty model field. A
-           persona-level null on a config-file harness is therefore a
-           declared CONFLICT, refused by name (key + harness + reason), never
-           silently resolved either way."
-    spec: "§2d (nullable-per-persona, as keyspec §2a secret_path.<VAR>; [Jei:2026-08-17])"
+    note: "-M overrides per launch. <None> = kanibako passes no model, so
+           the harness uses its own. A PERSONA node's store config is another
+           source for `agent.<node>.model` (keyspec §2 PERSONA-STORE INPUT): a
+           config that omits `model` supplies nothing and this key is
+           inherited; `null` (the persona's default: no model passed) and
+           `\"\"` (no model: the empty model is passed) are SET values that
+           beat this key at every scope and lose to `agent.<agent>.model` in
+           a settings file."
+    spec: "§2d"
   agent.default.endpoint:
     scope: agent
     type: str

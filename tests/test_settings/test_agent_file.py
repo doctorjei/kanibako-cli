@@ -142,12 +142,12 @@ class TestLoad:
         assert cfg.env == {"MY_VAR": "hello"}
 
     def test_load_present_null_state_is_kept_as_none(self, tmp_path):
-        # keyspec §2a secret_path.<VAR>; [Jei:2026-08-17] (persona MODEL, same
-        # shape as the token key): a flat state scalar (e.g. ``model``)
+        # keyspec §2h present-``None`` rule (a scalar leaf keeps ``None``):
+        # a flat state scalar (e.g. ``model``)
         # explicitly ``null`` must survive load as a real ``None`` — never
         # coerced through ``str()`` into the four-byte garbage string
         # ``"None"``, which would reach the launch cascade as a BOGUS model id
-        # and silently defeat the "this persona needs no model" declaration.
+        # and silently defeat the persona's-default declaration (keyspec §2d).
         # (Mutation: restore the unconditional ``str(v)`` and this comes back as
         # the string ``"None"`` → RED.)
         cfg_path = tmp_path / "test.yaml"
