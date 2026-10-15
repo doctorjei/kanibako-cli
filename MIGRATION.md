@@ -527,9 +527,9 @@ inside boxes. In order of likely impact:
     persistent box has helpers, and the helper socket moved into `~/.kanibako/state/hub/`*.
 59. **A `model: ""` in a settings file now passes the empty model; write `null` to pass none** — see
     *An empty `model` now passes the empty model*.
-59. **A persona store config's `"model": null` or `""` now beats `agent.default.model`: `null` passes no
-    model, and `""` passes the empty model** — see *A persona's `null` model means its own default, and
-    `""` means no model*.
+60. **A persona store config's `"model": null` or `""` now beats `agent.default.model`: `null` passes no
+    model, and `""` passes the empty model unless the harness plugin declares `empty: omit`** — see *A
+    persona's `null` model means its own default, and `""` means no model*.
 
 ---
 
