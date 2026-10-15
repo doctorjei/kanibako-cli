@@ -3314,11 +3314,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agent.<node>.secret_path.<VAR>`, or the equivalent hand-edit) means *this endpoint needs none* —
   the launch proceeds with nothing mounted, nothing exported, and the persona verify probe still
   runs, sent with the credential or the model field simply omitted so the server itself decides.
-  The two keys differ in one respect: a config-file harness (codex) generates a provider block that
-  cannot express "no model" at all, so a null model there is refused as a declared conflict between
-  what the persona asks for and what the harness can deliver, naming both; an ENV-delivery harness
-  (claude, goose) has no such limit, and a null model there simply suppresses the harness's own
-  "a model is required" default.
+  A null model suppresses the harness's own "a model is required" default for every harness: an
+  ENV-delivery harness (claude, goose) omits the model, and a config-file harness (codex) writes no
+  root `model` in its `config.toml` and passes no `--model`, so codex uses its own default.
 
 - **`kanibako system defaults` lists every default kanibako ships, and says where each one is
   declared.** `show --effective` resolves the cascade but never names an artifact — it can mark a

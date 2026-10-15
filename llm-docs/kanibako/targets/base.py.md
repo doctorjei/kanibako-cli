@@ -281,28 +281,20 @@ here, and the persona preflight in `start.py` consults it.
   hard error. A missing model is not automatically invalid, since some endpoints need no model
   spec, so absence means "this persona needs none" unless the harness VETOES here. Claude keeps
   `False` (its model rides its own channels); goose and codex set `True` — a third-party
-  OpenAI-compatible endpoint has no meaningful default, and a config-file harness cannot express
-  "no model" at all.
+  OpenAI-compatible endpoint has no meaningful default. An explicit `null` model passes the veto.
 
 ### ⚑ `model_required` beside a three-state `model`
 
 `agent.<node>.model` is itself three-state, so a persona-level explicit `null` lets a user declare
 "THIS endpoint needs no model" directly on the key, distinct from simply never configuring one.
 
-`model_required` still answers a DIFFERENT, HARNESS-CAPABILITY question — *"can this DELIVERY
-MECHANISM express no model at all"* — not a per-server one, and the two can conflict:
+`model_required` vetoes only an UNSET model. A present-null model passes it for every harness and
+means no model:
 
-* For an **ENV-delivery** harness (claude, goose) the veto is a RECOMMENDATION the key's
-  per-persona fact can override: env delivery can simply omit the model, so a present-null model
-  SUPPRESSES `model_required` there.
-* For a **CONFIG-FILE** harness (codex) it cannot: the generated provider block types `model` as a
-  non-optional field, so there is no shape a config-file persona could emit for "no model". A
-  present-null model on a config-file harness is therefore a declared CONFLICT, refused BY NAME
-  (`start.py`'s `_preflight_config_file_persona`), never silently resolved either way.
-
-`model_required` is not deleted for this: the config-file conflict check is UNCONDITIONAL on
-`endpoint_delivery == "config_file"`, not on this field, because the structural limit is the
-DELIVERY MECHANISM, not the flag.
+* An **ENV-delivery** harness (claude, goose) omits the model.
+* A **CONFIG-FILE** harness (codex) writes its provider block with no root `model` in
+  `config.toml` and passes no `--model` (`start.py`'s `_preflight_config_file_persona`), so codex
+  uses its own default.
 
 ### No `PersonaSpec`, no persona checks
 
