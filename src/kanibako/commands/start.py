@@ -6720,7 +6720,8 @@ def _persona_probe_error(
     # and `settings_merge.merge` drops the level a value won at — so name the
     # MECHANISM, never a rung, and name EVERY slot the readers actually consult.
     # 🛑 The reader, ``effective_behavior``'s active-over-default pick, falls back to
-    # ``agent.default`` for both the endpoint and the model.  Naming ``agent.<display>`` alone sends a user with only
+    # ``agent.default`` for both the endpoint and the model.  Naming
+    # ``agent.<display>`` alone sends a user with only
     # ``agent.default.model`` set hunting a key that is in none of their files.
     # 🛑 And the persona-grata store is a CASCADE RUNG of its own
     # (``settings_launch._persona_partial`` splices it onto this same
@@ -6944,7 +6945,8 @@ def _preflight_env_persona(
     THE single ENV path.  It was two until B3 — the legacy claude host dir
     ``~/.config/claude/<persona>/`` — was retired: with that source gone, claude
     and goose ask exactly the same questions of exactly the same sources, and what
-    still differs between them is DECLARED (``token_var``), not branched.  Do not re-split this on harness identity.
+    still differs between them is DECLARED (``token_var``), not branched.  Do not
+    re-split this on harness identity.
 
     Gates (each an ACTIONABLE, harness-appropriate error):
 

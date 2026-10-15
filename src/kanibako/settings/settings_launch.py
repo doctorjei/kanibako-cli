@@ -3345,8 +3345,9 @@ def behavior_pick(
     this pick keeps ABSENT (``__MISSING__``) apart from PRESENT-``None``. The one
     carrier of the per-key SCALAR pick: :func:`effective_behavior` reads the value
     (and collapses a present-``None``), :func:`behavior_slot` the slot, and
-    :func:`null_behavior_setter` the slot of a present ``None``. The subtree counterpart is :func:`_agent_pick_node`, which deep-overlays
-    the default slot, then the active slot, and materializes ``meta.box.agent.*``.
+    :func:`null_behavior_setter` the slot of a present ``None``. The subtree
+    counterpart is :func:`_agent_pick_node`, which deep-overlays the default slot,
+    then the active slot, and materializes ``meta.box.agent.*``.
     """
     agent_node = dict.get(snapshot, "agent", __MISSING__)
     if not isinstance(agent_node, KeyStore):

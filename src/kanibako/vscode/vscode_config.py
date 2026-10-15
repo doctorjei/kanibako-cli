@@ -688,7 +688,7 @@ def _strip_codex_provider_region(text: str) -> str:
 def _apply_provider_root_keys(body: str, *, model: str | None, provider_id: str) -> str:
     """SET the managed top-level ``model``/``model_provider`` root keys on *body*.
 
-    A ``None`` *model* (the persona's ``model: null``) clears the root ``model``, so
+    A ``None`` *model* (no model: unset, ``null``, or blank) clears the root ``model``, so
     codex uses its own default; ``model_provider`` is still set.
     """
     # ⚑ *body* must be CLEAN user content: the "first table" has to be a USER table,
