@@ -974,8 +974,9 @@ is ALSO a hard error (a bearer endpoint with no token 401s inside the box).
 fatal is the HARNESS's declaration (`PersonaSpec.model_required`): codex vetoes (a config-file
 provider block with `model = ""` is meaningless and an omitted key falls through to codex's own
 moving default), goose vetoes (a third-party OpenAI-compatible endpoint has no meaningful default),
-claude does not. A PRESENT-null model SUPPRESSES that veto for an ENV harness but CONFLICTS with a
-CONFIG-FILE harness, which cannot express "no model".
+claude does not. A PRESENT-null model SUPPRESSES that veto for every harness: for codex the provider
+then carries no model, so `config.toml` gets no root `model`, there is no `--model`, and codex uses its
+own default.
 
 **`bundle`** is the persona-grata store read for this same launch (`_persona_bundle_for`). It is the
 SECOND token source — the agent file rung first, the store below it (`_persona_token_pointer`) — and

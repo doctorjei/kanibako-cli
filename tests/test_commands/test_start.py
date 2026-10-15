@@ -8727,16 +8727,11 @@ class TestPreflightCodexPersona:
             assert err is not None and "no model configured" in err
             assert "system set" in err and ".model=" in err
 
-    def test_present_null_model_conflicts_with_config_file_delivery(self, tmp_path):
-        # PRESENT-null (as the token key, keyspec §2a secret_path.<VAR>;
-        # [Jei:2026-08-17]): ``agent.<node>.model: null`` declares "this
-        # endpoint needs no model" — but a config-file harness (codex)
-        # structurally cannot express "no model" at all (the provider block
-        # types ``model`` as a non-optional str). The two facts CONFLICT, and
-        # the gate must refuse BY NAME (the key, the harness, why) rather than
-        # silently pick either side. (Mutation: treat None the same as
-        # __MISSING__ in ``_preflight_config_file_persona`` → this collapses
-        # into the generic "no model configured" message and goes RED.)
+    def test_present_null_model_passes_with_no_provider_model(self, tmp_path):
+        # PRESENT-null: ``agent.<node>.model: null`` means no model. The gate
+        # accepts it, as it does for claude and goose; the provider carries no
+        # model, so config.toml gets no root ``model`` and codex uses its own
+        # default. (Mutation: refuse a None model again → RED.)
         from kanibako.commands.start import _preflight_persona_load
         key = tmp_path / "navkey"
         key.write_text("nv-secret\n")
@@ -8745,55 +8740,38 @@ class TestPreflightCodexPersona:
             "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=self._codex(), keyspace_model=None,
         )
-        assert endpoint is None and provider is None
-        assert err is not None
-        assert "navigator+codex" in err
-        assert "codex" in err
-        assert "null" in err
-        assert "cannot express" in err
-        # Distinct wording from the plain "never configured" refusal — the user
-        # said something explicit, and the message must not read like they said
-        # nothing.
-        assert "no model configured" not in err
+        assert err is None
+        assert endpoint == "https://api.ai.example/v1"
+        assert provider is not None
+        assert provider.model is None
+        assert provider.env_key == "NAVIGATOR_API_KEY"
 
-    def test_present_null_model_conflict_is_unconditional_on_model_required(
-        self, tmp_path, monkeypatch,
-    ):
-        # The config-file conflict fires REGARDLESS of ``model_required`` — the
-        # structural limit is the DELIVERY MECHANISM (config_file), not the
-        # flag. Drop the veto entirely and a present-null model must STILL
-        # conflict. (Mutation: gate the conflict check on
-        # ``wiring.model_required`` → this stops firing here and goes RED.)
-        import dataclasses
-        import kanibako.commands.start as start_mod
-        from kanibako.commands.start import _persona_wiring, _preflight_persona_load
-
-        vetoless = dataclasses.replace(
-            _persona_wiring(self._codex()), model_required=False,
-        )
-        assert vetoless.endpoint_delivery == "config_file"
-        monkeypatch.setattr(start_mod, "_persona_wiring", lambda target: vetoless)
-
+    def test_unset_model_refusal_names_the_null_cure(self, tmp_path):
+        # The codex veto names ``--null`` as a cure, as the ENV path's does: a
+        # ``null`` model is now accepted, so the cure no longer leads into a
+        # second refusal.
+        from kanibako.commands.start import _preflight_persona_load
+        from kanibako.settings.kb_store import __MISSING__
         key = tmp_path / "navkey"
         key.write_text("nv-secret\n")
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         endpoint, err, provider = _preflight_persona_load(
             "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
-            target=self._codex(), keyspace_model=None,
+            target=self._codex(), keyspace_model=__MISSING__,
         )
         assert endpoint is None and provider is None
         assert err is not None
-        assert "cannot express" in err
+        assert "kanibako system set --null agent.navigator+codex.model" in err
+        assert "its own default model" in err
 
     def test_the_model_gate_reads_the_declaration_not_a_hardwired_rule(self, tmp_path,
                                                                        monkeypatch):
         # A missing model is NOT automatically invalid — absence means "this persona
         # needs none" unless the HARNESS vetoes via persona.model_required. Codex
-        # vetoes (its config-file delivery cannot express "no model"), so the gate
-        # above fires; drop the veto and the SAME input must stop producing that
-        # error. Pins that this path reads the descriptor, as the ENV path does,
-        # rather than hardwiring the rule. (Mutation: restore the hardwired
-        # ``if not model`` and this goes RED.)
+        # vetoes, so the gate above fires; drop the veto and the SAME input must
+        # pass with no provider model. Pins that this path reads the descriptor, as
+        # the ENV path does, rather than hardwiring the rule. (Mutation: restore
+        # the hardwired ``if not model`` and this goes RED.)
         import dataclasses
         import kanibako.commands.start as start_mod
         from kanibako.commands.start import _persona_wiring, _preflight_persona_load
@@ -8812,14 +8790,9 @@ class TestPreflightCodexPersona:
             "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=self._codex(), keyspace_model=__MISSING__,
         )
-        # Still refused — but on the DESCRIPTOR, not the missing model: a
-        # config-file harness cannot deliver "no model" (an omitted key falls
-        # through to codex's own moving default), so it must never ship
-        # ``model = ""`` NOR silently omit it.
-        assert endpoint is None and provider is None
-        assert err is not None
-        assert "model_required" in err
-        assert "no model configured" not in err
+        assert err is None
+        assert endpoint == "https://api.ai.example/v1"
+        assert provider is not None and provider.model is None
 
     def test_codex_declares_the_model_veto(self):
         # The declaration the gate above reads. Codex vetoes; without this the

@@ -6800,7 +6800,7 @@ def _resolve_codex_persona_env_key(secret_paths, wiring) -> "str | None":
 
 
 def _resolve_codex_persona_provider(
-    agent_id: str, endpoint: str, env_key: str, model: str, wiring
+    agent_id: str, endpoint: str, env_key: str, model: str | None, wiring
 ) -> "CodexModelProvider":
     """Build the resolved codex model-provider bundle INC 3 wires into config.toml.
 
@@ -6818,9 +6818,9 @@ def _resolve_codex_persona_provider(
       delivered through), so codex reads the key kanibako exports.
     * *model* — the CASCADE-resolved active-node model (``agent.<node>.model`` off the
       box-level launch snapshot, harness default excluded — see
-      :func:`_resolve_box_launch_decisions`), passed in by the caller.  It is a load
-      GATE (a codex persona needs a real model id): the caller rejects an empty
-      *model* BEFORE reaching here, so this is always non-empty.
+      :func:`_resolve_box_launch_decisions`), passed in by the caller: a model id, or
+      ``None`` when the persona sets ``model: null`` (no root ``model`` is written,
+      so codex uses its own default).
     """
     from kanibako.vscode.vscode_config import CodexModelProvider
 
@@ -7139,12 +7139,10 @@ def _preflight_config_file_persona(
        * a non-empty ``-e`` value for that key (:func:`_persona_cli_token`) passes
          whatever the pointer's state; the key must still be declared, because it
          names the provider ``env_key``.
-    2. a real ``model`` id (``keyspace_model``, the box-level cascade override,
-       :func:`_model_tristate`) — ABSENT ⇒ error (a NaviGator
-       ``[model_providers.<id>]`` block needs a model — never ship ``model =
-       ""``); PRESENT-null ⇒ a declared CONFLICT (a config-file harness cannot
-       express "no model" at all, regardless of ``wiring.model_required`` —
-       refused BY NAME, never silently resolved).
+    2. the ``model`` (``keyspace_model``, the box-level cascade override,
+       :func:`_model_tristate`) — ABSENT is refused when the harness declares
+       ``persona.model_required``; a PRESENT-null means no root ``model`` in
+       ``config.toml`` and no ``--model``, so codex uses its own default.
 
     On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
     for INC 3.  Every value is resolved live through the cascade before this seam.
@@ -7160,65 +7158,22 @@ def _preflight_config_file_persona(
     env_key = _resolve_codex_persona_env_key(secret_paths, wiring)
     assert env_key is not None  # guaranteed by the passed token gate above.
     model_state = _model_tristate(keyspace_model)
-    if model_state is None:
-        # PRESENT-null model on a CONFIG-FILE harness: a declared CONFLICT
-        # (keyspec §2a secret_path.<VAR>), refused by name — never silently resolved either
-        # way. This is UNCONDITIONAL for config_file delivery, independent of
-        # ``wiring.model_required``: the structural limit is the DELIVERY
-        # mechanism (the provider projection types ``model`` as a non-optional
-        # ``str`` — see the "no model AND no veto" arm below), not the flag.
-        # ``model_required`` narrows to a HARNESS-CAPABILITY question ("can this
-        # delivery express no model at all") distinct from the KEY's SERVER
-        # question ("does THIS endpoint need one") — an ENV harness can honor
-        # the key's answer (see ``_preflight_env_persona``); a config-file one
-        # structurally cannot.
-        return None, (
-            f"Error: persona '{display}' declares no model needed "
-            f"(`agent.{display}.model: null`), but its harness "
-            f"({harness_of(agent_id)}) delivers personas via a config file that "
-            f"cannot express \"no model\" — every provider block must name "
-            f"one.\n"
-            f"  Either configure a model for this persona "
-            f"(`kanibako system set agent.{display}.model=<model-id>`), or drop "
-            f"the null override so the persona resolves as unconfigured "
-            f"(`kanibako system reset agent.{display}.model`), then retry."
+    # ABSENT (never configured) is not invalid on its own, since some endpoints need
+    # no model; the HARNESS vetoes it through its declared ``persona.model_required``,
+    # exactly as the ENV path does (:func:`_preflight_env_persona`). A PRESENT-null
+    # passes: the provider then carries no model and codex uses its own default.
+    if model_state is __MISSING__ and wiring.model_required:
+        return None, _persona_endpoint_refusal(
+            display, endpoint, "model configured",
+            f"A custom-endpoint codex persona must name the provider's model id "
+            f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
+            f"harness default is not used for a third-party provider. If this "
+            f"endpoint genuinely needs no model, declare it explicitly with "
+            f"`kanibako system set --null agent.{display}.model`; codex then uses "
+            f"its own default model.",
+            _PERSONA_MODEL_CURE,
         ), None
-    model = model_state if isinstance(model_state, str) else ""
-    if not model:
-        # ABSENT (never configured) — not automatically invalid on its own, since
-        # some endpoints need no model spec, so absence is allowed unless the
-        # HARNESS vetoes it via its declared ``persona.model_required``. Gate on
-        # the DECLARATION, exactly as the ENV path does
-        # (:func:`_preflight_env_persona`); this path used to hardwire the rule,
-        # which made one of the two sibling gates ignore the descriptor it was
-        # supposed to read.
-        if wiring.model_required:
-            # ⚑ NO ``--null`` CURE HERE, unlike the ENV path: a PRESENT-null model is the
-            # declared CONFLICT refused just above, so naming it would send the user
-            # from this refusal straight into that one.
-            return None, _persona_endpoint_refusal(
-                display, endpoint, "model configured",
-                f"A custom-endpoint codex persona must name the provider's model id "
-                f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
-                f"harness default is not used for a third-party provider.",
-                _PERSONA_MODEL_CURE,
-            ), None
-        # No model AND no veto: a CONFIG-FILE harness cannot deliver "no model".
-        # The provider projection types ``model`` as a non-optional ``str``
-        # (``vscode_config.CodexModelProvider``), and an emitted ``model = ""`` is
-        # meaningless — while an OMITTED key does not mean "no model" either: codex
-        # falls through to its own MOVING recommended default, which a third-party
-        # provider will not serve. So fail LOUDLY at the descriptor rather than
-        # ship either shape. Unreachable while every config_file harness declares
-        # ``model_required: true``.
-        return None, (
-            f"Error: persona '{display}' resolves no model, and its harness "
-            f"declares `persona.model_required: false`.\n"
-            f"  A config-file harness cannot deliver 'no model' — its provider "
-            f"block must name one.\n"
-            f"  Either configure a model for this persona, or set "
-            f"`persona.model_required: true` in the harness descriptor."
-        ), None
+    model = model_state if isinstance(model_state, str) else None
     if probe:
         cli_token = _persona_cli_token(cli_env, env_key)
         probe_token_state = (

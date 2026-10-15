@@ -279,9 +279,9 @@ would take the keyword as an error.
 declares `model_required: true` because a config-file harness structurally cannot express "no
 model": codex types `model` as `Option<String>` and resolves it with `model.or(cfg.model)` and NO
 `unwrap_or`, so an omitted key does not send a model-less request — selection falls through to the
-model catalog's RECOMMENDED default, which moves over time. For an **ENV-delivery** harness a
-PRESENT-null model SUPPRESSES the veto (it can simply omit the model variable); for **codex** it
-CONFLICTS, and the launch refuses with an actionable pre-flight message. `verify_persona` is looser
+model catalog's RECOMMENDED default, which moves over time. A PRESENT-null model SUPPRESSES the
+veto: an ENV-delivery harness omits the model variable, and codex gets no root `model` in
+`config.toml` and no `--model`, so it uses that default by the user's choice. `verify_persona` is looser
 than the gate because it is also called straight off the store on the CREATE path, where no model
 may have been resolved at all.
 

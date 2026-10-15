@@ -1383,6 +1383,11 @@ serve a single model or apply its own default. Whether a model is required is de
 codex declares that it is, because an omitted key there means "use codex's own moving
 recommendation", not "no model".
 
+⚑ **`agent.<node>.model: null` now launches a codex persona.** It used to refuse as a conflict. It
+now launches with no `--model` and no root `model` in `config.toml`, so codex uses its own default.
+The refusal for an unset codex persona model now also names this cure:
+`kanibako system set --null agent.<node>.model`.
+
 ---
 
 ### 2.17 Reattaching to a running box: flags are now refused instead of ignored

@@ -675,7 +675,7 @@ class CodexModelProvider(NamedTuple):
     base_url: str
     wire_api: str
     env_key: str
-    model: str
+    model: str | None
 
 
 def _strip_codex_provider_region(text: str) -> str:
@@ -685,12 +685,21 @@ def _strip_codex_provider_region(text: str) -> str:
     )
 
 
-def _apply_provider_root_keys(body: str, *, model: str, provider_id: str) -> str:
-    """SET the managed top-level ``model``/``model_provider`` root keys on *body*."""
+def _apply_provider_root_keys(body: str, *, model: str | None, provider_id: str) -> str:
+    """SET the managed top-level ``model``/``model_provider`` root keys on *body*.
+
+    A ``None`` *model* (the persona's ``model: null``) clears the root ``model``, so
+    codex uses its own default; ``model_provider`` is still set.
+    """
     # ⚑ *body* must be CLEAN user content: the "first table" has to be a USER table,
     # never one of our own managed regions.
     lines = body.split("\n")
-    lines = _apply_root_key(lines, "model", desired=model, managed=(model,))
+    if model is None:
+        lines = _apply_root_key(
+            lines, "model", desired=None, managed=(), unconditional=True,
+        )
+    else:
+        lines = _apply_root_key(lines, "model", desired=model, managed=(model,))
     lines = _apply_root_key(
         lines, "model_provider", desired=provider_id, managed=(provider_id,),
     )
@@ -736,7 +745,7 @@ def merge_codex_model_provider(
     base_url: str,
     wire_api: str,
     env_key: str,
-    model: str,
+    model: str | None = None,
 ) -> str:
     """Return *text* with the codex model-provider selection MERGED in (pure, idempotent)."""
     body = _strip_codex_provider_region(text).rstrip("\n")

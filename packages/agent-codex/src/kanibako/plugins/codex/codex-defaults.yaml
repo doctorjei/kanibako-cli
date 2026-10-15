@@ -202,9 +202,9 @@ behavior:
   # built-in default: a box with no model set anywhere launches with no `--model`.
   # A user's `agent.default.model` reaches codex; `agent.codex.model` at any
   # cascade scope (or `-M`) beats it.  The same holds for `endpoint`.
-  # ⚑ This is the BARE-BOX floor and it is NOT the persona gate: a codex PERSONA
-  # still needs a model, vetoed by `persona.model_required` above, because a
-  # config-file harness cannot express "no model".
+  # ⚑ This is the BARE-BOX floor and it is NOT the persona gate: an unset model on
+  # a codex PERSONA is vetoed by `persona.model_required` above; an explicit
+  # `null` passes and launches with no model.
   - key: model
     description: "Model to use (unset = codex's own built-in default)"
   - key: endpoint

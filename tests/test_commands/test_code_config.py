@@ -1165,6 +1165,40 @@ def test_codex_merge_provider_preserves_user_content():
     assert out.count("model = ") == 1
 
 
+def test_codex_merge_provider_with_no_model_writes_no_root_model():
+    """A provider with ``model=None`` (the persona's ``model: null``) sets
+    ``model_provider`` and the provider region but no root ``model``, so codex
+    uses its own default."""
+    mp = CodexModelProvider(**{**_NAVIGATOR, "model": None})
+    out = merge_codex_config(
+        _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        model_provider=mp,
+    )
+    data = tomllib.loads(out)
+    assert "model" not in data
+    assert data["model_provider"] == "navigator"
+    assert data["model_providers"]["navigator"]["env_key"] == "NAVIGATOR_API_KEY"
+
+
+def test_codex_merge_provider_with_no_model_removes_a_stale_root_model():
+    """A stale root ``model = "X"`` (hand-set or from a previous launch) is removed
+    when the provider carries no model; a nested ``model`` key is untouched."""
+    text = (
+        'model = "X"\n\n'
+        "[profiles.p]\n"
+        'model = "keep"\n'
+    )
+    mp = CodexModelProvider(**{**_NAVIGATOR, "model": None})
+    out = merge_codex_config(
+        text, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,
+        model_provider=mp,
+    )
+    data = tomllib.loads(out)
+    assert "model" not in data
+    assert data["model_provider"] == "navigator"
+    assert data["profiles"]["p"]["model"] == "keep"
+
+
 # --- D1: bare/non-persona reconciled WIPE (OFF direction) -------------------
 #
 # kanibako OWNS model/model_provider + the managed provider region and
