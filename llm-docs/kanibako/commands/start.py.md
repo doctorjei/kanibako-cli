@@ -900,28 +900,23 @@ floor (`agent_behavior_floor`) in a single call, so the box's sharing decision
   credsync/gate consumer.
 * **`endpoint`** — the resolved PERSONA endpoint URL, or `None` when unset (`<None>` / empty / no
   descriptors / no target) — the cred-fork signal (non-None ⇒ suppress the OAuth cred).
-* **`model`** — the cascade-resolved active-node `agent.<node>.model`, THREE-STATE (`_model_tristate`):
-  `__MISSING__` (never set, incl. no descriptors / no target), `None` (PRESENT-null — *"this endpoint
-  needs no model"*), or a resolved `str` id.
+* **`model`** — the cascade-resolved active-node `agent.<node>.model` (`effective_behavior`): a
+  resolved `str` id, or `None` for no model — unset (incl. no descriptors / no target), `null`, or
+  blank alike.
 
 The plugin's behavior floor folds in as `agent.<node>.<key>` (core's floor is not passed — its
 `endpoint` is `<None>`, which the pick omits like an absent key) and the per-agent FILE state as the
 active `agent.<node>` slot; the §2d active-over-default pick yields the endpoint for the NODE. A target
 with no declared settings contributes no floor → endpoint `None`.
 
-### Why the model is read by `_persona_model_state`, not by `effective_behavior`
+### Why the model read excludes the harness default
 
-`effective_behavior` deliberately COLLAPSES a present-None scalar into omission (*"the consumer
-applies its own default"*), and that is exactly the distinction the persona model gate needs KEPT
-APART. `_persona_model_state` reads the SAME snapshot through the SAME pick
-(`settings_launch.behavior_pick`, the one carrier of the §2d choice) and keeps the raw value.
-
-The codex-persona provider needs a real model id, so this DELIBERATELY excludes any harness `model`
-DEFAULT floor (a plugin that declared one would name an own-endpoint model, wrong for a third-party
-provider): an unset persona model resolves `__MISSING__` here so the pre-flight surfaces an
-actionable empty-model error rather than shipping a bogus default into a `[model_providers.<id>]`
-block. It is consumed only by the persona load gate; for bare launches the `--model` flag resolves
-its own default via the main launch snapshot.
+No gate tells an unset model from a `null` one, so the model is the plain `effective_behavior` read,
+which omits a present-None. This read DELIBERATELY excludes any harness `model` DEFAULT floor (a
+plugin that declared one would name an own-endpoint model, wrong for a third-party provider): an unset
+persona model resolves `None` here, and the persona launches with no model rather than a bogus default
+in a `[model_providers.<id>]` block. It is consumed only by the persona pre-flight; for bare launches
+the `--model` flag resolves its own default via the main launch snapshot.
 
 ### Why *persona_values* is threaded in, and why *selection_level* is NOT the full CLI level
 
@@ -970,13 +965,10 @@ persona as the bare host harness on the user's real account. A resolved endpoint
 is ALSO a hard error (a bearer endpoint with no token 401s inside the box).
 
 **`keyspace_model`** is the box-level cascade-resolved `agent.<node>.model`, harness default excluded
-(see `_resolve_box_launch_decisions`), THREE-STATE (`_model_tristate`). Whether an ABSENT model is
-fatal is the HARNESS's declaration (`PersonaSpec.model_required`): codex vetoes (a config-file
-provider block with `model = ""` is meaningless and an omitted key falls through to codex's own
-moving default), goose vetoes (a third-party OpenAI-compatible endpoint has no meaningful default),
-claude does not. A PRESENT-null model SUPPRESSES that veto for every harness: for codex the provider
-then carries no model, so `config.toml` gets no root `model`, there is no `--model`, and codex uses its
-own default.
+(see `_resolve_box_launch_decisions`): a model id, or `None`. No model is refused, for any harness:
+kanibako passes none, and the harness and its endpoint decide. For codex the provider then carries no
+model, so `config.toml` gets no root `model`, there is no `--model`, and codex uses its own default; a
+goose persona uses its own config's model or refuses to start.
 
 **`bundle`** is the persona-grata store read for this same launch (`_persona_bundle_for`). It is the
 SECOND token source — the agent file rung first, the store below it (`_persona_token_pointer`) — and

@@ -686,10 +686,7 @@ class TestPersonaBlockLoading:
     """The ``persona:`` block LOADER: declared-or-nothing (T3.2).
 
     Every field falls back to its :class:`PersonaSpec` default when the block omits
-    it, so a plugin never silently inherits another harness's semantics.  The
-    load-bearing one is ``model_required``: a MISSING model is not automatically
-    invalid, so absence means "this persona needs none" unless the harness declares
-    the veto.
+    it, so a plugin never silently inherits another harness's semantics.
     """
 
     def _persona(self, declfile, block: str):
@@ -700,26 +697,16 @@ class TestPersonaBlockLoading:
         )
         return agent_defaults.load_descriptor(package, filename).persona
 
-    def test_block_without_the_field_does_not_veto(self, declfile):
-        """A ``persona:`` block that omits ``model_required`` gets False.
-
-        (Mutation: loader default to True → RED.)"""
-        p = self._persona(declfile, "    endpoint_delivery: env\n    token_var: PROBE\n")
+    def test_a_retired_model_required_key_is_IGNORED(self, declfile):
+        """The model veto is retired: a skewed plugin still declaring it still LOADS,
+        and nothing reads the key."""
+        p = self._persona(
+            declfile,
+            "    endpoint_delivery: env\n    token_var: PROBE\n    model_required: true\n",
+        )
         assert p is not None
-        assert p.model_required is False
         assert p.token_var == "PROBE"
-
-    def test_declared_true_vetoes(self, declfile):
-        """The goose/codex shape: the veto exists, but only when DECLARED."""
-        p = self._persona(declfile, "    endpoint_delivery: env\n    model_required: true\n")
-        assert p is not None
-        assert p.model_required is True
-
-    def test_declared_false_does_not_veto(self, declfile):
-        """An explicit refusal reads the same as omission."""
-        p = self._persona(declfile, "    endpoint_delivery: env\n    model_required: false\n")
-        assert p is not None
-        assert p.model_required is False
+        assert not hasattr(p, "model_required")
 
     def test_a_retired_host_dir_adopt_key_is_IGNORED(self, declfile):
         """B3 is retired (D3): a skewed plugin still declaring it still LOADS.

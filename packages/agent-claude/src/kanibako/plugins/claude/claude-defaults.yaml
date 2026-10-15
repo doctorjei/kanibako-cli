@@ -119,9 +119,7 @@ descriptor:
   # `endpoint` -> ANTHROPIC_BASE_URL SettingArg above; the bearer token rides the
   # FIXED ANTHROPIC_AUTH_TOKEN secret_path key.  This declaration is the ONLY place
   # the var is named: core has no fallback, and a harness that declares no token var
-  # gets no token check.  The plugin reads it from here too.  No model_required
-  # veto: a claude persona that names no model needs none (its model rides its own
-  # channels / the harness default).
+  # gets no token check.  The plugin reads it from here too.
   persona:
     endpoint_delivery: env
     token_var: ANTHROPIC_AUTH_TOKEN

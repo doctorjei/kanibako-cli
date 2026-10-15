@@ -1359,8 +1359,8 @@ def test_effective_behavior_omits_present_none():
 ])
 def test_behavior_pick_is_raw_and_names_its_slot(agent, expected):
     # The ONE carrier of the §2d pick, RAW: a present-None comes back as ``None``
-    # (``effective_behavior`` collapses it; ``start._persona_model_state`` must
-    # not), ABSENT as ``__MISSING__``; ``behavior_slot`` is its slot half.
+    # (``effective_behavior`` collapses it; ``null_behavior_setter`` must not),
+    # ABSENT as ``__MISSING__``; ``behavior_slot`` is its slot half.
     # (Mutation: fold a present-None into ``__MISSING__`` → the None rows go RED.)
     from kanibako.settings.kb_store import __MISSING__
     from kanibako.settings.settings_launch import behavior_pick, behavior_slot

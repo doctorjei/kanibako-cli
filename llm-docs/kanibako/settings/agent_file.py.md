@@ -478,8 +478,8 @@ list's `str()` would land in `cfg.state` beside the properly typed field, and
 `secret_path` and in `env`, which is why `AgentConfig.env` and `.secret_path` are typed
 `dict[str, str | bool | None]`: a record typed `dict[str, str]` would FORCE the coercion. Coerced,
 a hand-edited or `--null`-written `model: null` would become the four-byte string `"None"`: a BOGUS
-model id reaching the launch cascade as a real value, silently defeating the "this persona needs no
-model" declaration the persona-model gate depends on. The cascade reads the file's values verbatim
+model id reaching the launch cascade as a real value, silently defeating the "no model"
+declaration. The cascade reads the file's values verbatim
 (`settings_assemble._agent_partial`), so a present-`None` survives all the way to its per-key
 active-over-default pick — exactly where it needs to keep meaning "explicitly reset/keyless" rather than a string. For
 `secret_path` the same `None` means "this VAR is deliberately keyless": a DECLARED third state, not

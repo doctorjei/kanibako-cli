@@ -117,11 +117,9 @@ descriptor:
   # (there is no second ingestion route to fall back to).
   # provider_pin forces GOOSE_PROVIDER=openai (via the `provider` setting) whenever a
   # goose persona endpoint is active, so the openai provider can't be forgotten.
-  # model_required: a third-party endpoint has no meaningful default model → require one.
   persona:
     endpoint_delivery: env
     token_var: OPENAI_API_KEY
-    model_required: true
     provider_pin:
       provider: openai
 

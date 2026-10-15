@@ -6719,9 +6719,8 @@ def _persona_probe_error(
     # ⚑ On THIS path endpoint and model are read off the COLLAPSED launch snapshot,
     # and `settings_merge.merge` drops the level a value won at — so name the
     # MECHANISM, never a rung, and name EVERY slot the readers actually consult.
-    # 🛑 BOTH readers fall back to ``agent.default``: ``effective_behavior``'s
-    # active-over-default pick for the endpoint, :func:`_persona_model_state` for the
-    # model.  Naming ``agent.<display>`` alone sends a user with only
+    # 🛑 The reader, ``effective_behavior``'s active-over-default pick, falls back to
+    # ``agent.default`` for both the endpoint and the model.  Naming ``agent.<display>`` alone sends a user with only
     # ``agent.default.model`` set hunting a key that is in none of their files.
     # 🛑 And the persona-grata store is a CASCADE RUNG of its own
     # (``settings_launch._persona_partial`` splices it onto this same
@@ -6842,7 +6841,7 @@ def _preflight_persona_load(
     logger,
     *,
     target=None,
-    keyspace_model: object = __MISSING__,
+    keyspace_model: str | None = None,
     bundle=None,
     probe: bool = False,
     cli_env: "Mapping[str, str] | None" = None,
@@ -6892,7 +6891,7 @@ def _preflight_persona_load(
         ), None
 
     # A harness that declares no persona block gets no persona check: no endpoint
-    # refusal, no token or model gate, no verify probe [Jei:2026-10-12].
+    # refusal, no token gate, no verify probe [Jei:2026-10-12].
     if wiring is None:
         return keyspace_endpoint, None, None
 
@@ -6927,31 +6926,10 @@ def _persona_cli_token(cli_env: "Mapping[str, str] | None", var: "str | None") -
     return value.strip() or None
 
 
-def _model_tristate(keyspace_model: object) -> object:
-    """Classify a caller-supplied ``keyspace_model`` into the THREE persona-model
-    states (keyspec §2a secret_path.<VAR>; [Jei:2026-08-17], same shape as the token key):
-
-    * ``__MISSING__`` — nothing configured ANYWHERE, including a stored blank
-      (``""`` / whitespace-only, or the ``__MISSING__`` sentinel itself) — the
-      pre-existing "empty model" shape, UNCHANGED: harness default / the
-      existing veto-driven refusal.
-    * ``None`` — PRESENT-null: ``agent.<node>.model: null`` at the winning
-      cascade scope.  A deliberate "this endpoint needs no model" declaration —
-      distinct from never having set the key at all.
-    * a non-empty ``str`` (stripped) — a real model id.
-    """
-    if keyspace_model is None:
-        return None
-    if keyspace_model is __MISSING__:
-        return __MISSING__
-    text = str(keyspace_model).strip()
-    return text if text else __MISSING__
-
-
 def _preflight_env_persona(
     secret_paths,
     endpoint: str,
-    keyspace_model: object,
+    keyspace_model: str | None,
     wiring,
     display: str,
     *,
@@ -6961,13 +6939,12 @@ def _preflight_env_persona(
     logger=None,
     cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[str | None, str | None, CodexModelProvider | None]":
-    """Token + (optional) model gate for an ENV-delivery harness (claude, goose).
+    """Token gate for an ENV-delivery harness (claude, goose).
 
     THE single ENV path.  It was two until B3 — the legacy claude host dir
     ``~/.config/claude/<persona>/`` — was retired: with that source gone, claude
     and goose ask exactly the same questions of exactly the same sources, and what
-    still differs between them is DECLARED (``token_var``, ``model_required``), not
-    branched.  Do not re-split this on harness identity.
+    still differs between them is DECLARED (``token_var``), not branched.  Do not re-split this on harness identity.
 
     Gates (each an ACTIONABLE, harness-appropriate error):
 
@@ -6986,18 +6963,11 @@ def _preflight_env_persona(
        flows only through the launch mount.  A declared block with NO token var
        gets no token check.  A non-empty ``-e`` value for the token var
        (:func:`_persona_cli_token`) passes this gate whatever the file's state.
-    2. when ``wiring.model_required`` (goose): a real cascade-resolved ``model``
-       id (``keyspace_model``, :func:`_model_tristate`) — ABSENT ⇒ error (a
-       third-party OpenAI-compatible endpoint has no meaningful default model —
-       parity with the codex model gate); PRESENT-null ⇒ the veto is
-       SUPPRESSED (ENV delivery can simply omit the model env — the harness
-       said "I need one by default", the KEY says "not THIS endpoint", and the
-       key wins because it is the more specific, per-persona fact). Claude
-       declares no veto at all: a persona that names no model needs none,
-       ABSENT or PRESENT-null alike.
-    3. on the LAUNCH path only, the verify probe (:func:`_persona_probe_error`)
+    2. on the LAUNCH path only, the verify probe (:func:`_persona_probe_error`)
        — reached for a PRESENT-null token too, sent with no ``Authorization``
-       header.
+       header, and for a persona with no model (``keyspace_model`` ``None``), sent
+       with no model.  No model is refused: kanibako passes none, and the harness
+       and its endpoint decide.
 
     Every value is resolved live through the cascade before this seam.  The
     endpoint + token ride their existing single-source
@@ -7025,21 +6995,9 @@ def _preflight_env_persona(
         ), None
     # PRESENT-null (deliberately keyless), a usable path, or ``-e`` — proceed.
     token_ptr = token_state if isinstance(token_state, str) else None
-    model_state = _model_tristate(keyspace_model)
-    if wiring.model_required and model_state is __MISSING__:
-        return None, _persona_endpoint_refusal(
-            display, endpoint, "model configured",
-            f"A custom-endpoint persona must name the provider's model id "
-            f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
-            f"harness default is not used for a third-party provider. If this "
-            f"endpoint genuinely needs no model, declare it explicitly with "
-            f"`kanibako system set --null agent.{display}.model`.",
-            _PERSONA_MODEL_CURE,
-        ), None
-    model = model_state if isinstance(model_state, str) else None
     if probe:
         probe_err = _persona_probe_error(
-            target, endpoint, token_ptr, model, display, logger,
+            target, endpoint, token_ptr, keyspace_model, display, logger,
             env=_persona_probe_env(secret_paths, bundle), token=cli_token,
         )
         if probe_err is not None:
@@ -7048,7 +7006,6 @@ def _preflight_env_persona(
 
 
 _PERSONA_KEY_CURE = "Set the key for this persona, then retry."
-_PERSONA_MODEL_CURE = "Set the model for this persona, then retry."
 
 
 def _persona_endpoint_refusal(
@@ -7105,7 +7062,7 @@ def _preflight_config_file_persona(
     agent_id: str,
     secret_paths,
     endpoint: str,
-    keyspace_model: object,
+    keyspace_model: str | None,
     wiring,
     display: str,
     *,
@@ -7115,9 +7072,9 @@ def _preflight_config_file_persona(
     logger=None,
     cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[str | None, str | None, CodexModelProvider | None]":
-    """Token + model gate + provider resolve for a CONFIG-FILE harness (codex, INC 2/3).
+    """Token gate + provider resolve for a CONFIG-FILE harness (codex, INC 2/3).
 
-    The endpoint is resolved through the cascade.  Two load gates, each with an
+    The endpoint is resolved through the cascade.  One load gate, with an
     ACTIONABLE, SUB-CASE-SPECIFIC error (INC-3 fold-in), then the provider assemble:
 
     1. the bearer token STATE under the DYNAMIC token var (the single ``secret_path``
@@ -7139,10 +7096,10 @@ def _preflight_config_file_persona(
        * a non-empty ``-e`` value for that key (:func:`_persona_cli_token`) passes
          whatever the pointer's state; the key must still be declared, because it
          names the provider ``env_key``.
-    2. the ``model`` (``keyspace_model``, the box-level cascade override,
-       :func:`_model_tristate`) — ABSENT is refused when the harness declares
-       ``persona.model_required``; a PRESENT-null means no root ``model`` in
-       ``config.toml`` and no ``--model``, so codex uses its own default.
+
+    There is no ``model`` gate: *keyspace_model* (the box-level cascade read) is a
+    model id, or ``None`` when the persona sets none, which means no root ``model`` in
+    ``config.toml`` and no ``--model``, so codex uses its own default.
 
     On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
     for INC 3.  Every value is resolved live through the cascade before this seam.
@@ -7157,23 +7114,6 @@ def _preflight_config_file_persona(
     # key resolves the env_key.
     env_key = _resolve_codex_persona_env_key(secret_paths, wiring)
     assert env_key is not None  # guaranteed by the passed token gate above.
-    model_state = _model_tristate(keyspace_model)
-    # ABSENT (never configured) is not invalid on its own, since some endpoints need
-    # no model; the HARNESS vetoes it through its declared ``persona.model_required``,
-    # exactly as the ENV path does (:func:`_preflight_env_persona`). A PRESENT-null
-    # passes: the provider then carries no model and codex uses its own default.
-    if model_state is __MISSING__ and wiring.model_required:
-        return None, _persona_endpoint_refusal(
-            display, endpoint, "model configured",
-            f"A custom-endpoint codex persona must name the provider's model id "
-            f"(e.g. `kanibako system set agent.{display}.model=<model-id>`); the "
-            f"harness default is not used for a third-party provider. If this "
-            f"endpoint genuinely needs no model, declare it explicitly with "
-            f"`kanibako system set --null agent.{display}.model`; codex then uses "
-            f"its own default model.",
-            _PERSONA_MODEL_CURE,
-        ), None
-    model = model_state if isinstance(model_state, str) else None
     if probe:
         cli_token = _persona_cli_token(cli_env, env_key)
         probe_token_state = (
@@ -7182,13 +7122,13 @@ def _preflight_config_file_persona(
         probe_err = _persona_probe_error(
             target, endpoint,
             probe_token_state if isinstance(probe_token_state, str) else None,
-            model, display, logger,
+            keyspace_model, display, logger,
             env=_persona_probe_env(secret_paths, bundle), token=cli_token,
         )
         if probe_err is not None:
             return None, probe_err, None
     provider = _resolve_codex_persona_provider(
-        agent_id, endpoint, env_key, model, wiring,
+        agent_id, endpoint, env_key, keyspace_model, wiring,
     )
     return endpoint, None, provider
 
@@ -7465,7 +7405,7 @@ def _resolve_box_launch_decisions(
     selection_level: "Mapping[str, object] | None",
     persona_values: "Mapping[str, str | None] | None" = None,
     cli_env: "Mapping[str, str] | None" = None,
-) -> "tuple[AuthSource, str | None, object, dict[str, object]]":
+) -> "tuple[AuthSource, str | None, str | None, dict[str, object]]":
     """Resolve the launch's per-box decisions off ONE snapshot.
 
     *cli_env* is the launch's parsed ``-e`` map. It reaches ONLY the verify probe's
@@ -7477,9 +7417,8 @@ def _resolve_box_launch_decisions(
     expanded snapshot so there is
     no duplicate build.  The table keeps a present ``null`` (a keyless declaration).
 
-    ⚑ The *model* is read via :func:`_persona_model_state`, NOT ``effective_behavior``
-    — that reader deliberately collapses a present-None scalar into omission, which
-    is exactly the distinction the persona model gate needs kept apart.
+    The *model* is the effective read: a model id, or ``None`` when no model is set,
+    the persona's ``model: null`` and a blank alike (no gate tells them apart).
 
     ⚑ *selection_level* is the SELECTION only — deliberately NOT the full §1A CLI
     level (P8).  The *model* this returns is WRITTEN TO DISK (the codex
@@ -7487,7 +7426,7 @@ def _resolve_box_launch_decisions(
     a stored value (*"EPHEMERAL, always"*), so ``-M`` rides the LAUNCH snapshot only.
 
     See ``llm-docs/kanibako/commands/start.py.md``,
-    "``_resolve_box_launch_decisions``", for the four returns and the tristate model.
+    "``_resolve_box_launch_decisions``", for the four returns.
     """
     from kanibako.settings import settings_launch
 
@@ -7536,22 +7475,16 @@ def _resolve_box_launch_decisions(
     )
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
     endpoint: str | None = None
-    model: object = __MISSING__
+    model: str | None = None
     if plugin_floor:
         effective = settings_launch.effective_behavior(
             snapshot, active_agent=agent_name
         )
         endpoint = effective.get("endpoint", "") or None
-        # model resolves off the SAME snapshot (box-level cascade override where
-        # set) — read DIRECTLY (:func:`_persona_model_state`), not through
-        # ``effective`` above: the harness default was excluded from the floor,
-        # so an unset persona model is genuinely ABSENT here (__MISSING__,
-        # empty-model error, not a bogus default) — but ``effective_behavior``'s
-        # generic present-None-is-omitted collapse would ALSO turn a deliberate
-        # ``agent.<node>.model: null`` into that same ABSENT reading, losing the
-        # THREE-STATE distinction the persona model gate needs (the token key's
-        # shape, keyspec §2a secret_path.<VAR>; [Jei:2026-08-17]).
-        model = _persona_model_state(snapshot, agent_name)
+        # The harness default was excluded from the floor, so an unset persona model
+        # reads as no model here, not a bogus default; a ``null`` (omitted by
+        # ``effective_behavior``) and a blank read the same.
+        model = effective.get("model", "").strip() or None
     secret_paths = _persona_secret_table(
         snapshot, agent_name, inputs.ctx, cli_env=cli_env,
     )
@@ -7633,29 +7566,6 @@ def _persona_secret_table(
     except SettingsError:
         env = None
     return PersonaSecretTable(table, tuple(sorted(declared)), env)
-
-
-def _persona_model_state(snapshot: "KeyStore", active_agent: str) -> object:
-    """The RAW ``agent.<active>.model`` / ``agent.default.model`` pick, THREE-STATE.
-
-    ``effective_behavior``'s active-over-default pick for exactly the ``model``
-    key — the SAME carrier,
-    :func:`~kanibako.settings.settings_launch.behavior_pick` — but WITHOUT its
-    final "present-None ⇒ omitted" collapse: the persona model gate needs ABSENT
-    (``__MISSING__``, never set at either slot) kept apart from PRESENT-null
-    (``None``, a deliberate "this endpoint needs no model" declaration at the
-    winning slot), which is exactly what that collapse erases (by design, for
-    every OTHER behavior key: see its docstring).  Same idiom as
-    ``agent_select.resolve_selected_agent`` / ``settings_launch.snapshot_leaf`` for
-    ``pref.system.agent: null`` — read the winning slot directly instead of
-    routing through a reader that flattens the distinction.
-
-    *snapshot* must be the SAME expanded snapshot ``effective_behavior`` would
-    read (single-route: one build, every reader agrees).
-    """
-    from kanibako.settings.settings_launch import behavior_pick
-
-    return behavior_pick(snapshot, active_agent=active_agent, key="model")[1]
 
 
 def _merge_default_categories(
@@ -9347,8 +9257,8 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # recoverable (a cleanup command is a separate follow-up).  The provider itself
     # is NOT consumed here (create seeds creds + templates; the codex config.toml —
     # hook + provider — materializes at first launch via _run_container), but the
-    # model gate must run so an unconfigured-model codex persona is rejected at
-    # CREATE, symmetric with the launch path.
+    # gate must run so an unloadable persona is rejected at CREATE, symmetric with
+    # the launch path.
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
         active_endpoint, persona_error, _provider = _preflight_persona_load(

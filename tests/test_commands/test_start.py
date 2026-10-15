@@ -8543,73 +8543,6 @@ class TestPersonaWiring:
         assert w.token_var == ""  # dynamic: the configured secret_path key
 
 
-class TestPersonaModelState:
-    """``_persona_model_state`` — the RAW active-over-default ``model`` pick,
-    THREE-STATE (as the token key, keyspec §2a secret_path.<VAR>;
-    [Jei:2026-08-17]), unlike ``effective_behavior`` which deliberately
-    collapses a present-None into omission for every OTHER behavior key
-    (see its own docstring / ``test_effective_behavior_omits_
-    present_none`` in ``test_settings_launch.py``).  Same idiom as
-    ``agent_select.resolve_selected_agent`` for ``pref.system.agent: null``:
-    read the winning cascade slot directly.
-    """
-
-    def test_never_set_anywhere_is_missing(self):
-        from kanibako.commands.start import _persona_model_state
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.kb_store import __MISSING__
-
-        snap = KeyStore({"agent": {"default": {}, "claude": {}}})
-        assert _persona_model_state(snap, "claude") is __MISSING__
-
-    def test_no_node_at_all_is_missing(self):
-        from kanibako.commands.start import _persona_model_state
-        from kanibako.settings.keystore import KeyStore
-        from kanibako.settings.kb_store import __MISSING__
-
-        assert _persona_model_state(KeyStore({}), "claude") is __MISSING__
-
-    def test_present_null_at_the_active_slot_is_kept_as_none(self):
-        # (Mutation: fold a present-None into __MISSING__ here → RED against
-        # every caller that must treat them as distinct states.)
-        from kanibako.commands.start import _persona_model_state
-        from kanibako.settings.keystore import KeyStore
-
-        snap = KeyStore({"agent": {
-            "default": {"model": "sonnet"}, "navigator℘claude": {"model": None},
-        }})
-        assert _persona_model_state(snap, "navigator℘claude") is None
-
-    def test_a_real_id_at_the_active_slot_wins(self):
-        from kanibako.commands.start import _persona_model_state
-        from kanibako.settings.keystore import KeyStore
-
-        snap = KeyStore({"agent": {
-            "default": {"model": "sonnet"}, "navigator℘claude": {"model": "opus"},
-        }})
-        assert _persona_model_state(snap, "navigator℘claude") == "opus"
-
-    def test_falls_back_to_the_default_slot_when_the_active_slot_is_silent(self):
-        from kanibako.commands.start import _persona_model_state
-        from kanibako.settings.keystore import KeyStore
-
-        snap = KeyStore({"agent": {
-            "default": {"model": "sonnet"}, "navigator℘claude": {},
-        }})
-        assert _persona_model_state(snap, "navigator℘claude") == "sonnet"
-
-    def test_present_null_at_the_default_slot_is_kept_as_none_too(self):
-        # The active slot says nothing at all (never set the key), so the
-        # default slot's OWN present-null decides — still None, not __MISSING__.
-        from kanibako.commands.start import _persona_model_state
-        from kanibako.settings.keystore import KeyStore
-
-        snap = KeyStore({"agent": {
-            "default": {"model": None}, "navigator℘claude": {},
-        }})
-        assert _persona_model_state(snap, "navigator℘claude") is None
-
-
 def _claude_target():
     """The real claude Target: a claude persona's token gate reads its declaration."""
     from kanibako.plugins.claude.target import ClaudeTarget
@@ -8707,25 +8640,22 @@ class TestPreflightCodexPersona:
             model="gemma-4-31b-it",
         )
 
-    def test_empty_model_errors(self, tmp_path):
-        # A usable token but NO cascade model (ABSENT: __MISSING__, or the
-        # stored-blank/whitespace edge case) → a NaviGator provider needs a
-        # model id → hard error (never ship model = ""). ⚑ __MISSING__ is the
-        # REAL production shape (``_resolve_box_launch_decisions``'s default);
-        # ""/"   " are the pre-existing defensive edge cases, unchanged.
+    def test_an_unset_model_launches_with_no_model(self, tmp_path):
+        # A usable token but NO cascade model → no veto: the
+        # provider carries no model, so config.toml gets no root ``model`` and
+        # codex uses its own default. (Mutation: restore the codex veto → RED.)
         from kanibako.commands.start import _preflight_persona_load
-        from kanibako.settings.kb_store import __MISSING__
         key = tmp_path / "navkey"
         key.write_text("nv-secret\n")
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
-        for missing in (__MISSING__, "", "   "):
-            endpoint, err, provider = _preflight_persona_load(
-                "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
-                target=self._codex(), keyspace_model=missing,
-            )
-            assert endpoint is None and provider is None
-            assert err is not None and "no model configured" in err
-            assert "system set" in err and ".model=" in err
+        endpoint, err, provider = _preflight_persona_load(
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
+            target=self._codex(),
+        )
+        assert err is None
+        assert endpoint == "https://api.ai.example/v1"
+        assert provider is not None and provider.model is None
+        assert provider.env_key == "NAVIGATOR_API_KEY"
 
     def test_present_null_model_passes_with_no_provider_model(self, tmp_path):
         # PRESENT-null: ``agent.<node>.model: null`` means no model. The gate
@@ -8745,60 +8675,6 @@ class TestPreflightCodexPersona:
         assert provider is not None
         assert provider.model is None
         assert provider.env_key == "NAVIGATOR_API_KEY"
-
-    def test_unset_model_refusal_names_the_null_cure(self, tmp_path):
-        # The codex veto names ``--null`` as a cure, as the ENV path's does: a
-        # ``null`` model is now accepted, so the cure no longer leads into a
-        # second refusal.
-        from kanibako.commands.start import _preflight_persona_load
-        from kanibako.settings.kb_store import __MISSING__
-        key = tmp_path / "navkey"
-        key.write_text("nv-secret\n")
-        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
-        endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
-            target=self._codex(), keyspace_model=__MISSING__,
-        )
-        assert endpoint is None and provider is None
-        assert err is not None
-        assert "kanibako system set --null agent.navigator+codex.model" in err
-        assert "its own default model" in err
-
-    def test_the_model_gate_reads_the_declaration_not_a_hardwired_rule(self, tmp_path,
-                                                                       monkeypatch):
-        # A missing model is NOT automatically invalid — absence means "this persona
-        # needs none" unless the HARNESS vetoes via persona.model_required. Codex
-        # vetoes, so the gate above fires; drop the veto and the SAME input must
-        # pass with no provider model. Pins that this path reads the descriptor, as
-        # the ENV path does, rather than hardwiring the rule. (Mutation: restore
-        # the hardwired ``if not model`` and this goes RED.)
-        import dataclasses
-        import kanibako.commands.start as start_mod
-        from kanibako.commands.start import _persona_wiring, _preflight_persona_load
-        from kanibako.settings.kb_store import __MISSING__
-
-        vetoless = dataclasses.replace(
-            _persona_wiring(self._codex()), model_required=False,
-        )
-        assert vetoless.endpoint_delivery == "config_file"
-        monkeypatch.setattr(start_mod, "_persona_wiring", lambda target: vetoless)
-
-        key = tmp_path / "navkey"
-        key.write_text("nv-secret\n")
-        cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
-        endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
-            target=self._codex(), keyspace_model=__MISSING__,
-        )
-        assert err is None
-        assert endpoint == "https://api.ai.example/v1"
-        assert provider is not None and provider.model is None
-
-    def test_codex_declares_the_model_veto(self):
-        # The declaration the gate above reads. Codex vetoes; without this the
-        # gate would let a model-less persona through to the provider block.
-        from kanibako.commands.start import _persona_wiring
-        assert _persona_wiring(self._codex()).model_required is True
 
     def test_no_endpoint_config_file_error(self, tmp_path, monkeypatch):
         # No resolved endpoint → hard error pointing at the keyspace route, and —
@@ -8942,8 +8818,8 @@ class TestPreflightGoosePersona:
 
     Goose shares the ENV pre-flight with claude; what differs is DECLARED, not
     branched — the bearer token comes from ``agent.<node>.secret_path.OPENAI_API_KEY``
-    (its own ``token_var``), and unlike claude it declares ``model_required``, so a
-    model is REQUIRED.
+    (its own ``token_var``).  No harness requires a model: an unset one launches
+    with none.
     """
 
     def _goose(self):
@@ -9000,33 +8876,24 @@ class TestPreflightGoosePersona:
         assert "OPENAI_API_KEY" in err and "secret_path" in err
         assert "ANTHROPIC_AUTH_TOKEN" not in err
 
-    def test_endpoint_but_no_model_gate_fires(self, tmp_path):
-        # Endpoint + token but NO model, ABSENT (__MISSING__, or the
-        # stored-blank/whitespace edge case) → the goose model-required gate
-        # errors (parity with codex).
+    def test_an_unset_model_launches_with_no_model(self, tmp_path):
+        # Endpoint + token but NO model → no veto: the persona
+        # loads, kanibako passes no model, and goose uses its own config's model or
+        # refuses to start. (Mutation: restore the goose model gate → RED.)
         from kanibako.commands.start import _preflight_persona_load
-        from kanibako.settings.kb_store import __MISSING__
         key = tmp_path / "k"
         key.write_text("sk-openai\n")
-        for missing in (__MISSING__, "", "   "):
-            cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
-            endpoint, err, provider = _preflight_persona_load(
-                "navigator℘goose", cfg.secret_path, "https://oai.example/v1", MagicMock(),
-                target=self._goose(), keyspace_model=missing,
-            )
-            assert endpoint is None and provider is None
-            assert err is not None and "no model configured" in err
-            assert "system set" in err and ".model=" in err
+        cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
+        endpoint, err, provider = _preflight_persona_load(
+            "navigator℘goose", cfg.secret_path, "https://oai.example/v1", MagicMock(),
+            target=self._goose(),
+        )
+        assert err is None
+        assert endpoint == "https://oai.example/v1"
+        assert provider is None
 
-    def test_present_null_model_suppresses_the_veto_on_env_delivery(self, tmp_path):
-        # PRESENT-null (as the token key, keyspec §2a secret_path.<VAR>;
-        # [Jei:2026-08-17]): ``agent.<node>.model: null`` declares "this
-        # endpoint needs no model" — and unlike codex's config-file
-        # delivery, an ENV harness can simply omit the model. The key's
-        # per-persona fact SUPPRESSES goose's ``model_required`` veto, and the
-        # launch proceeds. (Mutation: drop the PRESENT-null suppression in
-        # ``_preflight_env_persona`` → this starts hitting the "no model
-        # configured" refusal and goes RED.)
+    def test_present_null_model_launches_with_no_model(self, tmp_path):
+        # ``agent.<node>.model: null`` means no model; the launch proceeds.
         from kanibako.commands.start import _preflight_persona_load
         key = tmp_path / "k"
         key.write_text("sk-openai\n")
@@ -9044,7 +8911,6 @@ class TestPreflightGoosePersona:
         w = _persona_wiring(self._goose())
         assert w.endpoint_delivery == "env"
         assert w.token_var == "OPENAI_API_KEY"
-        assert w.model_required is True
         assert w.provider_pin == (("provider", "openai"),)
 
 
@@ -10841,21 +10707,18 @@ class TestPersonaLiveTierWiring:
 
     # --- the model THREE-STATE reaches _resolve_box_launch_decisions REAL ----
 
-    def test_a_real_present_null_model_file_resolves_to_none_not_missing(
+    def test_a_real_present_null_model_file_resolves_to_none(
         self, std, config_file, tmp_home,
     ):
         """An agent FILE ``model: null`` reaches ``_resolve_box_launch_decisions``
-        as PRESENT-null (``None``), not the ABSENT ``__MISSING__`` a truly unset
-        file would produce — through the REAL cascade, no mocked snapshot.
-        (Mutation: route ``model`` back through ``effective_behavior`` instead of
-        ``_persona_model_state`` → this collapses to ``__MISSING__`` and goes RED.)
+        as ``None`` (no model), and it shadows the store's model — through the
+        REAL cascade, no mocked snapshot.
         """
         from kanibako.commands.start import (
             _persona_values_for,
             _resolve_box_launch_decisions,
         )
         from kanibako.settings.agent_config import agent_settings_path
-        from kanibako.settings.kb_store import __MISSING__
 
         self._store(tmp_home)
         target = self._target()
@@ -10875,20 +10738,19 @@ class TestPersonaLiveTierWiring:
         )
         assert endpoint == self._ENDPOINT
         assert model is None
-        assert model is not __MISSING__
 
-    def test_a_real_unset_model_resolves_to_missing_not_none(
+    def test_a_real_unset_model_resolves_to_none(
         self, std, config_file, tmp_home,
     ):
-        """The control: no ``model`` key ANYWHERE (not the file, not the store)
-        → the genuinely-ABSENT ``__MISSING__``, distinct from the present-null
-        case above.
+        """No ``model`` key ANYWHERE (not the file, not the store) → ``None``, the
+        same no-model reading as the explicit ``null`` above: no gate needs the
+        two told apart, so the persona launches with no model.
+        (Mutation: hand the raw ``__MISSING__`` pick back to the pre-flight → RED.)
         """
         from kanibako.commands.start import (
             _persona_values_for,
             _resolve_box_launch_decisions,
         )
-        from kanibako.settings.kb_store import __MISSING__
 
         self._store(tmp_home, model=None)  # store names no model either.
         target = self._target()
@@ -10904,7 +10766,38 @@ class TestPersonaLiveTierWiring:
             persona_values=_persona_values_for(self._NODE, target),
         )
         assert endpoint == self._ENDPOINT
-        assert model is __MISSING__
+        assert model is None
+
+    def test_a_real_empty_model_file_resolves_to_none(
+        self, std, config_file, tmp_home,
+    ):
+        """An agent FILE ``model: ""`` (or a blank) reads as no model, ``None``: the
+        truthy rule, until the empty model gets its own meaning.
+        """
+        from kanibako.commands.start import (
+            _persona_values_for,
+            _resolve_box_launch_decisions,
+        )
+        from kanibako.settings.agent_config import agent_settings_path
+
+        self._store(tmp_home)
+        target = self._target()
+        path = agent_settings_path(std.agents, self._NODE)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for blank in ('""', '"   "'):
+            path.write_text(f'self:\n  model: {blank}\n')
+            _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
+                std=std,
+                proj=self._proj(std),
+                target=target,
+                agent_name=self._NODE,
+                system_settings_path=None,
+                agent_cfg_path=path,
+                selection_level=None,
+                persona_values=_persona_values_for(self._NODE, target),
+            )
+            assert endpoint == self._ENDPOINT
+            assert model is None
 
     def test_the_stores_own_model_still_resolves_normally(
         self, std, config_file, tmp_home,
@@ -11731,8 +11624,8 @@ class TestPersonaPreflightBundle:
         """FINDING 9: the create side's provenance line was pinned and this one was not.
 
         🛑 It must name EVERY slot the readers consult, not just the per-persona one.
-        ``settings_launch.effective_behavior`` (endpoint) and
-        ``_persona_model_state`` (model) BOTH fall back to ``agent.default``, so a
+        ``settings_launch.effective_behavior`` reads the endpoint and the model, and
+        it falls back to ``agent.default``, so a
         user with only ``agent.default.model`` set was being sent to a key that is in
         none of their files.  And the persona-grata store is spliced onto this same
         ``agent.<node>`` subtree as a cascade rung of its own, so the named keys can
@@ -11907,8 +11800,8 @@ class TestPersonaPreflightBundle:
     ):
         """⚑ The regression the "no model = never probe" shortcut would create.
 
-        A persona naming no model is VALID (claude declares
-        ``model_required: false``), and its endpoint may need no model — so it is
+        A persona naming no model is VALID (no harness declares a model
+        required), and its endpoint may need no model — so it is
         probed with the field omitted.  If it were skipped instead, a DEAD token
         would sail past this gate and 401 inside the box.
         """

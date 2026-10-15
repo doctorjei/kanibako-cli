@@ -126,18 +126,6 @@ descriptor:
     # Codex removed the "chat" wire (openai/codex#7782); "responses" is the only
     # value current Codex accepts.  NaviGator serves both wires.
     wire_api: responses
-    # model_required: a missing model is NOT automatically invalid — some endpoints
-    # need no model spec — so the RULE is that absence in the persona store means
-    # "this persona does not need one", and THIS declaration is the per-harness veto.
-    # Codex vetoes, because a config-file harness cannot express "no model": codex
-    # types `model` as Option<String> and resolves it with `model.or(cfg.model)` and
-    # NO unwrap_or (codex-rs/core/src/config/mod.rs:621,3832), so an omitted key does
-    # not send a model-less request — selection falls through to the model catalog's
-    # RECOMMENDED default, which MOVES over time ("If you don't specify a model, [it]
-    # uses a recommended model").  Against a third-party provider that id typically
-    # 401/404s inside the box at request time (cf. openai/codex#11592).  Refusing at
-    # the pre-flight with an actionable message is the cheaper failure.
-    model_required: true
 
   # filtered=False (wholesale copy) is an E2E gate (Phase 10): flip to
   # filtered=True + add a transform_cred allowlist ONLY if E2E proves auth.json
@@ -202,9 +190,9 @@ behavior:
   # built-in default: a box with no model set anywhere launches with no `--model`.
   # A user's `agent.default.model` reaches codex; `agent.codex.model` at any
   # cascade scope (or `-M`) beats it.  The same holds for `endpoint`.
-  # ⚑ This is the BARE-BOX floor and it is NOT the persona gate: an unset model on
-  # a codex PERSONA is vetoed by `persona.model_required` above; an explicit
-  # `null` passes and launches with no model.
+  # ⚑ A codex PERSONA follows the same rule: an unset model or an explicit `null`
+  # launches with no model (no root `model` in config.toml), and codex uses its
+  # own default.
   - key: model
     description: "Model to use (unset = codex's own built-in default)"
   - key: endpoint

@@ -275,15 +275,12 @@ verbatim, so what is configured is already what goes out and there is nothing to
 "tidy" the parameter away — the signature is the contract, and a plugin that silently drops it
 would take the keyword as an error.
 
-⚑ **The codex LAUNCH gate is stricter than this probe; do not conflate them.** The descriptor
-declares `model_required: true` because a config-file harness structurally cannot express "no
-model": codex types `model` as `Option<String>` and resolves it with `model.or(cfg.model)` and NO
-`unwrap_or`, so an omitted key does not send a model-less request — selection falls through to the
-model catalog's RECOMMENDED default, which moves over time. A PRESENT-null model SUPPRESSES the
-veto: an ENV-delivery harness omits the model variable, and codex gets no root `model` in
-`config.toml` and no `--model`, so it uses that default by the user's choice. `verify_persona` is looser
-than the gate because it is also called straight off the store on the CREATE path, where no model
-may have been resolved at all.
+⚑ **No model is not refused.** A persona with no model (unset or `null`) launches with no root
+`model` in `config.toml` and no `--model`. Codex types `model` as `Option<String>` and resolves it
+with `model.or(cfg.model)` and NO `unwrap_or`, so an omitted key does not send a model-less request:
+selection falls through to the model catalog's RECOMMENDED default, which moves over time and which a
+third-party provider may not serve; the server then reports it. `verify_persona` sends no model
+in that case, as it does on the CREATE path, where no model may have been resolved at all.
 
 ## Declared settings
 

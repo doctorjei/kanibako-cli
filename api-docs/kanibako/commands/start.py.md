@@ -21,7 +21,6 @@ _TRANSFORM_NULL = _NullRefused('transform', 'a transform such as tweakcc, or "" 
 _LABEL_NULL = _NullRefused('label', 'the text to show', '')
 _BOOTSTRAP_MISSING = object()
 _PERSONA_KEY_CURE = 'Set the key for this persona, then retry.'
-_PERSONA_MODEL_CURE = 'Set the model for this persona, then retry.'
 _ASSEMBLY_BINDINGS: 'tuple[str, ...]' = ('meta', 'assembly', 'bindings')
 _ASSEMBLY_SEEDED: 'tuple[str, ...]' = ('meta', 'assembly', 'seeded')
 _ASSEMBLY_SYNCED: 'tuple[str, ...]' = ('meta', 'assembly', 'synced')
@@ -138,19 +137,17 @@ def _persona_probe_error(target, endpoint: str, token_ptr: 'str | None', model: 
 def _verify_takes_token(verify) -> bool
 def _resolve_codex_persona_env_key(secret_paths, wiring) -> 'str | None'
 def _resolve_codex_persona_provider(agent_id: str, endpoint: str, env_key: str, model: str | None, wiring) -> 'CodexModelProvider'
-def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: object=__MISSING__, bundle=None, probe: bool=False, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _preflight_persona_load(agent_id: str, secret_paths, keyspace_endpoint: str | None, logger, *, target=None, keyspace_model: str | None=None, bundle=None, probe: bool=False, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _persona_cli_token(cli_env: 'Mapping[str, str] | None', var: 'str | None') -> 'str | None'
-def _model_tristate(keyspace_model: object) -> object
-def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _preflight_env_persona(secret_paths, endpoint: str, keyspace_model: str | None, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _persona_endpoint_refusal(display: str, endpoint: str, missing: str, detail: str, cure: str) -> str
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str
-def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
+def _preflight_config_file_persona(agent_id: str, secret_paths, endpoint: str, keyspace_model: str | None, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str, *, cli_env: 'Mapping[str, str] | None'=None) -> 'str | None'
 def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
-def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str | None] | None'=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object, dict[str, object]]'
+def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str | None] | None'=None, cli_env: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, str | None, dict[str, object]]'
 def _persona_secret_table(snapshot, active_agent: str, box_ctx, *, cli_env: 'Mapping[str, str] | None'=None) -> PersonaSecretTable
-def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
 def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig
 def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, persona_values: 'Mapping[str, str | None] | None'=None, socket_path=None, log_path=None, budget_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)

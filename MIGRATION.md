@@ -1372,21 +1372,18 @@ model at all and the harness picks its own. A hand-typed pin is indistinguishabl
 if you meant it, leave it.
 
 ⚑ **A behavior change beyond the file, codex personas only.** The launch resolve deliberately drops the
-harness `model` default so that an unset persona model surfaces an actionable error rather than
-shipping an own-endpoint default into a third-party provider block. On a first launch there is no
-settings file, so the seed had been re-supplying exactly the value that exclusion dropped. A fresh
-codex-persona box whose store config names no model now refuses at the pre-flight instead of
-silently running against `gpt-5.5`. Set `agent.<node>.model`, or name a model in the store config.
+harness `model` default, so that an own-endpoint default never reaches a third-party provider block.
+On a first launch there is no settings file, so the seed had been re-supplying exactly the value that
+exclusion dropped. A fresh codex-persona box whose store config names no model now launches with no
+model instead of silently running against `gpt-5.5`: there is no `--model` and no root `model` in
+`config.toml`, and codex uses its own default, which a third-party provider may not serve; the
+server then reports it. To pin one, set `agent.<node>.model`, or name a model in the store config.
+`agent.<node>.model: null` also launches with no model; it used to refuse as a conflict.
 
 ⚑ **A missing model is not, by itself, invalid.** Some endpoints do not require one — a provider may
-serve a single model or apply its own default. Whether a model is required is declared per harness;
-codex declares that it is, because an omitted key there means "use codex's own moving
-recommendation", not "no model".
-
-⚑ **`agent.<node>.model: null` now launches a codex persona.** It used to refuse as a conflict. It
-now launches with no `--model` and no root `model` in `config.toml`, so codex uses its own default.
-The refusal for an unset codex persona model now also names this cure:
-`kanibako system set --null agent.<node>.model`.
+serve a single model or apply its own default. No harness declares a model required any more:
+kanibako passes none, and the harness and its endpoint decide. An unset goose persona model used to
+refuse at the pre-flight; it now launches, and goose uses its own config's model or refuses to start.
 
 ---
 
@@ -8076,6 +8073,10 @@ updating, and one of them fails at IMPORT time:**
   *Housekeeping: renames you almost certainly don't carry*, and its sibling entry in the CHANGELOG).
   A `persona:` block that still declares it keeps loading — the key is accepted and ignored,
   deliberately, so a version-skewed wheel does not break.
+- **`PersonaSpec.model_required` is removed**, and `persona.model_required` is no longer read: no
+  harness can require a model, and a persona with none launches with none. A descriptor that still
+  declares it keeps loading, because the persona block is read field by field and refuses no unknown
+  field. A `PersonaSpec` built in Python must drop the argument, or it raises `TypeError`.
 
 ⚑ **`AgentConfig` HAS NO `name` FIELD — `generate_agent_config()` must stop passing one, and a
 plugin that still does raises `TypeError` the first time kanibako generates your agent's file.**

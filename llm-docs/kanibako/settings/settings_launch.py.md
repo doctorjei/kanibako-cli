@@ -1476,9 +1476,8 @@ active_agent, key)`, which returns `(slot, value)` RAW: the slot that held the k
 apart from PRESENT-`None`. It has three readers, and none of them re-spells the pick. `effective_behavior`
 reads the value and collapses a present-`None`. `behavior_slot` reads the slot: a value alone cannot
 tell `agent.default.bootstrap: none` from `agent.claude.bootstrap: none`, and a refusal that names
-the setting to change needs exactly that (`start._bootstrap_choice`). `start._persona_model_state`
-reads the `model` value raw, because the persona model gate must keep ABSENT and PRESENT-`None`
-apart — the distinction `effective_behavior`'s collapse erases. The subtree counterpart is
+the setting to change needs exactly that (`start._bootstrap_choice`). `null_behavior_setter` reads
+where a present-`None` landed, which `effective_behavior`'s collapse erases. The subtree counterpart is
 `_agent_pick_node`, which deep-overlays the default slot, then the active slot, and materializes
 `meta.box.agent.*`. For a pseudo-agent there is no default slot (`_fallback_node`), so the slot is
 `"active"` or `None`.

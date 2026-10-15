@@ -452,12 +452,12 @@ class TestDescriptor:
 
     def test_persona_spec_env_delivery_openai(self):
         # INC G1: goose persona = ENV delivery, OPENAI_API_KEY token var,
-        # GOOSE_PROVIDER auto-pin (via provider setting), model gate.
+        # GOOSE_PROVIDER auto-pin (via provider setting); no model gate.
         p = GooseTarget().descriptor.persona
         assert p is not None
         assert p.endpoint_delivery == "env"
         assert p.token_var == "OPENAI_API_KEY"
-        assert p.model_required is True
+        assert not hasattr(p, "model_required")
         assert p.provider_pin == (("provider", "openai"),)
 
     def test_declared_envs_are_the_plugin_required_variables(self):

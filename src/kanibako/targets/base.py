@@ -217,9 +217,6 @@ class PersonaSpec:
     endpoint_delivery: str = "env"   # "env" | "config_file"; picks the preflight gate in start.py
     wire_api: str = "responses"      # config-file wire; codex dropped "chat" (openai/codex#7782)
     provider_pin: tuple[tuple[str, str], ...] = ()  # setting pins when endpoint active
-    # ⚑ A HARNESS-CAPABILITY veto: a present-null model SUPPRESSES it under `"env"` delivery;
-    # a config-file harness conflict-refuses instead (llm-doc).
-    model_required: bool = False     # harness VETO: error if endpoint set but no model
 
 
 #: Cap on the provider's own words as echoed back to a user, in CHARACTERS.

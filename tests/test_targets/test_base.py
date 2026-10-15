@@ -459,18 +459,14 @@ class TestPluginDescriptorDataclasses:
         assert cf.filtered is False
 
     def test_persona_spec_defaults(self):
-        """A DECLARED-NOTHING persona spec vetoes nothing and pins nothing.
-
-        ⚑ ``model_required`` False is the load-bearing one: a missing model is NOT
-        automatically invalid, so absence means "this persona needs none" unless the
-        HARNESS declares the veto.  (Mutation: default it to True → RED.)
-        """
+        """A DECLARED-NOTHING persona spec pins nothing, and no harness can veto a
+        missing model: the field is retired."""
         p = PersonaSpec()
         assert p.token_var == ""
         assert p.endpoint_delivery == "env"
         assert p.wire_api == "responses"
         assert p.provider_pin == ()
-        assert p.model_required is False
+        assert not hasattr(p, "model_required")
 
     def test_persona_spec_has_no_host_dir_adopt_field(self):
         """B3 is retired: the field that gated it does not exist (D3).

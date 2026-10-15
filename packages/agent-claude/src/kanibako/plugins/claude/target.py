@@ -398,7 +398,7 @@ class ClaudeTarget(Target):
         working box).
 
         ⚑ **A persona that names no *model* is still PROBED, with the ``model``
-        key OMITTED from the body** — claude declares ``model_required: false``
+        key OMITTED from the body** — no model is required of a persona,
         and a third-party ``ANTHROPIC_BASE_URL`` endpoint may serve exactly one
         model or apply its own.  Declining to probe would let a DEAD token reach
         the box, which is the one thing this gate is for.  A "model required"

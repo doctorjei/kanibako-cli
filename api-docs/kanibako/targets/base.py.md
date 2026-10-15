@@ -144,7 +144,6 @@ class PersonaSpec:
     endpoint_delivery: str = 'env'
     wire_api: str = 'responses'
     provider_pin: tuple[tuple[str, str], ...] = ()
-    model_required: bool = False
 
 class ProbeResponse(NamedTuple):
     status: int | None

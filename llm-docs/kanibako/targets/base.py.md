@@ -253,7 +253,6 @@ class PersonaSpec:
     endpoint_delivery: str = "env"          # "env" | "config_file"
     wire_api: str = "responses"
     provider_pin: tuple[tuple[str, str], ...] = ()
-    model_required: bool = False
 ```
 How a persona's alternate endpoint and bearer token are delivered for this harness.
 
@@ -284,24 +283,19 @@ here, and the persona preflight in `start.py` consults it.
   specific provider cannot be misconfigured. Goose pins `("provider", "openai")`, and the
   descriptor's `provider`→`GOOSE_PROVIDER` `SettingArg` then emits it in the box. Empty
   (claude/codex) = no pin, byte-identical; a bare box with no active endpoint is never touched.
-* *model_required* — whether a persona with a resolved endpoint but NO cascade-resolved model is a
-  hard error. A missing model is not automatically invalid, since some endpoints need no model
-  spec, so absence means "this persona needs none" unless the harness VETOES here. Claude keeps
-  `False` (its model rides its own channels); goose and codex set `True` — a third-party
-  OpenAI-compatible endpoint has no meaningful default. An explicit `null` model passes the veto.
 
-### ⚑ `model_required` beside a three-state `model`
+### ⚑ No field requires a model
 
-`agent.<node>.model` is itself three-state, so a persona-level explicit `null` lets a user declare
-"THIS endpoint needs no model" directly on the key, distinct from simply never configuring one.
-
-`model_required` vetoes only an UNSET model. A present-null model passes it for every harness and
-means no model:
+A persona with no model (unset or `null`) is not refused, for any harness: kanibako passes none,
+and the harness and its endpoint decide.
 
 * An **ENV-delivery** harness (claude, goose) omits the model.
 * A **CONFIG-FILE** harness (codex) writes its provider block with no root `model` in
   `config.toml` and passes no `--model` (`start.py`'s `_preflight_config_file_persona`), so codex
   uses its own default.
+
+The retired `model_required` field is gone; a `persona:` block that still declares it keeps loading,
+because the block is read field by field (`settings/agent_defaults.py`'s `_build_persona`).
 
 ### No `PersonaSpec`, no persona checks
 

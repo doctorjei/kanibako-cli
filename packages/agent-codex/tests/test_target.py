@@ -503,13 +503,9 @@ class TestSettingDescriptors:
         assert spec.endpoint_delivery == "config_file"
         assert spec.token_var == ""
         assert spec.wire_api == "responses"
-        # A missing model is not automatically invalid — absence in the persona
-        # store means "this persona needs none" — but codex VETOES via this
-        # declaration: its config-file delivery cannot express "no model" (an
-        # omitted key falls through to codex's own MOVING recommended default,
-        # which a third-party provider will not serve).  The pre-flight gate
-        # reads THIS, not a hardwired rule.
-        assert spec.model_required is True
+        # No model veto: an unset model launches with none, and codex uses its own
+        # default.
+        assert not hasattr(spec, "model_required")
 
 
 class TestDefaultShares:
