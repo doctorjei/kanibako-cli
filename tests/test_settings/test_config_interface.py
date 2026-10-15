@@ -7043,6 +7043,77 @@ class TestAgentDefaultTierScalarCategories:
         assert msg.startswith("Error:") and "reserved" in msg, msg
         assert not ssp.exists()
 
+    _SIBLINGS = (
+        "system.env.run_args", "agent.default.env.run_args", "agent.default.env.PLAIN",
+    )
+
+    def _store_siblings(self, ssp, value):
+        """One VALUE stored at all three ``_SIBLINGS`` in the system settings file."""
+        dump_doc(ssp, {
+            "system": {"env": {"run_args": value}},
+            "agent": {"default": {"env": {"run_args": value, "PLAIN": value}}},
+        })
+
+    def test_a_var_named_run_args_reads_like_its_siblings(self, tmp_path):
+        """A VAR the user happened to name ``run_args`` is not the ``run_args`` LEAF.
+
+        The tier's families reach the routed read tail, and ``_argv_aware`` there keys a
+        shape rule on the leaf name — its own docstring forbids it for the user-named
+        families. Routed through it, a stored list read back as ``--x --y`` at
+        ``agent.default.env.run_args`` while its ``system.env.`` sibling and a VAR with any
+        other name refused it (spec §2a: the family is SCALAR). Each sibling refuses with the
+        same sentence, naming its own key; a scalar reads back the same at all three.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
+        cf, ssp = self._files(tmp_path)
+        agents = tmp_path / "agents"
+        self._store_siblings(ssp, ["--x", "--y"])
+        refusals = {}
+        for key in self._SIBLINGS:
+            with pytest.raises(SettingsError) as e:
+                self._get(key, cf, ssp, agents)
+            assert str(e.value).startswith(f"{key} holds a list;"), str(e.value)
+            refusals[key] = str(e.value).removeprefix(key)
+        assert len(set(refusals.values())) == 1, refusals
+
+        self._store_siblings(ssp, "--x --y")
+        assert {k: self._get(k, cf, ssp, agents) for k in self._SIBLINGS} == {
+            k: "--x --y" for k in self._SIBLINGS
+        }
+
+    def test_a_bare_relative_secret_path_still_refuses(self, tmp_path):
+        """A route is not a hole: ``[R147]``'s bare-relative guard (spec §2a) fires here too."""
+        cf, ssp = self._files(tmp_path)
+        key = "agent.default.secret_path.TOK"
+        msg = set_config_value(
+            key, "rel/tok", config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+        )
+        assert msg.startswith(f"Error: {key} is set to 'rel/tok'"), msg
+        assert "BARE RELATIVE path" in msg, msg
+        assert not ssp.exists() or load_doc(ssp) == {}, load_doc(ssp)
+
+    @pytest.mark.parametrize("scope", [ConfigLevel.workset, ConfigLevel.box])
+    @pytest.mark.parametrize(
+        "key", ["agent.default.env.FOO", "agent.default.secret_path.TOK"],
+    )
+    def test_an_upward_write_still_refuses(self, tmp_path, scope, key):
+        """A route is not a hole: spec §0's scope-direction guard — the agent scope
+        contains workset and box, so neither may write the any-agent tier."""
+        cf, ssp = self._files(tmp_path)
+        scope_file = tmp_path / f"{scope.name}.yaml"
+        msg = set_config_value(
+            key, "/v", config_path=scope_file, system_settings_path=ssp,
+            command_scope=scope, agents_root=tmp_path / "agents",
+        )
+        assert msg.startswith(
+            f"Error: '{key}' (scope 'agent') cannot be set from the {scope.name} scope.",
+        ), msg
+        assert "writing upward is refused" in msg, msg
+        assert not scope_file.exists()
+        assert not ssp.exists()
+
     @pytest.mark.parametrize("node_key", [
         "agent.claude.env.FOO", "agent.claude.secret_path.TOK",
     ])
