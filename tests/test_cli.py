@@ -1890,7 +1890,7 @@ class TestTemplateStalenessRetired:
         ``config show --effective`` check would NOT substitute: it shares code
         with the display path B9 changed the same day.
 
-        ⚑ THE SHIPPED VALUE IS ``$COLORTERM`` NOW, not the literal ``truecolor``
+        ⚑ THE SHIPPED VALUE IS ``{$COLORTERM}`` NOW, not the literal ``truecolor``
         this used to assert (2026-09-20): kanibako was asserting a 24-bit-color
         capability on the host's behalf. The route is unchanged — what moved is
         what comes out of it — so the host value is PLANTED here rather than
@@ -2085,10 +2085,10 @@ class TestTemplateStalenessRetired:
     ):
         """⚑ THE DELIVERY PROOF for ``agent.default.env.TERM`` [Jei:2026-09-19].
 
-        The value shipped is the EXPRESSION ``$TERM``, so this pins two things one
+        The value shipped is the EXPRESSION ``{$TERM}``, so this pins two things one
         assertion apart: that the floor reaches the container env at all, and that the
-        expression was RESOLVED on the way — a box handed the literal four characters
-        ``$TERM`` would be a working delivery of a broken value.
+        expression was RESOLVED on the way — a box handed the unresolved literal
+        ``{$TERM}`` would be a working delivery of a broken value.
 
         ⚑ TWO AGENTS, and the second is the point of declaring at the DEFAULT tier: the
         keyspec's row says every agent inherits without restating, and a floor that

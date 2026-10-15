@@ -691,8 +691,8 @@ class TestCoreStaticEnvDefaults:
     that table becomes the floor.  What D1-3 adds is a way to declare a variable in
     the FILE, without writing code, whenever the file can hold its whole value — a
     literal, or an EXPRESSION the shared engine resolves.  BOTH shipped entries are
-    expressions today (``agent.default.env.TERM``: ``$TERM``; ``box.env.COLORTERM``:
-    ``$COLORTERM``, which was the literal ``truecolor`` until 2026-09-20).
+    expressions today (``agent.default.env.TERM``: ``{$TERM}``; ``box.env.COLORTERM``:
+    ``{$COLORTERM}``, which was the literal ``truecolor`` until 2026-09-20).
     What still belongs in the derived table is a value only a LAUNCH can compute.
     The route cases below drive a
     PATCHED loader document so they pin the MECHANISM and not one variable; the

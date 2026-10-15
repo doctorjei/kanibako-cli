@@ -558,7 +558,7 @@ class TestWorksetChannelDefaults:
 BIND_EXEMPTIONS: dict[str, str] = {
     "/var/lib/shared-images": (
         "NOT EXPRESSIBLE as a kinemata view: the manifest default is the conditional "
-        "`%if @box.share_images: (@box.images_store) else None%`, while the code's "
+        "`%if {box.share_images}: ({box.images_store}) else None%`, while the code's "
         "`images` row is unconditional and its GATE is the launch caller's "
         "(`start._assemble_image_sharing_mounts` reads box.share_images). A parity "
         "compares a cell with a value an oracle prints and has no conditional form, so "

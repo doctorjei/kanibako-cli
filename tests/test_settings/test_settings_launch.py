@@ -2664,7 +2664,7 @@ def test_meta_runtime_floor_requires_literal_for_non_primary():
 @pytest.mark.parametrize("mode", ["primary", "named", "standalone"])
 def test_meta_runtime_floor_carries_the_host_files(mode, tmp_home):
     """Spec §1A: every mode's floor names the three HOST files, at the paths the reads open
-    (``$XDG_CONFIG_HOME`` honored for the user file)."""
+    (host ``XDG_CONFIG_HOME`` honored for the user file)."""
     from tests.support.filenames import CONFIG_FILENAME, SITE_CONFIG_FILENAME
 
     site = "/etc/kanibako"

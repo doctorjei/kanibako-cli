@@ -578,11 +578,12 @@ class TestABrokenTargetIsJudgedWithoutTheTarget:
     def test_a_caller_that_could_not_name_its_target_gets_the_same_rule(self, tmp_path):
         files = _files(tmp_path)
         message = set_config_value(
-            "workset.channelroot", f"@meta.workset.path/{_BARE}",
+            "workset.channelroot", f"{{meta.workset.path}}/{_BARE}",
             config_path=files["workset"], cascade_system_path=files["system"],
             command_scope=ConfigLevel.workset, target_error="no std here",
         )
         assert message.startswith("Error:"), message
+        assert "dangling reference '{meta.workset.path}'" in message, message
         assert message.endswith("did not resolve: no std here)")
 
 

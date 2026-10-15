@@ -1152,21 +1152,19 @@ class TestCoreDefaultCategories:
         ctx = make_ctx()
         # workspace routes through {meta.box.workspace}; vault through
         # {workset.vault_*}/{meta.box.name} (PRIMARY).  Provide the materialized anchors
-        # (as the launch floor does) so the refs resolve.  Each anchor carries its
-        # @-REF FORMULA, not a resolved literal, so this stays sensitive to a wrong
-        # formula: the oracle resolves {key}-refs TRANSITIVELY, exactly as the launch
-        # expand does.  The keys must be LISTED, though — this dict IS the whole
-        # keyspace for the oracle, so an omitted key is simply an unknown
-        # {key}-reference.
-        # ⚑ ``meta.box.home`` is still declared here and is deliberately NOT walked by
-        # any entry: since 6-H nothing in the core arm points at it, and its presence
-        # is what makes that observable rather than merely untested.
+        # (as the launch floor does) so the refs resolve.  The keys must be LISTED —
+        # this dict IS the whole keyspace for the oracle, so an omitted key is simply
+        # an unknown {key}-reference.
+        # ⚑ ``meta.box.path`` and ``meta.box.home`` carry their {key}-REF FORMULAS,
+        # which the oracle would resolve TRANSITIVELY as the launch expand does, but
+        # no entry walks either: since 6-H nothing in the core arm points at them.
+        # A wrong formula in either would NOT show up here.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
                 "meta.box.name": "mybox",
-                "meta.box.path": "@workset.boxes/@meta.box.name",
-                "meta.box.home": "@meta.box.path/home",
+                "meta.box.path": "{workset.boxes}/{meta.box.name}",
+                "meta.box.home": "{meta.box.path}/home",
                 "workset.boxes": "/data/pw/boxes",
                 "workset.vault_ro": "/data/pw/vault/ro",
                 "workset.vault_rw": "/data/pw/vault/rw",
@@ -1214,15 +1212,15 @@ class TestCoreDefaultCategories:
         )
         ctx = make_ctx()
         # workspace via {meta.box.workspace}; vault via {workset.vault_*}/{meta.box.name}
-        # (PRIMARY).  Each anchor carries its @-REF FORMULA (the oracle resolves
-        # {key}-refs transitively), so a wrong formula would show up here; every key it
-        # walks must be LISTED, since this dict IS the oracle's whole keyspace.
+        # (PRIMARY).  Every key the oracle walks must be LISTED, since this dict IS
+        # its whole keyspace.  ``meta.box.path``/``meta.box.home`` carry {key}-REF
+        # FORMULAS, but no entry walks either, so a wrong formula would not show up.
         levels = [
             LevelView("box", {
                 "meta.box.workspace": str(proj.project_path),
                 "meta.box.name": "mybox",
-                "meta.box.path": "@workset.boxes/@meta.box.name",
-                "meta.box.home": "@meta.box.path/home",
+                "meta.box.path": "{workset.boxes}/{meta.box.name}",
+                "meta.box.home": "{meta.box.path}/home",
                 "workset.boxes": "/data/pw/boxes",
                 "workset.vault_ro": "/data/pw/vault/ro",
                 "workset.vault_rw": "/data/pw/vault/rw",
