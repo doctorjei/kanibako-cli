@@ -931,6 +931,10 @@ _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
 SPEC_SENTINELS = frozenset(spec_notation(value) for value in _SENTINEL_VALUES)
 
 
+#: A Markdown ATX heading line: one to six ``#`` and a space.
+_HEADING_LINE = re.compile(r"#{1,6} ")
+
+
 def spec_fence(section: str, marker: str) -> list[str]:
     """The lines INSIDE one fenced block of *section*, located by a MARKER line.
 
@@ -944,6 +948,10 @@ def spec_fence(section: str, marker: str) -> list[str]:
     ⚑ THE MARKER IS THE BOLD NAME ALONE, matched as the START of the line. §2d's
     pseudo-agent name (`**shell**`) is a RESERVED name the spec is committed to,
     while the gloss beside it is prose, rewordable at any time.
+
+    ⚑ A HEADING MARKER (``#### Default settings``) OWNS ITS SUBSECTION, so prose may
+    stand between it and the fence: the fence is the first one to open before the
+    next heading. A heading reached first fails closed, as a bold marker's prose does.
     """
     keyspec = _keyspec_extract()
     path = keyspec._DEFAULT_SPEC
@@ -961,7 +969,14 @@ def spec_fence(section: str, marker: str) -> list[str]:
             f"expected exactly 1 -- the fence's opening marker moved or was renamed"
         )
     rest = body[marks[0] + 1:]
-    opens = next((n for n, raw in enumerate(rest) if raw.strip()), None)
+    if _HEADING_LINE.match(marker):
+        opens = next(
+            (n for n, raw in enumerate(rest)
+             if raw.startswith("```") or _HEADING_LINE.match(raw)),
+            None,
+        )
+    else:
+        opens = next((n for n, raw in enumerate(rest) if raw.strip()), None)
     if opens is None or not rest[opens].startswith("```"):
         raise SystemExit(f"{path}: the line after {marker!r} does not open a fenced block")
     closes = next(

@@ -63,15 +63,14 @@ TIER = "agent.default."
 #: The §2d subsection whose fenced block IS the Default tier, and the marker that opens
 #: it.  Both are read as HEADINGS/markers, never as line numbers: the spec is edited
 #: constantly and any stored offset would be wrong within the week.
-#: ⚑ THE MARKER IS THE BOLD NAME ALONE, matched as the START of the line: the name is a
-#: RESERVED pseudo-agent name §2d is committed to, while the gloss beside it —
-#: ``**default** (holds default values for agents)`` — is prose, rewordable at any time.
-#: ⚑ THE PREFIX BUYS THE GLOSS ONLY.  The 2026-09-08 outage was a RETITLE of the NAME
-#: (``**Default tier**``): the walk located 0 markers and every case ERRORED — the pin
-#: working, loudly — and a rename still reds here.  Pinning the gloss too, as this
-#: constant briefly did, would have bought a second outage that size for prose churn.
+#: ⚑ THE MARKER IS §2d's ``#### Default settings`` SUBHEADING, matched as the START of
+#: the line.  A heading owns its subsection, so the prose between it and the fence is
+#: read past: the fence is the first to open before the next heading, and a heading
+#: reached first fails closed (``kinemata_views.spec_fence``).
+#: ⚑ A RETITLE STILL REDS.  The walk then locates 0 markers and every case ERRORS — the
+#: pin working, loudly.
 SECTION = "2d"
-MARKER = "**default**"
+MARKER = "#### Default settings"
 
 
 

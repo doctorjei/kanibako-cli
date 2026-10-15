@@ -26,6 +26,7 @@ _RENDERED = {'<W>': '{meta.workset.name}', '<B>': '{meta.box.name}'}
 _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
+_HEADING_LINE = re.compile('#{1,6} ')
 _TREE = Path(__file__).resolve().parents[1]
 _EXAMPLE_NAMES = ('myagent', 'nested', 'ghcr.io%2fdoctorjei%2fkanibako-oci%3alatest.json', 'agents/navigator+claude')
 _UNSTORED_PATHS = {'canon-template-paths': ('archives', 'temp'), 'release-paths': ('dist',), 'lock-paths': ('.kanibako.lock',)}
