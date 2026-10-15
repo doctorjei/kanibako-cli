@@ -292,9 +292,10 @@ AND its store is present, WORKSET wins; else global (if active); else private. I
 * *global_enabled* / *workset_enabled* — the resolved box enables (*global_enabled* equals
   `meta.box.auth.global_active`). Both may be true; the enables are what COMPOSE, the *tier* is the
   precedence winner.
-* *global_sync* — the workset auth dir syncs UP to global (design SYNC): when true and the box syncs
-  the WORKSET tier, the workset store is first refreshed from / written back to global (the uniform
-  primitive at the second level).
+* *global_sync* — `meta.workset.auth.global_active` (capability AND `system.auth.share_allowed` AND
+  `workset.auth.global_sync`): the workset auth dir syncs UP to global (design SYNC). When true and
+  the box syncs the WORKSET tier, the workset store is first refreshed from / written back to global
+  (the uniform primitive at the second level).
 * *workset_source* — the resolved workset per-agent source root (`meta.box.auth.workset_path`), or
   `None` for standalone / when absent. The GLOBAL source is the host home (`host_rel`) and is not
   carried here (implicit).

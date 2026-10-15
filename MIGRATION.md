@@ -7773,14 +7773,24 @@ or the store stops receiving that box's logins. To undo a bad writeback, copy `<
 
 ### A box in a workset that does not sync globally syncs with the global store
 
-**Read this if a workset sets `workset.auth.global_sync: false`.**
+**Read this if a workset sets `workset.auth.global_sync: false`, or if `system.auth.share_allowed`
+is false while a workset allows sharing.**
 
-**What changed.** A box in such a workset that may also sync globally (`system.auth.share_allowed` and
-`box.auth.global_enabled` true, the defaults) now syncs its credentials with the global store, as the
-spec's `meta.box.auth.workset_active` says. Before, it synced with the workset store. A box with
-`box.auth.global_enabled: false` still syncs with the workset store.
+**What changed.** A box in a workset with `global_sync: false` that may also sync globally
+(`system.auth.share_allowed` and `box.auth.global_enabled` true, the defaults) now syncs its
+credentials with the global store (the host home), as the spec's `meta.box.auth.workset_active`
+says. Before, it synced with the workset store. A box with `box.auth.global_enabled: false` still
+syncs with the workset store. Separately, a workset store no longer syncs with the host when
+`system.auth.share_allowed` is false.
 
-**What you must do.** To keep a box on the workset store, set `box.auth.global_enabled: false` for it.
+**What happens to an existing box.** If the host login is newer, the next start replaces the box's
+login with it, with no backup in the box; the box's old login survives only in
+`{workset.auth.path}/<agent>/`, which the box no longer reads, so recover it from there. If the
+box's login is newer, its next stop writes it over the host login; the host's old login is kept as
+`<file>.bak`.
+
+**What you must do.** To keep a box on the workset store, set `box.auth.global_enabled: false` for
+it before you upgrade or start it.
 
 ### The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box
 

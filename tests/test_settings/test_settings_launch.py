@@ -1697,7 +1697,8 @@ def test_auth_tier_follows_the_spec_active_values(
         mode="primary",
     )
     assert a.tier == tier
-    assert a.global_sync is global_sync
+    # AuthSource.global_sync is meta.workset.auth.global_active (system AND sync).
+    assert a.global_sync is (system_allow and global_sync)
     assert (a.workset_source is not None) is (tier == "workset")
     assert a.creds_shared is (tier != "box")
 

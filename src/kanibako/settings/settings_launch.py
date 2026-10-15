@@ -1105,7 +1105,7 @@ def resolve_auth_source(
     # global store does not also sync with the workset store. The global enable IS
     # global_active; the workset enable (the Python AND standing in for the spec's
     # %… && …%) is reported but does not pick the tier.
-    _, global_active, workset_active = _auth_active_values(inputs)
+    workset_global_active, global_active, workset_active = _auth_active_values(inputs)
     workset_enabled = bool(inputs.support and inputs.workset_allow and inputs.workset_knob)
 
     # Precedence workset>global: the workset tier wins when active AND its store
@@ -1127,7 +1127,9 @@ def resolve_auth_source(
         tier=tier,
         global_enabled=global_active,
         workset_enabled=workset_enabled,
-        global_sync=inputs.global_sync,
+        # The spec's meta.workset.auth.global_active, not the raw knob: with system
+        # sharing off (or no capability) the workset dir never syncs with the host.
+        global_sync=workset_global_active,
         workset_source=workset_source,
     )
 
