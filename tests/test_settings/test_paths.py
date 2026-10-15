@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -1432,6 +1433,19 @@ class TestBootstrapShell:
         aliases = self._interactive(shell, image_rc, "xterm-256color")[1:]
         assert "alias ls='ls -F'" in aliases
         assert "alias grep='grep --color=auto'" in aliases
+
+    @pytest.mark.skipif(not shutil.which("busybox"), reason="needs busybox ash, a non-bash sh")
+    def test_bashrc_plain_prompt_under_non_bash_shell(self, tmp_path):
+        # .profile sources .bashrc from an sh login shell too; ash would print bash's prompt escapes.
+        import os
+        import subprocess
+        shell = tmp_path / "shell"
+        shell.mkdir()
+        _bootstrap_shell(shell)
+        out = subprocess.run(["busybox", "ash", "-i", "-c", '. "$HOME/.bashrc"; printf "%s\\n" "$PS1"'],
+                             env={"HOME": str(shell), "PATH": os.environ["PATH"], "TERM": "xterm-256color"},
+                             stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True).stdout
+        assert out.splitlines()[-1] == "(kanibako) \\u@\\h:\\w$ "
 
     def test_bashrc_noninteractive_gets_no_aliases(self, tmp_path):
         import subprocess
