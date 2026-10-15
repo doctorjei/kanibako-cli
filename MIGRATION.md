@@ -7771,6 +7771,17 @@ file a writeback changes, goose's `config.yaml` included, keeps its previous con
 **What to do.** Nothing, unless you linked a credential file inside a box home: make it a regular file,
 or the store stops receiving that box's logins. To undo a bad writeback, copy `<file>.bak` over the file.
 
+### A box in a workset that does not sync globally syncs with the global store
+
+**Read this if a workset sets `workset.auth.global_sync: false`.**
+
+**What changed.** A box in such a workset that may also sync globally (`system.auth.share_allowed` and
+`box.auth.global_enabled` true, the defaults) now syncs its credentials with the global store, as the
+spec's `meta.box.auth.workset_active` says. Before, it synced with the workset store. A box with
+`box.auth.global_enabled: false` still syncs with the workset store.
+
+**What you must do.** To keep a box on the workset store, set `box.auth.global_enabled: false` for it.
+
 ### The tweakcc cache mounts at `~/.kanibako/cache/tweakcc` in the box
 
 **Read this if you use tweakcc and a script in a helper box reads the patched-binary cache, or if you

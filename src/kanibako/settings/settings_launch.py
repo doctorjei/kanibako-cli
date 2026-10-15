@@ -1067,8 +1067,9 @@ def resolve_auth_source(
 
     Computes each tier's EFFECTIVE enable in Python — the spec's ``%support && allow
     && knob%``, since the expand engine does not evaluate ``&&`` (module note) — then
-    selects by precedence workset>global: workset ENABLED with its store present, else
-    global ENABLED, else ``"box"`` (private, no source).
+    selects by precedence workset>global among the ACTIVE tiers
+    (:func:`_auth_active_values`): workset ACTIVE with its store present, else global
+    ACTIVE, else ``"box"`` (private, no source).
 
     ⚑ An absent ``box`` node means the floor was not injected → fail CLOSED (tier
     ``"box"``, no sharing) rather than launder. Each input is a real ``bool`` terminal
@@ -1099,15 +1100,19 @@ def resolve_auth_source(
                 if isinstance(wp, str) and wp:
                     workset_source = wp
 
-    # Effective enables (the Python AND standing in for the spec's %… && …%).
-    global_enabled = bool(inputs.support and inputs.system_allow and inputs.global_knob)
+    # The tier follows the spec's ACTIVE values (keyspec meta.box.auth.*_active), not
+    # the enables: in a workset that does not sync globally, a box syncing with the
+    # global store does not also sync with the workset store. The global enable IS
+    # global_active; the workset enable (the Python AND standing in for the spec's
+    # %… && …%) is reported but does not pick the tier.
+    _, global_active, workset_active = _auth_active_values(inputs)
     workset_enabled = bool(inputs.support and inputs.workset_allow and inputs.workset_knob)
 
-    # Precedence workset>global: the workset tier wins when enabled AND its store
+    # Precedence workset>global: the workset tier wins when active AND its store
     # path is present (a lone box has no workset store → degenerate to global/box).
-    if workset_enabled and workset_source is not None:
+    if workset_active and workset_source is not None:
         tier: AuthTier = "workset"
-    elif global_enabled:
+    elif global_active:
         tier = "global"
     else:
         tier = "box"
@@ -1120,7 +1125,7 @@ def resolve_auth_source(
 
     return AuthSource(
         tier=tier,
-        global_enabled=global_enabled,
+        global_enabled=global_active,
         workset_enabled=workset_enabled,
         global_sync=inputs.global_sync,
         workset_source=workset_source,

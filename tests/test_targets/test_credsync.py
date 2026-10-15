@@ -218,8 +218,9 @@ def _global_src() -> AuthSource:
 
 
 def _workset_src(workset_source: str, *, global_sync: bool = False) -> AuthSource:
+    # A workset tier without global_sync is reachable only with global inactive.
     return AuthSource(
-        tier="workset", global_enabled=True, workset_enabled=True,
+        tier="workset", global_enabled=global_sync, workset_enabled=True,
         global_sync=global_sync, workset_source=workset_source,
     )
 

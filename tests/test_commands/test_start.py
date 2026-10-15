@@ -7134,7 +7134,7 @@ class TestWritebackAllPaths:
         """
         ws_store = tmp_path / "ws_auth" / "claude"
         workset_auth = AuthSource(
-            tier="workset", global_enabled=True, workset_enabled=True,
+            tier="workset", global_enabled=False, workset_enabled=True,
             global_sync=False, workset_source=str(ws_store),
         )
         with start_mocks() as m, patch(

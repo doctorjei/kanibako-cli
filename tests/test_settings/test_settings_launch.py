@@ -1631,6 +1631,77 @@ def test_auth_workset_allow_off_falls_to_global(tmp_path):
     assert a.tier == "global"
 
 
+@pytest.mark.parametrize(
+    ("system_allow", "workset_allow", "global_sync", "global_on", "workset_on", "tier"),
+    [
+        # system.auth.share_allowed, workset.auth.share_allowed,
+        # workset.auth.global_sync, box.auth.global_enabled,
+        # box.auth.workset_enabled → the sync tier the spec selects.
+        (True,  True,  True,  True,  True,  "workset"),
+        (True,  True,  True,  True,  False, "global"),
+        (True,  True,  True,  False, True,  "workset"),
+        (True,  True,  True,  False, False, "box"),
+        (True,  True,  False, True,  True,  "global"),
+        (True,  True,  False, True,  False, "global"),
+        (True,  True,  False, False, True,  "workset"),
+        (True,  True,  False, False, False, "box"),
+        (True,  False, True,  True,  True,  "global"),
+        (True,  False, True,  True,  False, "global"),
+        (True,  False, True,  False, True,  "box"),
+        (True,  False, True,  False, False, "box"),
+        (True,  False, False, True,  True,  "global"),
+        (True,  False, False, True,  False, "global"),
+        (True,  False, False, False, True,  "box"),
+        (True,  False, False, False, False, "box"),
+        (False, True,  True,  True,  True,  "workset"),
+        (False, True,  True,  True,  False, "box"),
+        (False, True,  True,  False, True,  "workset"),
+        (False, True,  True,  False, False, "box"),
+        (False, True,  False, True,  True,  "workset"),
+        (False, True,  False, True,  False, "box"),
+        (False, True,  False, False, True,  "workset"),
+        (False, True,  False, False, False, "box"),
+        (False, False, True,  True,  True,  "box"),
+        (False, False, True,  True,  False, "box"),
+        (False, False, True,  False, True,  "box"),
+        (False, False, True,  False, False, "box"),
+        (False, False, False, True,  True,  "box"),
+        (False, False, False, True,  False, "box"),
+        (False, False, False, False, True,  "box"),
+        (False, False, False, False, False, "box"),
+    ],
+)
+def test_auth_tier_follows_the_spec_active_values(
+    tmp_path, system_allow, workset_allow, global_sync, global_on, workset_on, tier,
+):
+    """The FULL truth table of the sync tier (keyspec ``meta.box.auth.*_active``).
+
+    global is active when the system allows AND the box global knob is on;
+    workset is active when the workset allows AND the box workset knob is on,
+    and then only when the workset syncs globally or the box is NOT globally
+    active. Precedence workset>global picks among the ACTIVE tiers. The row
+    (True, True, False, True, True) is the isolated-workset case (HIS 191-IW):
+    a box allowed to sync globally syncs with global, not the workset store.
+    """
+    a = resolve_auth_source(
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            system_file={"system": {"auth": {"share_allowed": system_allow}}},
+            workset_file={"workset": {"auth": {
+                "share_allowed": workset_allow, "global_sync": global_sync,
+            }}},
+            box_file={"box": {"auth": {
+                "global_enabled": global_on, "workset_enabled": workset_on,
+            }}},
+        ),
+        mode="primary",
+    )
+    assert a.tier == tier
+    assert a.global_sync is global_sync
+    assert (a.workset_source is not None) is (tier == "workset")
+    assert a.creds_shared is (tier != "box")
+
+
 def test_auth_no_box_node_fails_closed():
     """resolve_auth_source fails CLOSED (tier box) when the chain floor was not
     injected — never launders into sharing."""

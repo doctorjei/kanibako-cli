@@ -282,14 +282,16 @@ in-guest mount layout underneath.
 `AuthSource` carries the per-box tier the
 credsync engine syncs against, the two box enables (for diagnostics / display), and the
 workset↔global up-sync flag. The two enables COMPOSE, but the SELECTED source obeys precedence
-workset > global: when the workset tier is enabled AND its store is present, WORKSET wins; else
-global (if enabled); else private.
+workset > global among the ACTIVE tiers (`meta.box.auth.*_active`): when the workset tier is active
+AND its store is present, WORKSET wins; else global (if active); else private. In a workset with
+`global_sync` false, a box active globally is not workset-active, so it syncs with global.
 
 * *tier* — the SELECTED source tier: `"workset"` / `"global"` / `"box"` (`"box"` = private, no
   source — distinct auth). The credsync gate keys off this: `box` drops synced /
   credential-seeded deliveries.
-* *global_enabled* / *workset_enabled* — the resolved box enables. Both may be true; the enables are
-  what COMPOSE, the *tier* is the precedence winner.
+* *global_enabled* / *workset_enabled* — the resolved box enables (*global_enabled* equals
+  `meta.box.auth.global_active`). Both may be true; the enables are what COMPOSE, the *tier* is the
+  precedence winner.
 * *global_sync* — the workset auth dir syncs UP to global (design SYNC): when true and the box syncs
   the WORKSET tier, the workset store is first refreshed from / written back to global (the uniform
   primitive at the second level).

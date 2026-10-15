@@ -1378,7 +1378,7 @@ class TestCredsWatcherSpawnAndFlagHygiene:
         from kanibako.settings.settings_launch import AuthSource
 
         auth = AuthSource(
-            tier="workset", global_enabled=True, workset_enabled=True,
+            tier="workset", global_enabled=global_sync, workset_enabled=True,
             global_sync=global_sync, workset_source="ws",
         )
         workset_root = tmp_path / "workset-store"
