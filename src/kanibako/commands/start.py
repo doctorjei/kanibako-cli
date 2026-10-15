@@ -6495,7 +6495,7 @@ def _persona_bundle_for(agent_id: str, target) -> "PersonaBundle | None":
         return None
 
 
-def _persona_values_for(agent_id: str, target) -> "dict[str, str] | None":
+def _persona_values_for(agent_id: str, target) -> "dict[str, str | None] | None":
     """:func:`_persona_bundle_for` rendered as ``build_launch_snapshot`` values.
 
     The UN-DISCRIMINATED mapping
@@ -6511,7 +6511,8 @@ def _persona_values_for(agent_id: str, target) -> "dict[str, str] | None":
     bundle = _persona_bundle_for(agent_id, target)
     if bundle is None:
         return None
-    return bundle.to_persona_values() or None
+    values: "dict[str, str | None]" = dict(bundle.to_persona_values())
+    return values or None
 
 
 def _warn_persona_store_diagnostics(agent_id: str, bundle) -> None:
@@ -7508,7 +7509,7 @@ def _resolve_box_launch_decisions(
     system_settings_path,
     agent_cfg_path,
     selection_level: "Mapping[str, object] | None",
-    persona_values: "Mapping[str, str] | None" = None,
+    persona_values: "Mapping[str, str | None] | None" = None,
     cli_env: "Mapping[str, str] | None" = None,
 ) -> "tuple[AuthSource, str | None, object, dict[str, object]]":
     """Resolve the launch's per-box decisions off ONE snapshot.
@@ -7789,7 +7790,7 @@ def _resolve_launch_snapshot(
     desc,
     install,
     target=None,
-    persona_values: "Mapping[str, str] | None" = None,
+    persona_values: "Mapping[str, str | None] | None" = None,
     socket_path=None,
     log_path=None,
     budget_path=None,
@@ -8950,7 +8951,7 @@ def _sync_box_at_create(
     install=None,
     global_config_path,
     agent_config_path,
-    persona_values: "Mapping[str, str] | None" = None,
+    persona_values: "Mapping[str, str | None] | None" = None,
     logger,
     deliver_creds: bool = True,
     selection_level: "Mapping[str, object] | None",

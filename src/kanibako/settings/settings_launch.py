@@ -2342,7 +2342,7 @@ def assemble_cascade(
     floor: dict[str, object],
     files: Sequence[SettingsFile],
     agent_partial: KeyStore | None = None,
-    persona_values: Mapping[str, str] | None = None,
+    persona_values: Mapping[str, str | None] | None = None,
     prefs: "Sequence[PrefRequest] | None" = None,
     valid_agents: "Collection[str] | None" = None,
     cli_level: Mapping[str, object] | None = None,
@@ -2455,7 +2455,7 @@ def build_launch_snapshot(
     agent_behavior_floor: Mapping[str, object] | None = None,
     default_categories: Mapping[str, object] | None = None,
     agent_partial: KeyStore | None = None,
-    persona_values: Mapping[str, str] | None = None,
+    persona_values: Mapping[str, str | None] | None = None,
     auth_chain: Mapping[str, object] | None = None,
     meta_runtime: Mapping[str, object] | None = None,
     meta_identity: Mapping[str, object] | None = None,
@@ -3284,7 +3284,7 @@ def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
 
 
 def _persona_partial(
-    agent_name: str, persona_values: Mapping[str, str] | None
+    agent_name: str, persona_values: Mapping[str, str | None] | None
 ) -> KeyStore | None:
     """Wrap the PERSONA STORE's live values under the active slot —
     ``{agent: {<agent_name>: {...}}}`` — or ``None`` if there is nothing to add.
@@ -3300,6 +3300,8 @@ def _persona_partial(
     :func:`~kanibako.settings.settings_resolve.literal_expr` — except the endpoint, which
     :func:`~kanibako.settings.settings_resolve.is_verbatim_text` makes text for EVERY
     source, so the expander keeps it as written and an escape here would be delivered.
+    A ``None`` (a store ``null``) enters as a present ``None``: a set value (keyspec §2
+    PERSONA-STORE INPUT) that beats ``agent.default.<key>``, as a settings-file ``null`` does.
 
     ⚑ DELIBERATE DIVERGENCE from the sibling ``dotted_partial`` / ``_insert_dotted``
     route, which this must NOT use: those split on EVERY dot. A ``<VAR>`` here is
@@ -3313,7 +3315,7 @@ def _persona_partial(
     active_node = KeyStore()
     for key, val in persona_values.items():
         category, sep, var = key.partition(".")  # FIRST dot only — see above.
-        if not is_verbatim_text(("agent", agent_name, key)):  # the expander keeps it as text.
+        if val is not None and not is_verbatim_text(("agent", agent_name, key)):
             val = literal_expr(val)  # store values are data, never expressions — see above.
         if not sep:
             active_node[key] = val

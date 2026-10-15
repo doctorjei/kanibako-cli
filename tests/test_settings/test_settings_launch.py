@@ -5434,6 +5434,26 @@ def test_persona_beats_the_agent_default_backstop_at_the_behavior_read(tmp_path,
             == "from-agent-default")
 
 
+@pytest.mark.parametrize("value", [None, ""], ids=["null", "empty"])
+def test_a_persona_null_or_empty_model_is_a_set_value(tmp_path, value):
+    """Keyspec §2 PERSONA-STORE INPUT: a store ``model`` of ``null`` or ``""`` is a
+    SET value — it beats ``agent.default.model`` and loses to the agent file."""
+    from kanibako.settings.settings_launch import behavior_pick
+
+    snap = _persona_snap(
+        tmp_path / "default",
+        persona_values={"model": value},
+        system={"agent": {"default": {"model": "D"}}},
+    )
+    assert behavior_pick(snap, active_agent="claude", key="model") == ("active", value)
+    file_snap = _persona_snap(
+        tmp_path / "file",
+        persona_values={"model": value},
+        agent_file={"self": {"model": "F"}},
+    )
+    assert behavior_pick(file_snap, active_agent="claude", key="model") == ("active", "F")
+
+
 class TestPersonaTierIsInertWhenEmpty:
     """No persona values ⇒ the snapshot is what it was before the tier existed."""
 
