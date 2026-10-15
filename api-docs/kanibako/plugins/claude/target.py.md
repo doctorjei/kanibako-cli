@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/plugins/claude/target.py.md`
 
 ```
 logger = get_logger('targets.claude')
+PERSONA_DEFAULT_MODEL = getattr(_targets_base, 'PERSONA_DEFAULT_MODEL', None)
 _UPDATE_TIMEOUT = 300
 _LAUNCHER = Path.home() / '.local' / 'bin' / 'claude'
 _INSTALL_DIR = Path.home() / '.local' / 'share' / 'claude'

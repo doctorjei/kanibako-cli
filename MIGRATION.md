@@ -527,6 +527,9 @@ inside boxes. In order of likely impact:
     persistent box has helpers, and the helper socket moved into `~/.kanibako/state/hub/`*.
 59. **A `model: ""` in a settings file now passes the empty model; write `null` to pass none** — see
     *An empty `model` now passes the empty model*.
+59. **A persona store config's `"model": null` or `""` now beats `agent.default.model`: `null` passes no
+    model, and `""` passes the empty model** — see *A persona's `null` model means its own default, and
+    `""` means no model*.
 
 ---
 
@@ -8014,6 +8017,23 @@ model, unless the harness plugin declares `empty: omit`. For goose this also mea
 
 **What you must do.** To pass no model, write `null` instead of `""`.
 
+### A persona's `null` model means its own default, and `""` means no model
+
+**Read this if a persona store config writes `"model": null` or `"model": ""` (codex: `model = ""`).**
+
+**What changed.** The store reader used to read both as "names no model", so the persona inherited
+`agent.default.model`. Each is now a set value: it beats `agent.default.model`, and an
+`agent.<agent>.model` in a settings file still overrides it.
+
+| store `model` | before | now |
+|---|---|---|
+| absent | inherits `agent.default.model` | unchanged |
+| `null` (claude; TOML has no null) | inherits `agent.default.model` | the persona's default: kanibako passes no model |
+| `""` | inherits `agent.default.model` | no model: the empty model, unless the harness plugin declares `empty: omit` |
+
+**What you must do.** If such a persona relied on `agent.default.model`, remove the store's `model`
+line or set `agent.<agent>.model`.
+
 ---
 
 ## 3. For plugin authors
@@ -8095,6 +8115,11 @@ updating, and one of them fails at IMPORT time:**
   harness can require a model, and a persona with none launches with none. A descriptor that still
   declares it keeps loading, because the persona block is read field by field and refuses no unknown
   field. A `PersonaSpec` built in Python must drop the argument, or it raises `TypeError`.
+- **`PersonaSettings.model` has four states:** `None` (the config names no model, as before),
+  `kanibako.targets.base.PERSONA_DEFAULT_MODEL` (it writes null; the marker is falsy), `""` (it
+  writes `""`), or an ID. A reader that returns `None` for all three keeps today's behavior. Take the
+  marker with `getattr(kanibako.targets.base, "PERSONA_DEFAULT_MODEL", None)`: on a core that
+  predates it, a plain import fails and discovery skips the plugin.
 
 ⚑ **`AgentConfig` HAS NO `name` FIELD — `generate_agent_config()` must stop passing one, and a
 plugin that still does raises `TypeError` the first time kanibako generates your agent's file.**

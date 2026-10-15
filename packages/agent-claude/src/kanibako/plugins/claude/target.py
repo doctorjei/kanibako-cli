@@ -37,6 +37,7 @@ from kanibako.targets.base import (
     probe_model_access,
     probe_token,
 )
+from kanibako.targets import base as _targets_base
 
 from kanibako.plugins.claude.credentials import (
     credentials_error,
@@ -49,6 +50,11 @@ if TYPE_CHECKING:
     from kanibako.vscode.vscode_config import CodexModelProvider
 
 logger = get_logger("targets.claude")
+
+# A store ``"model": null`` (the persona's default).  Read by ``getattr``, not
+# imported: on a core that predates the name, a failed import would make
+# discovery SKIP this plugin; the stand-in ``None`` reads ``null`` as absent.
+PERSONA_DEFAULT_MODEL = getattr(_targets_base, "PERSONA_DEFAULT_MODEL", None)
 
 # Timeout (seconds) for the synchronous ``claude update`` gate run before
 # launch.  Generous: an update may download + install a new version.
@@ -296,7 +302,12 @@ class ClaudeTarget(Target):
 
         The persona-grata store renders a claude persona as a harness-native
         ``settings.json`` whose ``env.ANTHROPIC_BASE_URL`` carries the alternate
-        endpoint and whose top-level ``model`` (when present) names the model.
+        endpoint and whose top-level ``model`` names the model.  ``model`` keeps
+        its states apart: absent or a non-string non-null value reads as
+        ``None``; JSON ``null`` reads as
+        :data:`~kanibako.targets.base.PERSONA_DEFAULT_MODEL` (the persona's
+        default); a string, ``""`` included, stays as written (``""`` = no
+        model).
         The bearer token var is claude's FIXED declared ``persona.token_var`` (the harness does
         not self-name it, unlike codex's ``env_key``).  The REST of the ``env``
         block is carried through verbatim as
@@ -343,7 +354,9 @@ class ClaudeTarget(Target):
                 f"env.{_PERSONA_BASE_URL_VAR} endpoint"
             ))
         model = data.get("model")
-        if not isinstance(model, str) or not model:
+        if "model" in data and model is None:
+            model = PERSONA_DEFAULT_MODEL
+        elif not isinstance(model, str):
             model = None
         single_source = (_PERSONA_BASE_URL_VAR, _PERSONA_TOKEN_VAR)
         passthrough = {

@@ -445,9 +445,11 @@ class CodexTarget(Target):
         The store renders a codex persona in the SAME ``[model_providers.<id>]``
         shape kanibako emits at launch, so this parses the inverse: ``base_url``
         → endpoint, ``env_key`` → auth_env (codex configs SELF-NAME the bearer
-        var), plus the top-level ``model``.  Table selection: the ``model_provider``
-        key when it names a present table, else the single table when exactly one
-        exists.  A codex config carries NO env block, so ``env``/``env_dropped``
+        var), plus the top-level ``model``: absent or a non-string reads as
+        ``None``; a string, ``""`` included, stays as written (``""`` = no
+        model; TOML has no null, so no persona-default arm).  Table selection:
+        the ``model_provider`` key when it names a present table, else the
+        single table when exactly one exists.  A codex config carries NO env block, so ``env``/``env_dropped``
         stay empty — unlike claude, whose persona env rides the config.
 
         FAIL-SOFT (base-class contract): every reject below returns an outcome
@@ -505,7 +507,7 @@ class CodexTarget(Target):
                 f"table names no 'env_key'"
             ))
         model = data.get("model")
-        if not isinstance(model, str) or not model:
+        if not isinstance(model, str):
             model = None
         return PersonaReadOutcome(
             PersonaSettings(endpoint=base_url, model=model, auth_env=env_key),

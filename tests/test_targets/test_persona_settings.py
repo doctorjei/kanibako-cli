@@ -117,6 +117,30 @@ class TestClaudeReadPersonaSettings:
         got = ClaudeTarget().read_persona_settings(tmp_path).settings
         assert got is not None and got.model is None
 
+    def test_null_model_is_the_persona_default_marker(self, tmp_path):
+        # His 190th ruling: a store ``null`` is a SET value, "the persona's
+        # default" -- not absent.  It crosses the plugin seam as core's marker.
+        from kanibako.targets.base import PERSONA_DEFAULT_MODEL
+
+        _write_claude_settings(tmp_path, {
+            "env": {"ANTHROPIC_BASE_URL": "https://e.example"},
+            "model": None,
+        })
+        got = ClaudeTarget().read_persona_settings(tmp_path).settings
+        assert got is not None
+        assert got.model is PERSONA_DEFAULT_MODEL
+
+    def test_empty_model_stays_empty(self, tmp_path):
+        # His 190th ruling: ``""`` is a SET value, "no model" -- kept, not
+        # folded into absent.
+        _write_claude_settings(tmp_path, {
+            "env": {"ANTHROPIC_BASE_URL": "https://e.example"},
+            "model": "",
+        })
+        got = ClaudeTarget().read_persona_settings(tmp_path).settings
+        assert got is not None
+        assert got.model == ""
+
     def test_extra_env_vars_pass_through(self, tmp_path):
         # The PASSTHROUGH contract: everything in the env block rides along —
         # including a var kanibako has never heard of — EXCEPT the two
@@ -265,6 +289,19 @@ class TestCodexReadPersonaSettings:
 
     def test_model_absent_is_none(self, tmp_path):
         _write_codex_config(tmp_path, _NAVIGATOR_TABLE)
+        got = CodexTarget().read_persona_settings(tmp_path).settings
+        assert got is not None and got.model is None
+
+    def test_empty_model_stays_empty(self, tmp_path):
+        # His 190th ruling: ``model = ""`` is a SET value, "no model".  TOML
+        # has no null, so codex has no persona-default arm.
+        _write_codex_config(tmp_path, 'model = ""\n' + _NAVIGATOR_TABLE)
+        got = CodexTarget().read_persona_settings(tmp_path).settings
+        assert got is not None
+        assert got.model == ""
+
+    def test_non_string_model_is_none(self, tmp_path):
+        _write_codex_config(tmp_path, 'model = 7\n' + _NAVIGATOR_TABLE)
         got = CodexTarget().read_persona_settings(tmp_path).settings
         assert got is not None and got.model is None
 
@@ -2007,3 +2044,59 @@ class TestProviderTextScrub:
         assert self._echo(headers, b"unsupported anthropic-version 2023-\\06-01 here") == _WITHHELD
         assert "credential" not in _WITHHELD
         assert "echoed" not in _WITHHELD
+
+
+# --- skew: a new plugin on a core that predates the marker ---------------------
+
+_PRE_MARKER_CORE_PROBE = """
+import importlib, json, sys
+from pathlib import Path
+
+import kanibako.targets.base as base
+del base.PERSONA_DEFAULT_MODEL  # a core that predates the marker
+assert "kanibako.plugins.claude.target" not in sys.modules
+
+def load(agent):
+    return importlib.import_module(f"kanibako.plugins.{agent}.target")
+
+claude, codex = load("claude"), load("codex")
+cfg = Path(sys.argv[1])
+(cfg / "settings.json").write_text(json.dumps(
+    {"env": {"ANTHROPIC_BASE_URL": "https://e.example"}, "model": None}))
+got = claude.ClaudeTarget().read_persona_settings(cfg).settings
+print(json.dumps({
+    "claude_file": claude.__file__, "codex_file": codex.__file__,
+    "stand_in": repr(claude.PERSONA_DEFAULT_MODEL), "model": repr(got.model),
+}))
+"""
+
+
+def test_a_core_without_the_marker_reads_null_as_absent(tmp_path):
+    """The reader takes the marker by ``getattr``, so on an older core the
+    plugin still loads and a store ``null`` reads as absent (today's behavior).
+
+    A fresh subprocess, per the house rule in
+    ``tests/test_plugin_import_compat.py``: deleting the core name in-process
+    would leak into every later test.  Each plugin module's ``__file__`` must
+    sit in THIS tree, so an installed copy elsewhere cannot answer.
+    """
+    import os
+    import subprocess
+    import sys
+
+    from tests.support.repo import REPO_ROOT
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (str(REPO_ROOT / "src"), env.get("PYTHONPATH")) if p
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", _PRE_MARKER_CORE_PROBE, str(tmp_path)],
+        capture_output=True, text=True, env=env, timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert Path(out["claude_file"]).is_relative_to(REPO_ROOT)
+    assert Path(out["codex_file"]).is_relative_to(REPO_ROOT)
+    assert out["stand_in"] == "None"
+    assert out["model"] == "None"
