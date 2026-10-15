@@ -8739,6 +8739,22 @@ refusal.
 **What you must do.** Respell `$GUEST_HOME` and each `@` reference in your defaults file and your
 Python declarations. The shipped plugins already use the braced spellings.
 
+### 3.7 `check_auth` takes `box_home` and `delivered`
+
+**Read this if your plugin overrides `Target.check_auth`.** The shipped plugins are updated.
+
+**What changed.** The launch gate calls `check_auth(*, box_home=..., delivered=...)`: the box's
+home, and the names (never the values) of the variables the launch gives the box a non-empty
+value. An override still spelled `check_auth(self)` raises `TypeError` at the gate, and the launch
+fails. The default body checks the box: it passes when a name in the new descriptor field
+`login_vars` is delivered, or when your first `cred_files` file is a non-empty regular file in the
+box home. A plugin that declares neither passes.
+
+**What you must do.** Change the signature to
+`check_auth(self, *, box_home=None, delivered=frozenset())`; ignoring both keywords keeps your
+check as it was. Or delete the override, and list your login variables under `login_vars:` in
+your descriptor.
+
 ---
 
 # Migrating to kanibako 1.6.0
