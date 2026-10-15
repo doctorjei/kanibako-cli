@@ -734,6 +734,31 @@ class TestPersonaBlockLoading:
         assert agent_defaults.load_descriptor(package, filename).persona is None
 
 
+class TestLoginVarsLoading:
+    """The descriptor's ``login_vars``: a list of env VAR names, or nothing."""
+
+    def _load(self, declfile, line: str):
+        package, filename = declfile("descriptor:\n  command: [\"probe\"]\n" + line)
+        return agent_defaults.load_descriptor(package, filename), filename
+
+    def test_absent_is_empty(self, declfile):
+        assert self._load(declfile, "")[0].login_vars == ()
+
+    def test_a_list_of_names_loads_in_order(self, declfile):
+        desc, _ = self._load(declfile, "  login_vars: [PROBE_KEY, PROBE_TOKEN]\n")
+        assert desc.login_vars == ("PROBE_KEY", "PROBE_TOKEN")
+
+    @pytest.mark.parametrize("line", [
+        "  login_vars: PROBE_KEY\n",
+        "  login_vars: [\"not a var\"]\n",
+        "  login_vars: [1]\n",
+    ])
+    def test_a_malformed_value_is_refused_by_name(self, declfile, line):
+        with pytest.raises(SettingsError) as exc:
+            self._load(declfile, line)
+        assert "login_vars" in str(exc.value)
+
+
 class TestRetiredSafeBypassKey:
     """The pre-rename key ``safe_bypass:`` is REFUSED BY NAME, not ignored.
 

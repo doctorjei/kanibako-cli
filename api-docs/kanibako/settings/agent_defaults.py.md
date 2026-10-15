@@ -30,5 +30,6 @@ def _build_behavior(entry: dict[str, Any], *, source: str='') -> TargetSetting
 def _behavior_choices(entry: dict[str, Any], named: str, where: str) -> tuple[str, ...]
 def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None
 def _build_cred_file(entry: dict[str, Any]) -> CredFileSpec
+def _build_login_vars(raw: Any, filename: str) -> tuple[str, ...]
 def _env_values(doc: dict[str, Any], filename: str) -> dict[str, str]
 ```

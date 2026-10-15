@@ -77,5 +77,7 @@ class LiveTarget(Target):
             install_dir=resolved.parent,
         )
 
-    def check_auth(self) -> bool:
+    def check_auth(
+        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
+    ) -> bool:
         return True

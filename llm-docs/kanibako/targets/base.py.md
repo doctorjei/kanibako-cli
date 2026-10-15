@@ -940,13 +940,16 @@ def has_binary(self) -> bool          # default True
 @property
 def descriptor(self) -> "PluginDescriptor | None"    # default None
 
-def check_auth(self) -> bool          # default True
+def check_auth(self, *, box_home: Path | None = None,
+               delivered: frozenset[str] = frozenset()) -> bool   # default: the box test
 ```
 
 `name` is the short identifier (`'claude'`); `display_name` the human-readable one
 (`'Claude Code'`); `detect` returns the host installation or `None` if it is not installed;
 `has_binary` says whether this target requires a host-installed binary; `check_auth` returns
-whether the agent is authenticated.
+whether the agent has a login. Its default is the box test: a descriptor `login_vars` name in
+*delivered* (names, never values), or a non-empty regular `credential_check_path(box_home)` stat'd
+through `boxfs`; a target declaring neither passes, and `box_home=None` (the host check) passes.
 
 `descriptor` is the declarative plugin descriptor, `None` ONLY for the built-in `shell`
 pseudo-agent. Core assembles launch argv, bindings, container env and credential sync declaratively

@@ -64,7 +64,7 @@ Optional overrides (sensible defaults provided by the base class):
 | Member | Default | When to override |
 |---|---|---|
 | `has_binary` | `True` | Set `False` for a pure pip/python tool with no host binary |
-| `check_auth()` | `True` | Validate host auth before launch |
+| `check_auth(*, box_home=None, delivered=frozenset())` | box test | Replace the login check before launch |
 | `prepare_host(install, *, auto_auth, data_path)` | no-op | Touch the host before mounts (binary update, auth refresh) — set `descriptor.host_prep=True` to enable |
 | `default_common()` | `{}` | Declare default `agent.<agent>.common` / `agent.<agent>.caches` binds |
 | `default_category_binds()` | `{}` | Declare default reference-sourced binds in any agent-scope category |
@@ -94,6 +94,7 @@ class PluginDescriptor:
                                                  # (no env field: static variables are
                                                  #  settings keys — see default_envs())
     cred_files: tuple[CredFileSpec, ...] = ()    # credential/config file lifecycle
+    login_vars: tuple[str, ...] = ()             # env VARs any one of which, delivered, is a login
     host_prep: bool = False                      # call prepare_host() before mounts
     init_dirs: tuple[str, ...] = ()              # home-relative dirs to mkdir (e.g. (".codex",))
 ```
@@ -363,11 +364,16 @@ Return the agent's `PluginDescriptor` (see above).  The default returns `None`,
 which is reserved for the built-in `ShellTarget` (plain shell, no agent
 binary, no credentials).  Every real agent plugin returns a descriptor.
 
-### `check_auth() -> bool`
+### `check_auth(*, box_home=None, delivered=frozenset()) -> bool`
 
-Called before box launch.  Return `True` if the agent is authenticated on the
-host (or if you cannot tell — stay lenient and don't block the launch), `False`
-to abort.  The default returns `True`.
+Called before box launch with the box's home and `delivered`, the names (never
+the values) of the variables the launch gives the box a non-empty value.  Return
+`True` if the agent has a login, `False` to fail the launch (or, with a
+`setup_entrypoint`, to run setup in the box).  The default is the box test: `True`
+when a `login_vars` name is in `delivered` or the first `cred_files` file under
+`box_home` is a non-empty regular file (a symlink fails); `True` when the
+descriptor declares neither; `True` when `box_home` is `None`.  An override
+accepts both keywords.
 
 ### `prepare_host(install, *, auto_auth, data_path) -> None`
 

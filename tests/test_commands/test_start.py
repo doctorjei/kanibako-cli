@@ -1643,6 +1643,200 @@ class TestCheckAuth:
             m.target.check_auth.assert_not_called()
 
 
+class TestDeliveredNames:
+    """``_delivered_names`` is exactly the names ``_assemble_launch_env`` delivers non-empty.
+
+    Parity, not an inventory: both run over one production-built
+    ``(deliveries, env_slots)`` pair, and the expected set is read off the real
+    assembler's result (``container_env`` names with a value ∪ ``secret_export_vars``).
+    """
+
+    ACTIVE = "navigator+claude"
+
+    def _pair(self, floor, cli_env):
+        from kanibako.settings.settings_categories import launch_deliveries
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot, snapshot_category_entries,
+        )
+        from kanibako.settings.settings_resolve import ResolveCtx
+        from kanibako.settings.store_collapse import collapse_env
+
+        ctx = ResolveCtx(
+            agent_name=self.ACTIVE, workset_name="ws", host_home="/home/u",
+            xdg={"XDG_DATA_HOME": "/data"}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name=self.ACTIVE, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        entries = snapshot_category_entries(snap, active_agent=self.ACTIVE, box_ctx=ctx)
+        return launch_deliveries(entries, agent_dests=frozenset()), collapse_env(entries, cli_env)
+
+    def _assembled(self, deliveries, env_slots):
+        import logging
+
+        from kanibako.commands.start import _assemble_launch_env
+
+        env, export_vars = _assemble_launch_env(
+            deliveries=deliveries, env_slots=env_slots, extra_mounts=[],
+            logger=logging.getLogger("test.delivered_names"),
+        )
+        return frozenset(var for var, value in env.items() if value) | frozenset(export_vars)
+
+    @pytest.fixture
+    def tokens(self, tmp_path):
+        good = tmp_path / "good"
+        good.write_text("sk-good\n")
+        empty = tmp_path / "empty"
+        empty.write_text("")
+        unreadable = tmp_path / "unreadable"
+        unreadable.write_text("sk-hidden\n")
+        unreadable.chmod(0)
+        directory = tmp_path / "directory"
+        directory.mkdir()
+        yield {
+            "good": str(good), "empty": str(empty), "unreadable": str(unreadable),
+            "directory": str(directory), "missing": str(tmp_path / "missing"),
+        }
+        unreadable.chmod(0o600)
+
+    @pytest.mark.parametrize("floor_vars, cli_env, expected", [
+        ({"env.PLAIN_VAR": "v"}, {}, {"PLAIN_VAR"}),
+        ({"secret_path.E_TOK": "good"}, {"E_TOK": "from-e"}, {"E_TOK"}),
+        ({}, {"EMPTY_E": ""}, set()),
+        ({"secret_path.GOOD_TOK": "good"}, {}, {"GOOD_TOK"}),
+        ({"secret_path.MISSING_TOK": "missing"}, {}, set()),
+        ({"secret_path.EMPTY_TOK": "empty"}, {}, set()),
+        ({"secret_path.UNREAD_TOK": "unreadable"}, {}, set()),
+        ({"secret_path.DIR_TOK": "directory"}, {}, set()),
+    ], ids=[
+        "env-key", "e-over-secret-path", "empty-e", "token-file", "missing-token",
+        "empty-token", "unreadable-token", "directory-token",
+    ])
+    def test_equals_what_the_assembler_delivers(self, tokens, floor_vars, cli_env, expected):
+        import os
+
+        from kanibako.commands.start import _delivered_names
+
+        if "unreadable" in floor_vars.values() and os.geteuid() == 0:
+            pytest.skip("root reads a mode-000 file")
+        floor = {
+            f"agent.{self.ACTIVE}.{key}": tokens.get(value, value)
+            for key, value in floor_vars.items()
+        }
+        deliveries, env_slots = self._pair(floor, cli_env)
+        names = _delivered_names(deliveries, env_slots)
+        assert names == self._assembled(deliveries, env_slots)
+        assert names == expected  # the parity is not vacuous: each case pins its set
+
+    def test_all_cases_in_one_launch(self, tokens):
+        from kanibako.commands.start import _delivered_names
+
+        a = self.ACTIVE
+        floor = {
+            f"agent.{a}.env.PLAIN_VAR": "v",
+            f"agent.{a}.secret_path.E_TOK": tokens["good"],
+            f"agent.{a}.secret_path.GOOD_TOK": tokens["good"],
+            f"agent.{a}.secret_path.MISSING_TOK": tokens["missing"],
+            f"agent.{a}.secret_path.EMPTY_TOK": tokens["empty"],
+            f"agent.{a}.secret_path.DIR_TOK": tokens["directory"],
+        }
+        deliveries, env_slots = self._pair(floor, {"E_TOK": "from-e", "EMPTY_E": ""})
+        names = _delivered_names(deliveries, env_slots)
+        assert names == self._assembled(deliveries, env_slots)
+        assert names == {"PLAIN_VAR", "E_TOK", "GOOD_TOK"}
+
+    def test_names_only_never_values(self, tokens):
+        from kanibako.commands.start import _delivered_names
+
+        deliveries, env_slots = self._pair(
+            {f"agent.{self.ACTIVE}.secret_path.GOOD_TOK": tokens["good"]},
+            {"E_VAR": "sk-from-e"},
+        )
+        names = _delivered_names(deliveries, env_slots)
+        assert names == {"GOOD_TOK", "E_VAR"}
+        assert not any("sk-" in n for n in names)
+
+
+class TestAuthGatePosition:
+    """The start gate runs after the launch resolve, box-aware, ahead of every box write."""
+
+    _RUN = dict(
+        project_dir=None, entrypoint=None, image_override=None, new_session=False,
+        safe_mode=False, resume_mode=False, extra_args=[],
+    )
+
+    def test_gate_passes_box_home_and_delivered(self, start_mocks):
+        from kanibako.commands import start as start_mod
+
+        real, returned = start_mod._delivered_names, []
+
+        def capture(*args, **kwargs):
+            returned.append(real(*args, **kwargs))
+            return returned[-1]
+
+        with start_mocks() as m, patch.object(start_mod, "_delivered_names", capture):
+            m.target.check_auth.return_value = True
+            assert _run_container(**self._RUN) == 0
+            assert len(returned) == 1
+            m.target.check_auth.assert_called_once_with(
+                box_home=m.proj.shell_path, delivered=returned[0],
+            )
+
+    def test_auth_gate_bails_before_any_box_write(self, start_mocks):
+        """A failing claude gate (no setup command) returns 1 and writes nothing in the box."""
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._apply_synced_copies",
+        ) as synced:
+            m.target.setup_entrypoint = None
+            m.target.check_auth.return_value = False
+            assert _run_container(**self._RUN) == 1
+            m.target.check_auth.assert_called_once()
+            m.credsync.refresh_box_credentials.assert_not_called()
+            m.seed_channel_files.assert_not_called()
+            synced.assert_not_called()
+            m.runtime.run.assert_not_called()
+
+    def test_gate_runs_after_the_launch_resolve(self, start_mocks):
+        order = []
+        with start_mocks() as m:
+            resolve = m.resolve_launch_snapshot.side_effect
+
+            def resolving(*args, **kwargs):
+                order.append("resolve")
+                return resolve(*args, **kwargs)
+
+            m.resolve_launch_snapshot.side_effect = resolving
+            m.target.check_auth.side_effect = lambda **_: order.append("gate") or True
+            assert _run_container(**self._RUN) == 0
+        assert order.index("gate") > order.index("resolve")
+
+    def test_setup_reprobe_passes_the_gate_arguments(self, start_mocks):
+        from kanibako.plugins.goose.target import _GOOSE_DESCRIPTOR
+
+        with start_mocks() as m:
+            m.target.name = "goose"
+            m.target.display_name = "Goose"
+            m.target.default_entrypoint = "goose"
+            m.target.descriptor = _GOOSE_DESCRIPTOR
+            m.target.setting_descriptors.return_value = []
+            m.target.setup_entrypoint = "goose"
+            m.target.setup_args = ["configure"]
+            m.target.check_auth.return_value = False
+            m.agent_cfg.state = {}
+            m.load_agent_config.return_value = m.agent_cfg
+            rc = _run_container(
+                **{**self._RUN, "persistent": False}, explicit_agent="goose",
+                setup_only=True,
+            )
+            assert rc == 0
+            calls = m.target.check_auth.call_args_list
+            assert len(calls) == 2  # the gate, then the re-probe after setup
+            assert calls[0] == calls[1]
+            assert calls[1].kwargs["box_home"] is m.proj.shell_path
+            assert isinstance(calls[1].kwargs["delivered"], frozenset)
+
+
 class TestAgentBinaryValidation:
     """Verify the launch path fails fast on a corrupt/empty host binary."""
 

@@ -588,7 +588,9 @@ class ClaudeTarget(Target):
         """
         return load_envs(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
-    def check_auth(self) -> bool:
+    def check_auth(
+        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
+    ) -> bool:
         """Check if the user is authenticated with Claude.
 
         Runs ``claude auth status --json`` and checks the ``loggedIn`` field.
@@ -597,6 +599,8 @@ class ClaudeTarget(Target):
 
         Returns True if authentication is confirmed (or if the claude binary
         is not found — the missing-binary warning already covers that case).
+        *box_home* and *delivered* are accepted and ignored: claude's verdict is
+        this host check, not the core box test.
         """
         # Anchor to the contract launcher; never let $PATH choose the binary we
         # exec on the host.

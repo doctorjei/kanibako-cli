@@ -4541,37 +4541,6 @@ def _run_container(
                 )
                 return 1
 
-        # Pre-launch auth check (skip for distinct auth — creds live in project).
-        #
-        # On failure: if the target declares an in-box setup command
-        # (``setup_entrypoint`` — goose ``configure`` / codex ``login``), DEFER the
-        # error and run that command interactively IN THE BOX just before launch
-        # (the box must be assembled first — image/mounts/env are built below).  An
-        # agent with no setup command (claude, by default) errors out here as
-        # before.  ``needs_inbox_setup`` carries the decision to the launch block.
-        needs_inbox_setup = False
-        if target and install and auth_src.creds_shared:
-            if not target.check_auth():
-                if target.setup_entrypoint is not None:
-                    needs_inbox_setup = True
-                else:
-                    print(
-                        "Error: Authentication failed.\n"
-                        "  Re-authenticate:  kanibako agent reauth\n"
-                        "  Skip agent:       kanibako shell",
-                        file=sys.stderr,
-                    )
-                    return 1
-
-        # Credential refresh via the descriptor (skip for a private/distinct box,
-        # and for the descriptor-less built-in shell, which has no credentials)
-        if target and auth_src.creds_shared and desc is not None:
-            credsync.refresh_box_credentials(
-                desc, target, auth=auth_src, host_home=Path.home(),
-                project_home=proj.shell_path,
-                suppress_oauth=suppress_oauth,
-            )
-
         # Binary transform: run the one this agent's ``transform`` key NAMES (spec
         # §2d).  ``transform_settings`` is that transform's CONFIG INPUT and was
         # never the switch — gating on it ran tweakcc for ANY agent whose settings
@@ -4710,6 +4679,7 @@ def _run_container(
         _refusal = _refuse_null_behavior(_snapshot, agent_id, _ALLOW_HELPERS_NULL)
         if _refusal is not None:
             raise ConfigError(_refusal)
+
         from kanibako.settings import settings_launch as _settings_launch
         _ah = coerce_bool(
             _settings_launch.effective_behavior(
@@ -4720,6 +4690,41 @@ def _run_container(
             _declared_behavior_bool("allow_helpers", agent_id)
             if _ah is None else _ah
         )
+
+        delivered = _delivered_names(deliveries, _launch_env_map(_snapshot))
+        # Pre-launch auth check (skip for distinct auth — creds live in project).
+        # It runs HERE, after the launch resolve, because *delivered* (the VAR names
+        # the box gets non-empty) first exists here; and ahead of every launch-time
+        # box write below, so a failing gate leaves the box untouched.
+        #
+        # On failure: if the target declares an in-box setup command
+        # (``setup_entrypoint`` — goose ``configure`` / codex ``login``), DEFER the
+        # error and run that command interactively IN THE BOX just before launch
+        # (the box must be assembled first — image/mounts/env are built below).  An
+        # agent with no setup command (claude, by default) errors out here as
+        # before.  ``needs_inbox_setup`` carries the decision to the launch block.
+        needs_inbox_setup = False
+        if target and install and auth_src.creds_shared:
+            if not target.check_auth(box_home=proj.shell_path, delivered=delivered):
+                if target.setup_entrypoint is not None:
+                    needs_inbox_setup = True
+                else:
+                    print(
+                        "Error: Authentication failed.\n"
+                        "  Re-authenticate:  kanibako agent reauth\n"
+                        "  Skip agent:       kanibako shell",
+                        file=sys.stderr,
+                    )
+                    return 1
+
+        # Credential refresh via the descriptor (skip for a private/distinct box,
+        # and for the descriptor-less built-in shell, which has no credentials)
+        if target and auth_src.creds_shared and desc is not None:
+            credsync.refresh_box_credentials(
+                desc, target, auth=auth_src, host_home=Path.home(),
+                project_home=proj.shell_path,
+                suppress_oauth=suppress_oauth,
+            )
 
         # E2b: the CONTINUE-mode agent grammar for a detached box's always-on
         # supervisor self-heal restart (threaded to the detach branch below via
@@ -5272,11 +5277,11 @@ def _run_container(
                 # ``agent reauth`` path (setup_only): run the in-box setup and stop
                 # — do NOT drop into a full agent session, and there is no launch
                 # to validate against, so this path CANNOT use launch-detection.
-                # A clean setup exit (rc 0) is success.  Best-effort host re-probe:
-                # if the setup also updated host-readable state, surface a positive
-                # confirmation; otherwise just report setup complete (box-only
-                # state — host ``check_auth`` legitimately cannot see it).
-                if target.check_auth():
+                # A clean setup exit (rc 0) is success.  Best-effort re-probe, with
+                # the gate's arguments: a pass surfaces a positive confirmation;
+                # otherwise just report setup complete (a host-check agent cannot
+                # see box-only state).
+                if target.check_auth(box_home=proj.shell_path, delivered=delivered):
                     print(
                         f"{target.display_name}: authenticated.", file=sys.stderr,
                     )
@@ -6412,6 +6417,26 @@ def _secret_pointer_usable(raw_path: str) -> bool:
     except OSError:
         return False
     return p.is_file() and os.access(p, os.R_OK) and st.st_size > 0
+
+
+def _delivered_names(deliveries, env_slots) -> frozenset[str]:
+    """The VAR names this launch gives the box with a non-empty value — names, never values.
+
+    The names :func:`_assemble_launch_env` delivers, computed without its mount side
+    effect: every *env_slots* VAR with a non-empty value, plus each
+    ``deliveries.secrets`` VAR the env leaf does not hold whose name is a plain VAR
+    and whose pointer is :func:`_secret_pointer_usable` (the drops
+    :func:`_emit_secret_mounts` makes).  An unmounted token file never counts.
+    """
+    names = {var for var, slot in env_slots.items() if slot.value}
+    names.update(
+        e.name for e in deliveries.secrets
+        if e.name not in env_slots
+        and SECRET_VAR_RE.match(e.name)
+        and e.host_src is not None
+        and _secret_pointer_usable(e.host_src)
+    )
+    return frozenset(names)
 
 
 def _name_new_box_probe(std, proj) -> None:

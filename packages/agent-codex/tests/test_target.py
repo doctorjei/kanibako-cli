@@ -405,6 +405,18 @@ class TestCheckAuth:
         # No auth.json file at all.
         assert CodexTarget().check_auth() is True
 
+    def test_box_keywords_are_ignored(self, fake_host: Path, monkeypatch, tmp_path: Path):
+        """A box store and a delivered key do not pass a failing host check."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        box = tmp_path / "box"
+        (box / ".codex").mkdir(parents=True)
+        (box / ".codex" / "auth.json").write_text('{"api_key": "x"}')
+        target = CodexTarget()
+        assert target.check_auth(
+            box_home=box, delivered=frozenset({"OPENAI_API_KEY"}),
+        ) is False
+
 
 class TestSetupCommand:
     """In-box setup command (``codex login``) declared via the base hooks."""

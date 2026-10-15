@@ -49,7 +49,7 @@ from kanibako.settings.agent_config import (
 from kanibako.settings.config_io import load_packaged_mapping
 from kanibako.settings.core_defaults import add_bind, behavior_defaults
 from kanibako.settings.messages import PER_OWNER_SET_WORDS
-from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
+from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, SECRET_VAR_RE
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     is_terminal_category_tail,
@@ -542,6 +542,18 @@ def _build_cred_file(entry: dict[str, Any]) -> CredFileSpec:
     )
 
 
+def _build_login_vars(raw: Any, filename: str) -> tuple[str, ...]:
+    """The descriptor's ``login_vars``: a list of env VAR names, each refused unless one."""
+    if not isinstance(raw, list):
+        raise SettingsError(f"{filename}: descriptor 'login_vars' must be a list of VAR names")
+    for var in raw:
+        if not isinstance(var, str) or not SECRET_VAR_RE.match(var):
+            raise SettingsError(
+                f"{filename}: descriptor 'login_vars' entry {var!r} is not an env VAR name"
+            )
+    return tuple(raw)
+
+
 def load_descriptor(package: str, filename: str) -> PluginDescriptor:
     """Build a plugin's :class:`PluginDescriptor` from its shipped defaults file.
 
@@ -622,6 +634,7 @@ def load_descriptor(package: str, filename: str) -> PluginDescriptor:
         ),
         persona=_build_persona(desc.get("persona")),
         cred_files=tuple(_build_cred_file(c) for c in desc.get("cred_files", [])),
+        login_vars=_build_login_vars(desc.get("login_vars", []), filename),
         host_prep=bool(desc.get("host_prep", False)),
         init_dirs=tuple(desc.get("init_dirs", ())),
         auth_share_support=bool(desc.get("auth_share_support", False)),

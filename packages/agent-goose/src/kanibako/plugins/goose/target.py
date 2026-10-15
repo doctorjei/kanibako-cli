@@ -264,11 +264,15 @@ class GooseTarget(Target):
     # NOTE: goose's cred SYNC is the ``CredFileSpec`` set in ``goose-defaults.yaml``,
     # realized by the credsync engine.
 
-    def check_auth(self) -> bool:
+    def check_auth(
+        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
+    ) -> bool:
         """Check if Goose is configured with API keys — binary, config.yaml, secrets.yaml.
 
         Returns True when the binary is absent (defers to later warnings).  Anchors to
-        the contract path (``_BINARY``); never consults ``$PATH``.
+        the contract path (``_BINARY``); never consults ``$PATH``.  *box_home* and
+        *delivered* are accepted and ignored: goose's verdict is this host check, not
+        the core box test.
         """
         if not (_BINARY.exists() or _BINARY.is_symlink()):
             return True

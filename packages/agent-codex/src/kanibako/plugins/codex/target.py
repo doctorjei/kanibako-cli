@@ -419,12 +419,16 @@ class CodexTarget(Target):
             return "not a non-empty JSON object"
         return None
 
-    def check_auth(self) -> bool:
+    def check_auth(
+        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
+    ) -> bool:
         """Lenient credential presence check for Codex.
 
         ``True`` (do not block launch) when ``~/.codex/auth.json`` is present and
         non-empty, OR ``OPENAI_API_KEY`` is set — and on any stat error too,
         which is "cannot tell", not "no".  Matches goose's lenient style.
+        *box_home* and *delivered* are accepted and ignored: codex's verdict is this
+        host check, not the core box test.
         """
         try:
             auth = Path.home() / ".codex" / "auth.json"

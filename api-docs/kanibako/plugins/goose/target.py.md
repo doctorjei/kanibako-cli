@@ -45,7 +45,7 @@ class GooseTarget(Target):
     @property
     def setup_args(self) -> list[str]
     def detect(self) -> AgentInstall | None
-    def check_auth(self) -> bool
+    def check_auth(self, *, box_home: Path | None=None, delivered: frozenset[str]=frozenset()) -> bool
     def generate_agent_config(self) -> AgentConfig
     def setting_descriptors(self) -> list[TargetSetting]
 ```

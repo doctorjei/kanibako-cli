@@ -125,6 +125,7 @@ def _emit_secret_mounts(secrets, logger) -> 'tuple[list, list[str]]'
 def _secret_export_shim(program: str, args: list[str], export_vars: list[str]) -> 'tuple[str, list[str]]'
 def _directive_flatten_shim(program: str, args: list[str]) -> 'tuple[str, list[str]]'
 def _secret_pointer_usable(raw_path: str) -> bool
+def _delivered_names(deliveries, env_slots) -> frozenset[str]
 def _name_new_box_probe(std, proj) -> None
 def _persona_bundle_for(agent_id: str, target) -> 'PersonaBundle | None'
 def _persona_values_for(agent_id: str, target) -> 'dict[str, str | None] | None'

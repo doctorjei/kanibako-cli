@@ -301,6 +301,20 @@ class TestCheckAuth:
                    side_effect=[status_not_logged, login_result]):
             assert t.check_auth() is False
 
+    def test_box_keywords_are_ignored(self, tmp_path, monkeypatch):
+        """A box store and a delivered token do not pass a failing host check."""
+        _anchor_contract(monkeypatch, _real_launcher(tmp_path), tmp_path / "share")
+        box = tmp_path / "box"
+        (box / ".claude").mkdir(parents=True)
+        (box / ".claude" / ".credentials.json").write_text('{"claudeAiOauth": {}}')
+        status_not_logged = MagicMock(returncode=0, stdout=json.dumps({"loggedIn": False}))
+        login_result = MagicMock(returncode=1)
+        with patch("kanibako.plugins.claude.target.subprocess.run",
+                   side_effect=[status_not_logged, login_result]):
+            assert ClaudeTarget().check_auth(
+                box_home=box, delivered=frozenset({"CLAUDE_CODE_OAUTH_TOKEN"}),
+            ) is False
+
     def test_binary_not_found_returns_true(self, tmp_path, monkeypatch):
         """check_auth returns True when the contract launcher is absent."""
         _anchor_contract(monkeypatch, tmp_path / "bin" / "claude", tmp_path / "share")

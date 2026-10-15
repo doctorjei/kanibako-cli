@@ -86,6 +86,8 @@ class DeadTarget(Target):
             install_dir=resolved.parent,
         )
 
-    def check_auth(self) -> bool:
+    def check_auth(
+        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
+    ) -> bool:
         # No auth — it is supposed to fail at run time, not auth time.
         return True

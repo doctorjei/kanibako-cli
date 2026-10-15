@@ -702,3 +702,77 @@ class TestCredentialCheckPath:
             CredFileSpec(home_rel=".x/other.json", host_rel=".x/other.json"),
         ))
         assert target.credential_check_path(tmp_path) == tmp_path / ".x" / "auth.json"
+
+
+class TestCheckAuthBoxTest:
+    """The core box test in ``Target.check_auth``: a delivered login VAR or a box store."""
+
+    _STORE = CredFileSpec(home_rel=".x/auth.json", host_rel=".x/auth.json")
+
+    @staticmethod
+    def _target(*, login_vars=(), cred_files=()):
+        from kanibako.targets.shell import ShellTarget
+
+        class LoginShell(ShellTarget):
+            @property
+            def descriptor(self):
+                return PluginDescriptor(
+                    command=("ls",), bindings=(), mode={},
+                    cred_files=cred_files, login_vars=login_vars,
+                )
+
+        return LoginShell()
+
+    def test_no_box_home_is_the_host_check(self):
+        assert self._target(login_vars=("TOKEN",)).check_auth() is True
+
+    def test_a_delivered_login_var_passes(self, tmp_path):
+        target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
+        assert target.check_auth(box_home=tmp_path, delivered=frozenset({"TOKEN"})) is True
+
+    def test_an_undeclared_delivered_var_does_not_pass(self, tmp_path):
+        target = self._target(login_vars=("TOKEN",), cred_files=(self._STORE,))
+        assert target.check_auth(box_home=tmp_path, delivered=frozenset({"OTHER"})) is False
+
+    def test_a_non_empty_store_passes(self, tmp_path):
+        (tmp_path / ".x").mkdir()
+        (tmp_path / ".x" / "auth.json").write_text("{}")
+        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is True
+
+    def test_an_empty_store_fails(self, tmp_path):
+        (tmp_path / ".x").mkdir()
+        (tmp_path / ".x" / "auth.json").write_text("")
+        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is False
+
+    def test_a_missing_store_fails(self, tmp_path):
+        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is False
+
+    def test_a_directory_at_the_store_fails(self, tmp_path):
+        (tmp_path / ".x" / "auth.json").mkdir(parents=True)
+        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=tmp_path) is False
+
+    def test_a_planted_leaf_symlink_is_refused(self, tmp_path):
+        outside = tmp_path / "outside.json"
+        outside.write_text('{"token": "host"}')
+        home = tmp_path / "home"
+        (home / ".x").mkdir(parents=True)
+        (home / ".x" / "auth.json").symlink_to(outside)
+        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=home) is False
+
+    def test_a_planted_parent_symlink_is_refused(self, tmp_path):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "auth.json").write_text('{"token": "host"}')
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".x").symlink_to(outside)
+        assert self._target(cred_files=(self._STORE,)).check_auth(box_home=home) is False
+
+    def test_declared_login_vars_with_no_store_fail_undelivered(self, tmp_path):
+        assert self._target(login_vars=("TOKEN",)).check_auth(box_home=tmp_path) is False
+
+    def test_a_target_declaring_no_login_passes(self, tmp_path):
+        from kanibako.targets.shell import ShellTarget
+
+        assert ShellTarget().check_auth(box_home=tmp_path) is True
+        assert self._target().check_auth(box_home=tmp_path) is True

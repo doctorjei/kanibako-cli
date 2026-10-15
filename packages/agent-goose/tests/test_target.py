@@ -248,6 +248,18 @@ class TestCheckAuth:
 
         assert GooseTarget().check_auth() is False
 
+    def test_box_keywords_are_ignored(self, tmp_path: Path, fake_host: Path, monkeypatch):
+        """A box store and a delivered key do not pass a failing host check."""
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_host))
+        _anchor_contract(monkeypatch, _real_binary(tmp_path))
+        box = tmp_path / "box"
+        (box / ".config" / "goose").mkdir(parents=True)
+        (box / ".config" / "goose" / "secrets.yaml").write_text("key: secret\n")
+        (box / ".config" / "goose" / "config.yaml").write_text("provider: anthropic\n")
+        assert GooseTarget().check_auth(
+            box_home=box, delivered=frozenset({"GOOSE_PROVIDER", "ANTHROPIC_API_KEY"}),
+        ) is False
+
     def test_returns_true_when_binary_not_found(self, tmp_path: Path, monkeypatch):
         """No contract binary -> True (defers to later warnings), no which."""
         _anchor_contract(monkeypatch, tmp_path / "goose")  # never created

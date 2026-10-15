@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -18,6 +19,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
+from kanibako import boxfs
 from kanibako.settings.settings_keyspace import ACCESS_TIERS
 from kanibako.settings.settings_resolve import UNSET, _Unset
 
@@ -1140,7 +1142,8 @@ class PluginDescriptor:
     # ⚑ NO `container_env` FIELD — plugin env is `agent.<agent>.env.<VAR>`, and
     # `agent_defaults.load_descriptor` refuses `container_env:` BY NAME.
     cred_files: tuple[CredFileSpec, ...] = ()
-    host_prep: bool = False           # True -> core calls Target.prepare_host before mounts
+    login_vars: tuple[str, ...] = ()  # env VAR names any one of which, delivered, is a login
+    host_prep: bool = False          # True -> core calls Target.prepare_host before mounts
     init_dirs: tuple[str, ...] = ()   # extra dirs to mkdir in the project home (home-relative)
     auth_share_support: bool = False  # RO CAPABILITY (spec §2d): supports shared credentials?
     vscode_extension: str | None = None  # extension id auto-installed on attach; None = none
@@ -1228,9 +1231,31 @@ class Target(ABC):
         """Declarative plugin descriptor; None only for ShellTarget (see :func:`has_plugin`)."""
         return None
 
-    def check_auth(self) -> bool:
-        """Check if the agent is authenticated. Returns True if ok."""
-        return True
+    def check_auth(
+        self, *, box_home: Path | None = None, delivered: frozenset[str] = frozenset(),
+    ) -> bool:
+        """Whether the agent has a login to launch with.
+
+        *box_home* ``None`` is the host check, which passes here.  Otherwise the box
+        test: a descriptor ``login_vars`` name is in *delivered* (the VAR names the
+        launch gives a non-empty value, never the values), or
+        :meth:`credential_check_path` under *box_home* is a non-empty regular file,
+        stat'd through :mod:`kanibako.boxfs` so a planted symlink fails it.  A target
+        that declares neither has nothing to check and passes.
+        """
+        if box_home is None:
+            return True
+        desc = self.descriptor
+        if desc is not None and not delivered.isdisjoint(desc.login_vars):
+            return True
+        path = self.credential_check_path(box_home)
+        if path is None:
+            return desc is None or not desc.login_vars
+        try:
+            st = boxfs.stat(path, box_home)
+        except OSError:
+            return False
+        return stat.S_ISREG(st.st_mode) and st.st_size > 0
 
     def prepare_host(self, install: "AgentInstall", *, auto_auth: bool, data_path: Path) -> None:
         """Plugin-owned pre-launch host preparation, BEFORE mounts are built. Default: no-op.
