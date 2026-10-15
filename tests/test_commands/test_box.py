@@ -3392,6 +3392,42 @@ class TestCheckPersonaStoreForCreate:
             ("POST", "/v1/responses", bearer),
         ]
 
+    @pytest.mark.parametrize("model", ["marker", ""], ids=["null", "empty"])
+    def test_a_null_or_empty_store_model_is_probed_with_no_model(
+        self, tmp_home, monkeypatch, model,
+    ):
+        """A store ``null`` (the marker) and ``""`` both name NO model in a request
+        (persona procedure, probe rule 1): the probe gets ``model=None``."""
+        from kanibako.plugins.codex.target import CodexTarget
+        from kanibako.targets.base import (
+            PERSONA_DEFAULT_MODEL,
+            PersonaProbeOutcome,
+            PersonaReadOutcome,
+        )
+
+        store_model = PERSONA_DEFAULT_MODEL if model == "marker" else model
+
+        class Recording(CodexTarget):
+            probed: list = []
+
+            def read_persona_settings(self, config_dir):
+                outcome = super().read_persona_settings(config_dir)
+                assert outcome.settings is not None
+                return PersonaReadOutcome(
+                    outcome.settings._replace(model=store_model), None,
+                )
+
+            def verify_persona(self, endpoint, token_path, model, **k):
+                self.probed.append(model)
+                return PersonaProbeOutcome.passed()
+
+        persona_dir = self._store(tmp_home)
+        (persona_dir / "token").write_text("sk-test-secret\n")
+        target = Recording()
+        err = self._call(tmp_home, "navigator+codex", monkeypatch, target=target)
+        assert err is None
+        assert target.probed == [None]
+
     def test_a_two_axis_PASS_with_the_model_free_request_refused_only_logs(
         self, tmp_home, monkeypatch, capsys, caplog,
     ):

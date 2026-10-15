@@ -38,7 +38,7 @@ class SecretPathResult(NamedTuple):
 
 class PersonaBundle(NamedTuple):
     endpoint: str | None = None
-    model: str | None = None
+    model: str | None | _PersonaDefaultModel = None
     auth_env: str | None = None
     env: Mapping[str, str] = MappingProxyType({})
     env_dropped: tuple[str, ...] = ()
@@ -47,5 +47,7 @@ class PersonaBundle(NamedTuple):
     reject_reason: str | None = None
     no_reader: bool = False
 
-    def to_persona_values(self) -> dict[str, str]
+    @property
+    def request_model(self) -> str | None
+    def to_persona_values(self) -> dict[str, str | None]
 ```

@@ -41,7 +41,12 @@ from kanibako.agent_ref import (
 )
 from kanibako.errors import ConfigError
 from kanibako.settings.paths import user_config_home
-from kanibako.targets.base import _REDACTED, _scrub_endpoint_userinfo
+from kanibako.targets.base import (
+    PERSONA_DEFAULT_MODEL,
+    _PersonaDefaultModel,
+    _REDACTED,
+    _scrub_endpoint_userinfo,
+)
 
 if TYPE_CHECKING:
     from kanibako.targets.base import Target
@@ -213,7 +218,8 @@ class PersonaBundle(NamedTuple):
     """
 
     endpoint: str | None = None   # the harness config's alternate base URL
-    model: str | None = None      # the harness config's model id
+    # None = the config names no model; PERSONA_DEFAULT_MODEL = it writes null; "" = it writes "".
+    model: str | None | _PersonaDefaultModel = None
     auth_env: str | None = None   # env var the token exports as; NAMES the secret_path.<auth_env>
     # Defaults are IMMUTABLE by construction: a bare ``{}`` on a NamedTuple
     # field is ONE object shared by every instance.
@@ -224,7 +230,16 @@ class PersonaBundle(NamedTuple):
     reject_reason: str | None = None   # the harness READ this config and REFUSED it
     no_reader: bool = False            # harness has NO persona reader (goose, ShellTarget)
 
-    def to_persona_values(self) -> dict[str, str]:
+    @property
+    def request_model(self) -> str | None:
+        """The model to name in a request: *model* when it is a non-empty ID, else ``None``.
+
+        The ONE carrier of that rule for the raw store readers (the create-time probe,
+        ``scripts/keyspec-extract.py``): a ``null`` and a ``""`` model both name none.
+        """
+        return self.model if isinstance(self.model, str) and self.model else None
+
+    def to_persona_values(self) -> dict[str, str | None]:
         """Render this bundle as the UN-DISCRIMINATED persona-values mapping.
 
         The shape ``build_launch_snapshot(persona_values=…)`` takes.  The keys
@@ -235,10 +250,14 @@ class PersonaBundle(NamedTuple):
 
         ⚑ EMPTINESS IS HANDLED PER VALUE CLASS, and the asymmetry is the point:
 
-        * *endpoint* / *model* / the token path are OMITTED when absent or
-          empty.  This mapping is a cascade LEVEL, so emitting ``""`` would not
-          mean "unset" — it would OVERRIDE ``agent.default`` and every rung
-          below with emptiness.
+        * *endpoint* and the token path are OMITTED when absent or empty.  This
+          mapping is a cascade LEVEL, so emitting ``""`` would not mean "unset" —
+          it would OVERRIDE ``agent.default`` and every rung below with emptiness.
+        * *model* has four states, and only absent (``None``) is omitted: the
+          marker :data:`~kanibako.targets.base.PERSONA_DEFAULT_MODEL` renders as a
+          present ``None`` (the persona's default), and a ``str``, ``""`` included,
+          passes as itself (no model).  ``null`` and ``""`` are SET values that beat
+          ``agent.default.model``.
         * an ``env.<VAR>`` value passes through VERBATIM, empty string
           INCLUDED: the reader already ruled it deliverable by keeping it out of
           *env_dropped*, so dropping it here would be an invisible loss.  (An
@@ -246,10 +265,12 @@ class PersonaBundle(NamedTuple):
         """
         if self.reject_reason is not None or self.no_reader:
             return {}
-        values: dict[str, str] = {}
+        values: dict[str, str | None] = {}
         if self.endpoint:
             values["endpoint"] = self.endpoint
-        if self.model:
+        if self.model is PERSONA_DEFAULT_MODEL:
+            values["model"] = None
+        elif isinstance(self.model, str):
             values["model"] = self.model
         if self.auth_env and self.token_path is not None:
             values[f"secret_path.{self.auth_env}"] = str(self.token_path)

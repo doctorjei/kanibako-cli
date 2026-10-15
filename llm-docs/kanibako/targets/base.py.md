@@ -501,12 +501,17 @@ the scrub never saw.
 ```python
 class PersonaSettings(NamedTuple):
     endpoint: str | None
-    model: str | None
+    model: str | None | _PersonaDefaultModel
     auth_env: str
     env: Mapping[str, str] = MappingProxyType({})
     env_dropped: tuple[str, ...] = ()
 ```
 Persona-specific values extracted from a rendered harness config.
+
+`model` has four states: `None` (the config names no model), `PERSONA_DEFAULT_MODEL` (it writes
+`null`: the persona's default), `""` (it writes `""`: no model), or a model ID. The marker is a
+falsy singleton, so a core that predates it drops it as absent; test it with `is`. A plugin takes it
+with `getattr(kanibako.targets.base, "PERSONA_DEFAULT_MODEL", None)` to stay loadable on such a core.
 
 The persona-grata store (`$XDG_CONFIG_HOME/personas/<pid>/<hid>/`) lays down a harness-native
 config file (codex `config.toml`, claude `settings.json`); `Target.read_persona_settings` parses

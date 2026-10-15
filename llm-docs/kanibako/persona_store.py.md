@@ -139,7 +139,7 @@ file.
 
 | field | what it carries |
 |---|---|
-| `endpoint` / `model` | the harness config's alternate base URL and model id; `None` when the config names neither |
+| `endpoint` / `model` | the harness config's alternate base URL and model; `None` when the config names neither. `model` may also be `PERSONA_DEFAULT_MODEL` (the config writes `null`) or `""` (it writes `""`) |
 | `auth_env` | the env var the bearer token is exported as. It also NAMES the `secret_path.<auth_env>` entry the token pointer lands in |
 | `env` | the passthrough env block, already stripped by the reader of the two single-source vars (base URL and token) |
 | `env_dropped` | the names the reader SKIPPED as undeliverable — a non-string config value — so a caller can warn. Never silent |
@@ -177,10 +177,12 @@ cascade; `settings_launch._persona_partial` is what wraps them under the active 
 
 ### ⚑ Emptiness is handled per value class, and the asymmetry is the point
 
-* `endpoint`, `model` and the token path are OMITTED when absent or empty. This mapping is a
-  cascade LEVEL, so emitting `""` would not mean "unset" — it would OVERRIDE `agent.default` and
-  every rung below it with emptiness, turning a store that names no model into a store that names
-  the empty model.
+* `endpoint` and the token path are OMITTED when absent or empty. This mapping is a cascade LEVEL,
+  so emitting `""` would not mean "unset" — it would OVERRIDE `agent.default` and every rung below
+  it with emptiness.
+* `model` is omitted only when absent (`None`). `null` and `""` are SET values that beat
+  `agent.default.model`: the marker `PERSONA_DEFAULT_MODEL` renders as a present `None` (the
+  persona's default), and `""` passes as `""` (no model).
 * an `env.<VAR>` value passes through VERBATIM, empty string INCLUDED. `"FOO": ""` in a persona
   config is a user deliberately exporting an empty var, and the reader already ruled it deliverable
   by putting it in the passthrough set rather than in `env_dropped`. Dropping it here would be an
@@ -188,6 +190,12 @@ cascade; `settings_launch._persona_partial` is what wraps them under the active 
 
 An empty var NAME is still skipped: no env var can be named `""`, so it is undeliverable rather
 than empty.
+
+## `request_model` — the model a request names
+
+`request_model` returns `model` when it is a non-empty ID, else `None`. It is the one carrier of
+that rule for the raw store readers (the create-time probe, `scripts/keyspec-extract.py`): a
+`null` and a `""` model both name no model in a request.
 
 ## `validate_endpoint` — minimal by design, because a false refusal breaks a box
 

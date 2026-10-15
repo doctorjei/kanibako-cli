@@ -477,11 +477,34 @@ def http_probe(
         return ProbeResponse(None)
 
 
+class _PersonaDefaultModel:
+    """Sentinel TYPE for :data:`PERSONA_DEFAULT_MODEL`; one instance, the ``__MISSING__`` pattern."""
+    _instance: "_PersonaDefaultModel | None" = None
+
+    def __new__(cls) -> "_PersonaDefaultModel":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "PERSONA_DEFAULT_MODEL"
+
+    # ⚑ FALSY on purpose: a core that predates the marker drops it (``if self.model:``), so a
+    # mixed core/plugin pair degrades to "absent", never to a crash.  Test it via ``is``.
+    def __bool__(self) -> bool:
+        return False
+
+
+# A persona config that WRITES ``null`` for its model: "the persona's default", a SET value.
+PERSONA_DEFAULT_MODEL: _PersonaDefaultModel = _PersonaDefaultModel()
+
+
 class PersonaSettings(NamedTuple):
     """Persona-specific values read back OUT of a rendered harness config."""
 
     endpoint: str | None   # the alternate base URL (codex base_url / claude ANTHROPIC_BASE_URL)
-    model: str | None      # the provider model id, when the config names one
+    # None = the config names no model; PERSONA_DEFAULT_MODEL = it writes null; "" = it writes "".
+    model: str | None | _PersonaDefaultModel
     auth_env: str          # env var the bearer token is exported as (codex env_key)
     # ⚑ MappingProxyType, not a bare `{}`: a mutable default is one object shared by every instance.
     env: Mapping[str, str] = MappingProxyType({})   # passthrough env block (no single-source vars)

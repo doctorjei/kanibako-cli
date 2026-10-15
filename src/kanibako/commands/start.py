@@ -6511,8 +6511,7 @@ def _persona_values_for(agent_id: str, target) -> "dict[str, str | None] | None"
     bundle = _persona_bundle_for(agent_id, target)
     if bundle is None:
         return None
-    values: "dict[str, str | None]" = dict(bundle.to_persona_values())
-    return values or None
+    return bundle.to_persona_values() or None
 
 
 def _warn_persona_store_diagnostics(agent_id: str, bundle) -> None:

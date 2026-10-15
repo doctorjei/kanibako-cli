@@ -8,6 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/targets/base.py.md`.
 ## Variables
 
 ```
+PERSONA_DEFAULT_MODEL: _PersonaDefaultModel = _PersonaDefaultModel()
 _PROVIDER_TEXT_CAP = 300
 _PROVIDER_READ_CAP = 8 * 1024
 _SECRET_MIN_CHARS = 8
@@ -146,7 +147,7 @@ class ProbeResponse(NamedTuple):
 
 class PersonaSettings(NamedTuple):
     endpoint: str | None
-    model: str | None
+    model: str | None | _PersonaDefaultModel
     auth_env: str
     env: Mapping[str, str] = MappingProxyType({})
     env_dropped: tuple[str, ...] = ()
@@ -293,4 +294,11 @@ class Target(ABC):
     def cred_writeback_error(self, spec: CredFileSpec, data: bytes) -> str | None
     def transform_cred(self, spec: CredFileSpec, src: Path | None, dst: Path, direction: str) -> None
     def writeback_extra(self, *, project_home: Path, host_home: Path) -> None
+
+class _PersonaDefaultModel:
+    _instance: '_PersonaDefaultModel | None' = None
+
+    def __new__(cls) -> '_PersonaDefaultModel'
+    def __repr__(self) -> str
+    def __bool__(self) -> bool
 ```

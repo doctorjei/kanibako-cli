@@ -755,7 +755,7 @@ def _check_persona_store_for_create(agent_ref: str) -> str | None:
     ):
         try:
             outcome = target.verify_persona(
-                bundle.endpoint, bundle.token_path, bundle.model,
+                bundle.endpoint, bundle.token_path, bundle.request_model,
                 env=bundle.env,
             )
         except Exception:

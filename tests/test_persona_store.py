@@ -29,6 +29,7 @@ from kanibako.persona_store import (
     resolve_secret_path,
     validate_endpoint,
 )
+from kanibako.targets.base import PERSONA_DEFAULT_MODEL
 
 
 class TestValidateEndpoint:
@@ -578,12 +579,67 @@ class TestReadPersonaBundle:
         assert bundle.model is None
         assert "model" not in bundle.to_persona_values()
 
-    def test_empty_scalars_are_omitted_rather_than_overriding_with_emptiness(self):
-        """A cascade LEVEL: ``""`` would OVERRIDE lower rungs, not mean "unset"."""
+    def test_an_empty_endpoint_is_omitted_and_an_empty_model_is_emitted(self):
+        """A cascade LEVEL: an empty endpoint would OVERRIDE lower rungs, so it is
+        omitted.  An empty MODEL is a set value — "no model" — that beats
+        ``agent.default.model`` (his 190th ruling: *"null and "", when set, are
+        both "real" values"*), so it is emitted."""
         bundle = PersonaBundle(
             endpoint="", model="", auth_env="TOK", token_path=None,
         )
-        assert bundle.to_persona_values() == {}
+        assert bundle.to_persona_values() == {"model": ""}
+
+    def test_the_default_model_marker_is_emitted_as_a_present_none(self):
+        """A store ``null`` ("the persona's default") reaches the cascade as a
+        PRESENT ``None``, which beats ``agent.default.model``."""
+        values = PersonaBundle(model=PERSONA_DEFAULT_MODEL).to_persona_values()
+        assert "model" in values
+        assert values["model"] is None
+
+    def test_an_absent_model_constructed_directly_emits_no_key(self):
+        assert PersonaBundle(model=None).to_persona_values() == {}
+
+    def test_the_default_model_marker_is_a_falsy_singleton(self):
+        """FALSY so a core that predates it drops it as absent (skew-safe)."""
+        from kanibako.targets.base import _PersonaDefaultModel
+
+        assert bool(PERSONA_DEFAULT_MODEL) is False
+        assert _PersonaDefaultModel() is PERSONA_DEFAULT_MODEL
+        assert repr(PERSONA_DEFAULT_MODEL) == "PERSONA_DEFAULT_MODEL"
+
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [(None, None), (PERSONA_DEFAULT_MODEL, None), ("", None),
+         ("gemma4", "gemma4")],
+        ids=["absent", "null", "empty", "id"],
+    )
+    def test_request_model_names_only_a_model_id(self, model, expected):
+        assert PersonaBundle(model=model).request_model == expected
+
+    @pytest.mark.parametrize(
+        ("model", "expected"), [(PERSONA_DEFAULT_MODEL, None), ("", "")],
+        ids=["null", "empty"],
+    )
+    def test_a_store_bundle_carries_the_readers_model_through(
+        self, tmp_home, model, expected,
+    ):
+        """``read_persona_bundle`` passes the reader's marker and ``""`` through
+        untouched, so both set states reach ``to_persona_values``."""
+        from kanibako.targets.base import PersonaReadOutcome, PersonaSettings
+
+        endpoint = self._ENDPOINT
+
+        class _Reader:
+            def read_persona_settings(self, config_dir):
+                return PersonaReadOutcome(PersonaSettings(
+                    endpoint=endpoint, model=model, auth_env="TOK",
+                ), None)
+
+        self._entry(tmp_home)
+        bundle = self._read(target=_Reader())
+        assert bundle is not None and bundle.reject_reason is None
+        assert bundle.model is model
+        assert bundle.to_persona_values()["model"] == expected
 
     def test_a_token_path_with_no_auth_env_emits_no_secret_path(self, tmp_home):
         bundle = PersonaBundle(
