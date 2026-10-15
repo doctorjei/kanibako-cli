@@ -39,6 +39,8 @@ import importlib.resources
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from kanibako.settings.agent_config import (
     agent_category_root_ref,
     is_self_resolving,
@@ -343,8 +345,12 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
     empty = entry.get("empty")
     emit_empty = _EMPTY_WORDS.get(empty) if isinstance(empty, str) else None
     if "empty" in entry and emit_empty is None:
+        # The YAML spelling the user wrote (``null``, not Python's ``None``).
+        spelled = yaml.safe_dump(
+            {"empty": empty}, default_flow_style=True, width=float("inf"),
+        ).strip()[1:-1]
         raise SettingsError(
-            f"settings entry {named!r}{where} declares 'empty: {empty!r}'; "
+            f"settings entry {named!r}{where} declares '{spelled}'; "
             f"'empty' is 'emit' or 'omit' (leave it out for the key's default)."
         )
     channel = Channel(entry["channel"])

@@ -1262,12 +1262,21 @@ class TestSettingEntryEmptyField:
         assert "maybe" in msg
         assert "emit" in msg and "omit" in msg     # ...and the two legal words
 
-    @pytest.mark.parametrize("word", ["null", "true", "\"\"", "[emit]"])
-    def test_a_non_word_is_refused(self, declfile, word):
-        """An explicit null (or any non-word) is not "undeclared": it refuses."""
+    @pytest.mark.parametrize(
+        ("word", "spelled"),
+        [("null", "empty: null"), ("true", "empty: true"),
+         ("\"\"", "empty: ''"), ("[emit]", "empty: [emit]")],
+    )
+    def test_a_non_word_is_refused(self, declfile, word, spelled):
+        """An explicit null (or any non-word) is not "undeclared": it refuses,
+        quoting the value in YAML spelling, not as a Python repr."""
         with pytest.raises(SettingsError) as exc:
             self._load(declfile, "model", f"      empty: {word}\n")
-        assert "emit" in str(exc.value) and "omit" in str(exc.value)
+        msg = str(exc.value)
+        assert "'model'" in msg                    # names the entry
+        assert "probe-defaults.yaml" in msg        # ...and the file to fix
+        assert spelled in msg                      # ...as the user wrote it
+        assert "emit" in msg and "omit" in msg
 
     def test_a_yaml_entry_equals_the_python_built_one(self, declfile):
         package, filename = declfile(
