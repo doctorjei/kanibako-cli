@@ -308,15 +308,33 @@ def test_a_null_or_empty_store_model_names_no_model_and_the_metadata_serializes(
 
   model = PERSONA_DEFAULT_MODEL if store_model == "PERSONA_DEFAULT_MODEL" else store_model
   bundle = PersonaBundle(endpoint="https://example.invalid", model=model)
-  monkeypatch.setattr(
-    keyspec, "resolve_secret_path", lambda entry: SecretPathResult(path=Path("/dev/null"), error=None),
-  )
-  monkeypatch.setattr(keyspec, "get_target", lambda harness: lambda: object())
-  monkeypatch.setattr(keyspec, "read_persona_bundle", lambda ref, target: bundle)
   entry = SimpleNamespace(harness="claude", config_dir=Path("/nonexistent"))
+  target = object()
+  calls: list[str] = []
+
+  def fake_resolve_secret_path(got: object) -> SecretPathResult:
+    assert got is entry
+    calls.append("resolve_secret_path")
+    return SecretPathResult(path=Path("/dev/null"), error=None)
+
+  def fake_get_target(harness: str) -> object:
+    assert harness == "claude"
+    calls.append("get_target")
+    return lambda: target
+
+  def fake_read_persona_bundle(ref: str, got: object) -> PersonaBundle:
+    assert ref == "p+claude"
+    assert got is target, "the bundle is read through the target the factory built"
+    calls.append("read_persona_bundle")
+    return bundle
+
+  monkeypatch.setattr(keyspec, "resolve_secret_path", fake_resolve_secret_path)
+  monkeypatch.setattr(keyspec, "get_target", fake_get_target)
+  monkeypatch.setattr(keyspec, "read_persona_bundle", fake_read_persona_bundle)
 
   conn = keyspec.resolve_connection(
     entry, "p+claude", endpoint=None, model=None, path="/v1/chat/completions",
   )
+  assert calls == ["resolve_secret_path", "get_target", "read_persona_bundle"]
   assert conn.model is None
   json.dumps({"model": conn.model, "url": conn.url})
