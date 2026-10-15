@@ -63,6 +63,7 @@ def system_settings_rows() -> list[tuple[str, str, str]]
 def expand_braces(key: str) -> list[str]
 def spec_notation(value: object) -> str
 def spec_fence(section: str, marker: str) -> list[str]
+def spec_self_notation(text: str) -> str
 def spec_cell_value(cell: str) -> str
 def spec_fence_rows(section: str, marker: str) -> list[tuple[str, str]]
 def classify_spec_cell(key: str, cell: str) -> str

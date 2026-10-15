@@ -940,7 +940,9 @@ def spec_fence(section: str, marker: str) -> list[str]:
 
     Derived by walking headings: the section's span comes from the extraction
     script's own parser, the marker is located within that span, and the fence is
-    the block that opens on the next non-blank line. It FAILS CLOSED by raising --
+    the block the marker owns -- the first to open within a heading marker's
+    subsection, or the one opening on a bold marker's next non-blank line. It FAILS
+    CLOSED by raising --
     a missing spec, a missing section, a marker that moved or was renamed, and an
     unclosed fence all stop here, which exits a `[[parity]]` oracle nonzero: a
     failure no baseline can accept.
@@ -987,6 +989,23 @@ def spec_fence(section: str, marker: str) -> list[str]:
     if closes is None:
         raise SystemExit(f"{path}: §{section}'s {marker!r} fence is never closed")
     return rest[opens + 1:closes]
+
+
+def spec_self_notation(text: str) -> str:
+    """*text* with the spec's `self.` / `meta.self.` notation spelled out as the
+    registry writes it, `agent.<agent>.` / `meta.agent.<agent>.`.
+
+    ⚑ THE ONE TRANSLATION SITE. The keyspec header defines the notation ("`self.` /
+    `meta.self.` are NOTATION for `agent.<agent>.` / `meta.agent.<agent>.`"); the
+    manifest spells the keys in full, so a comparison translates the spec side here
+    and nowhere else. The word is the agent file's own root (`file_spelling()`), and
+    it is matched only at the start of a reference segment, so `x.self.y` is never
+    rewritten.
+    """
+    from kanibako.settings.agent_file import file_spelling
+
+    notation = re.compile(rf"(?<![\w.])(meta\.)?{re.escape(file_spelling())}\.")
+    return notation.sub(lambda m: f"{m[1] or ''}agent.<agent>.", text)
 
 
 def spec_cell_value(cell: str) -> str:

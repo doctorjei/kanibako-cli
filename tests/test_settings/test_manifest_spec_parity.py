@@ -30,8 +30,11 @@ Indent note: 4 spaces, matching every sibling in ``tests/test_settings/``.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
+from kanibako.settings.core_defaults import CANON_ACTIVE_AGENT_TOKEN
 from kanibako.settings.keyspace_manifest import manifest_doc
 
 # The spec locator and the heading parser both come from ``scripts/keyspec-extract.py``,
@@ -54,6 +57,7 @@ from kinemata_views import (  # noqa: F401  (this file's own readers use these n
     spec_fence as _spec_fence,
     spec_fence_rows as _spec_fence_rows,
     spec_notation as _canonical,
+    spec_self_notation as _spelled_out,
 )
 
 #: The tier this file pins.  Every row on both sides is one of these; the per-node arm
@@ -71,6 +75,20 @@ TIER = "agent.default."
 #: pin working, loudly.
 SECTION = "2d"
 MARKER = "#### Default settings"
+
+#: §2d Default-tier rows the registry KNOWINGLY lacks, each pinned by a strict xfail
+#: below so the gap REDS the day it closes and is removed from here.
+#: ⚑ ``agent.default.auth.path`` waits on the auth design: board rows "Manifest lags
+#: his keyspec edit" (spec-canon-conformance.md) and tasks/auth-model.md.  The code's
+#: closed keyspace does not declare it, so a manifest row now would crash the defaults
+#: inventory and name a key the CLI refuses.
+EXPECTED_GAPS: frozenset[str] = frozenset({"agent.default.auth.path"})
+
+#: The registry's spelling of the active node.  At the Default tier the value applies
+#: to the ACTIVE agent, so ``meta.agent.<active>.`` (core_defaults.CANON_ACTIVE_AGENT_TOKEN,
+#: the runtime token) is the spec's ``meta.agent.<agent>.``.
+_ACTIVE_NODE = f"meta.agent.{CANON_ACTIVE_AGENT_TOKEN}."
+_SPEC_NODE = "meta.agent.<agent>."
 
 
 
@@ -124,12 +142,44 @@ def _spec_rows(lines: list[str]) -> dict[str, str]:
     null IDENTICALLY, so the registry cannot state the distinction this side now draws:
     a quoted sentinel reds against EITHER manifest spelling.  No §2d row states one; if
     one ever does, the fix is on the manifest side.
+
+    ⛑ ``self.`` / ``meta.self.`` ARE THE SPEC'S NOTATION for ``agent.<agent>.`` /
+    ``meta.agent.<agent>.`` (its header says so), and the registry spells them out;
+    ``_spelled_out`` translates both key and value before any comparison.
     """
     return {
-        key: _spec_cell_value(cell)
+        _spelled_out(key): _spelled_out(_spec_cell_value(cell))
         for key, cell in _spec_fence_rows(SECTION, MARKER)
         if key.startswith(TIER)
     }
+
+
+#: A §2d row naming one ENTRY of a dest-keyed category: ``<tier><category>[<dest>]``.
+_ENTRY_ROW = re.compile(r"^(?P<family>[^\[]+)\[(?P<dest>.+)\]$")
+
+#: A §2d row naming the parametric member of a category: ``<tier><category>.<VAR>``.
+_PARAMETRIC_ROW = re.compile(r"^(?P<family>.+)\.<[^<>]+>$")
+
+
+def _placeholder(text: str) -> bool:
+    """True where *text* carries a ``<...>`` placeholder: a PATTERN, not a member."""
+    return "<" in text and ">" in text
+
+
+def _family_of(key: str) -> str | None:
+    """The category family a PATTERN row belongs to, or ``None`` for any other row.
+
+    ⚑ A PATTERN ROW IS NOT A DEFAULT ENTRY.  ``caches[~/.kanibako/cache/<dir>]`` and
+    ``secret_path.<VAR>`` say what shape a plugin's or user's entry takes; no entry
+    ships at that dest, so the registry's carrier is the category family itself.  A
+    row naming a CONCRETE dest (``seeded[~/]``) is a real entry and is NOT mapped
+    here: it must be a ``category_default_entries`` row, value and all.
+    """
+    entry = _ENTRY_ROW.match(key)
+    if entry is not None:
+        return entry["family"] if _placeholder(entry["dest"]) else None
+    parametric = _PARAMETRIC_ROW.match(key)
+    return parametric["family"] if parametric is not None else None
 
 
 # --------------------------------------------------------------------------- #
@@ -164,6 +214,21 @@ def _manifest_tier_categories() -> dict[str, str | None]:
         f"{TIER}{name}": (_canonical(row["default"]) if "default" in row else None)
         for name, row in table.items()
         if "value" in row
+    }
+
+
+def _manifest_tier_entries() -> dict[str, str | None]:
+    """``{<tier><category>[<dest>]: default}`` for the Default tier's declared entries.
+
+    Read out of the manifest's ``category_default_entries:`` table, where a CONCRETE
+    entry of a dest-keyed family lives (``agent.default.seeded`` at ``~/``).
+    """
+    scope = TIER.rstrip(".")
+    return {
+        f"{arm}[{dest}]": (_canonical(row["default"]) if "default" in row else None)
+        for arm, entries in manifest_doc()["category_default_entries"].items()
+        if str(arm).startswith(f"{scope}.") and isinstance(entries, dict)
+        for dest, row in entries.items()
     }
 
 
@@ -210,6 +275,22 @@ class TestTheCorporaAreNotEmpty:
             f"turn every category row into a spec-side false positive"
         )
 
+    def test_the_category_entries_resolve(self):
+        """The third registry table, asserted non-empty for the same reason."""
+        entries = _manifest_tier_entries()
+        assert len(entries) > 0, (
+            f"the manifest's category_default_entries: table declares {len(entries)} "
+            f"entries at the {TIER.rstrip('.')} scope — a renamed table would turn "
+            f"every concrete-dest spec row into a false positive"
+        )
+
+    def test_self_notation_is_spelled_out(self):
+        """The spec header's notation, exercised on synthetic text."""
+        assert _spelled_out("({self.template}/box/home)") == (
+            "({agent.<agent>.template}/box/home)")
+        assert _spelled_out("{meta.self.path}/auth") == "{meta.agent.<agent>.path}/auth"
+        assert _spelled_out("{x.self.y}") == "{x.self.y}"
+
     def test_brace_notation_is_expanded(self):
         """The one notation rule, exercised on a synthetic row rather than a real one."""
         assert _expand_braces("a.{x,y}.z") == ["a.x.z", "a.y.z"]
@@ -228,8 +309,20 @@ class TestTheTiersAreOneSet:
         )
 
     def test_every_spec_row_is_a_manifest_row(self, spec_rows):
-        declared = set(_manifest_rows()) | set(_manifest_tier_categories())
-        missing = sorted(set(spec_rows) - declared)
+        declared = (
+            set(_manifest_rows()) | set(_manifest_tier_categories())
+            | set(_manifest_tier_entries())
+        )
+        stale = sorted(EXPECTED_GAPS - set(spec_rows))
+        assert not stale, (
+            f"EXPECTED_GAPS names keys §{SECTION}'s Default tier no longer declares: "
+            f"{stale} — drop them from EXPECTED_GAPS"
+        )
+        missing = sorted(
+            key for key in spec_rows
+            if key not in declared and _family_of(key) not in declared
+            and key not in EXPECTED_GAPS
+        )
         assert not missing, (
             f"§{SECTION}'s Default tier declares keys the registry has no row for: "
             f"{missing} — this is the agent.default.template failure verbatim; add the "
@@ -237,14 +330,31 @@ class TestTheTiersAreOneSet:
         )
 
 
+@pytest.mark.parametrize("key", sorted(EXPECTED_GAPS))
+@pytest.mark.xfail(strict=True, reason="known registry gap; see EXPECTED_GAPS")
+def test_an_expected_gap_is_still_open(key):
+    """XFAILS while the gap is open; XPASS (a strict failure) once a row lands."""
+    declared = (
+        set(_manifest_rows()) | set(_manifest_tier_categories())
+        | set(_manifest_tier_entries())
+    )
+    assert key in declared
+
+
 class TestTheValuesAgree:
     """Where BOTH carriers state a default, it is the same default."""
 
     def test_the_stated_defaults_are_identical(self, spec_rows):
         registry: dict[str, str] = dict(_manifest_rows())
-        for key, value in _manifest_tier_categories().items():
+        for key, value in [*_manifest_tier_categories().items(),
+                           *_manifest_tier_entries().items()]:
             if value is not None:
                 registry[key] = value
+        # ⚑ THE ONE ACTIVE-NODE NORMALIZATION (registry side, Default tier only).
+        registry = {
+            key: value.replace(_ACTIVE_NODE, _SPEC_NODE)
+            for key, value in registry.items()
+        }
 
         shared = sorted(set(spec_rows) & set(registry))
         assert shared, (
