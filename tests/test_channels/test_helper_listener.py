@@ -31,6 +31,7 @@ from kanibako.settings.core_defaults import helper_budget_dest
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_resolve import normalize_bind_dest
 from tests.support.early import early_record
+from tests.support.hub import ask
 
 
 @pytest.fixture
@@ -399,7 +400,7 @@ class TestHubSocketProtocol:
 
     def test_unknown_action(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
-        resp = _connect_and_send(sock_path, {"action": "bogus"})
+        resp = ask(hub, {"action": "bogus"})
         assert resp["status"] == "error"
         assert "unknown" in resp["message"]
 
@@ -468,7 +469,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
             "helpers_dir": "/home/agent/helpers",
@@ -495,7 +496,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
         })
@@ -512,7 +513,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
         })
@@ -532,7 +533,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
             "model": "sonnet",
@@ -552,7 +553,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
         })
@@ -563,7 +564,7 @@ class TestHubSpawn:
 
     def test_spawn_invalid_helper_num(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": -1,
         })
@@ -587,7 +588,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
         })
@@ -610,7 +611,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
         })
@@ -632,7 +633,7 @@ class TestHubSpawn:
         (helper_root / "vault" / "ro").mkdir(parents=True)
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn",
             "helper_num": 1,
         })
@@ -653,7 +654,7 @@ class TestHubSpawn:
             (helper_root / leaf).mkdir(parents=True)
         (helper_root / "scripts" / "helper-init.sh").write_text("#!/usr/bin/env bash\n")
 
-        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        resp = ask(hub, {"action": "spawn", "helper_num": 1})
         assert resp["status"] == "ok"
 
         call_kwargs = ctx.runtime.run.call_args[1]
@@ -678,11 +679,11 @@ class TestHubTreeSpawn:
     def test_a_helpers_child_launches_under_the_helpers_home(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
-        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
         child_root = ctx.helpers_dir / "1" / "helpers" / "5"
         _helper_tree(child_root)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn", "helper_num": 5, "requester": 1,
             "helpers_dir": "/home/agent/helpers",
         })
@@ -701,12 +702,12 @@ class TestHubTreeSpawn:
         _helper_tree(deep)
         for req in ({"helper_num": 1}, {"helper_num": 5, "requester": 1},
                     {"helper_num": 21, "requester": 5}):
-            assert _connect_and_send(sock_path, {"action": "spawn", **req})["status"] == "ok"
+            assert ask(hub, {"action": "spawn", **req})["status"] == "ok"
         assert ctx.runtime.run.call_args[1]["shell_path"] == deep
 
     def test_an_unknown_requester_is_refused(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "spawn", "helper_num": 5, "requester": 1,
         })
         assert resp["status"] == "error"
@@ -717,8 +718,8 @@ class TestHubTreeSpawn:
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
         _helper_tree(ctx.helpers_dir / "1" / "helpers" / "1")
-        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
-        resp = _connect_and_send(sock_path, {
+        assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        resp = ask(hub, {
             "action": "spawn", "helper_num": 1, "requester": 1,
         })
         assert resp["status"] == "error"
@@ -729,7 +730,7 @@ class TestHubTreeSpawn:
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
         for _ in range(2):
-            assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+            assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
         assert ctx.runtime.run.call_count == 2
 
 
@@ -748,8 +749,8 @@ class TestHubNumberCounter:
         return hub, sock
 
     def test_numbers_count_up_from_one_and_never_repeat(self, hub_and_sock):
-        _hub, sock_path, _ctx = hub_and_sock
-        got = [_connect_and_send(sock_path, {"action": "number"}) for _ in range(3)]
+        hub, _sock_path, _ctx = hub_and_sock
+        got = [ask(hub, {"action": "number"}) for _ in range(3)]
         assert got == [{"status": "ok", "helper_num": n} for n in (1, 2, 3)]
 
     def test_a_restarted_hub_skips_every_number_on_disk(self, tmp_path, mock_ctx):
@@ -760,7 +761,7 @@ class TestHubNumberCounter:
         (mock_ctx.helpers_dir / "all").mkdir()
         hub, sock = self._restart(tmp_path, mock_ctx)
         try:
-            assert _connect_and_send(sock, {"action": "number"})["helper_num"] == 10
+            assert ask(hub, {"action": "number"})["helper_num"] == 10
         finally:
             hub.stop()
 
@@ -775,7 +776,7 @@ class TestHubNumberCounter:
         (mock_ctx.helpers_dir / "1" / "helpers").symlink_to(outside)
         hub, sock = self._restart(tmp_path, mock_ctx)
         try:
-            assert _connect_and_send(sock, {"action": "number"})["helper_num"] == 2
+            assert ask(hub, {"action": "number"})["helper_num"] == 2
         finally:
             hub.stop()
 
@@ -786,7 +787,7 @@ class TestHubNumberCounter:
         mock_ctx.helpers_dir.symlink_to(outside)
         hub, sock = self._restart(tmp_path, mock_ctx)
         try:
-            assert _connect_and_send(sock, {"action": "number"})["helper_num"] == 1
+            assert ask(hub, {"action": "number"})["helper_num"] == 1
         finally:
             hub.stop()
 
@@ -810,10 +811,10 @@ class TestHubNumberCounter:
         assert not (tmp_path / "helper2.sock").exists()
 
     def test_a_spawn_of_a_number_it_did_not_hand_out_moves_the_counter(self, hub_and_sock):
-        _hub, sock_path, ctx = hub_and_sock
+        hub, _sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "7")
-        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 7})["status"] == "ok"
-        assert _connect_and_send(sock_path, {"action": "number"})["helper_num"] == 8
+        assert ask(hub, {"action": "spawn", "helper_num": 7})["status"] == "ok"
+        assert ask(hub, {"action": "number"})["helper_num"] == 8
 
 
 #: A user's own ``~/canon/notebook/scripts/helper-init.sh`` (``resolve_init_script``):
@@ -857,8 +858,8 @@ class TestHubWritesTheHelperNumber:
         for home in (one, five):
             _helper_tree(home)
         write_spawn_budget(one / "spawn.yaml", SpawnBudget(depth=3, breadth=4))
-        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
-        assert _connect_and_send(sock_path, {
+        assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        assert ask(hub, {
             "action": "spawn", "helper_num": 5, "requester": 1,
         })["status"] == "ok"
         assert read_helper_number(one / "spawn.yaml") == 1
@@ -879,9 +880,9 @@ class TestHubWritesTheHelperNumber:
         hub, sock_path, ctx = hub_and_sock
         one = ctx.helpers_dir / "1"
         _helper_tree(one)
-        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
         write_helper_number(one / "spawn.yaml", 9)  # a stale or tampered value
-        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
         assert read_helper_number(one / "spawn.yaml") == 1
 
     def test_an_unwritable_document_is_a_failed_launch(self, hub_and_sock):
@@ -891,7 +892,7 @@ class TestHubWritesTheHelperNumber:
         one = ctx.helpers_dir / "1"
         _helper_tree(one)
         (one / "spawn.yaml").mkdir()
-        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        resp = ask(hub, {"action": "spawn", "helper_num": 1})
         assert resp["status"] == "error"
         ctx.runtime.run.assert_not_called()
         assert 1 not in hub._homes
@@ -919,8 +920,8 @@ class TestHubWritesTheHelperNumber:
         sock_path = tmp_path / "helper.sock"
         hub.start(sock_path, mock_ctx)
         try:
-            assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
-            resp = _connect_and_send(sock_path, {
+            assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+            resp = ask(hub, {
                 "action": "spawn", "helper_num": 5, "requester": 1,
             })
         finally:
@@ -955,8 +956,8 @@ class TestHubStop:
     def test_stop_success(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
-        name = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["container_name"]
-        resp = _connect_and_send(sock_path, {
+        name = ask(hub, {"action": "spawn", "helper_num": 1})["container_name"]
+        resp = ask(hub, {
             "action": "stop",
             "container_name": name,
             "helper_num": 1,
@@ -1005,7 +1006,7 @@ class TestHubStop:
         name = "kb-primary-testproj-helper-1"
         # The filter is a prefix match: a longer name that runs is not this one.
         ctx.runtime.list_running.return_value = [(name + "0", "img", "Up")]
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "stop", "container_name": name, "helper_num": 1,
         })
         assert resp == {"status": "not_running"}
@@ -1015,7 +1016,7 @@ class TestHubStop:
 
     def test_stop_missing_name(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
-        resp = _connect_and_send(sock_path, {"action": "stop"})
+        resp = ask(hub, {"action": "stop"})
         assert resp["status"] == "error"
         assert "missing" in resp["message"]
 
@@ -1206,7 +1207,7 @@ class TestRespawnAfterAHubRestart:
 
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
-        name = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["container_name"]
+        name = ask(hub, {"action": "spawn", "helper_num": 1})["container_name"]
         _running_state(ctx.helpers_dir / "1", name)
         with hub._containers_lock:
             hub._containers.clear()
@@ -1253,7 +1254,7 @@ class TestRespawnAfterAHubRestart:
         assert "it is running" in capsys.readouterr().err
         state = json.loads((ctx.helpers_dir / "1" / "state.json").read_text())
         assert state["status"] == "running"
-        _connect_and_send(hub_and_sock[1], {"action": "spawn", "helper_num": 1})
+        ask(hub_and_sock[0], {"action": "spawn", "helper_num": 1})
         ctx.runtime.stop.assert_not_called()
         ctx.runtime.rm.assert_not_called()
 
@@ -1284,7 +1285,7 @@ class TestStopWhenTheRuntimeCannotAnswer:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: ctx.shell_path))
         monkeypatch.setattr(helper_cmd, "_socket_path", lambda: sock_path)
 
-        resp = _connect_and_send(sock_path, {
+        resp = ask(hub, {
             "action": "stop", "container_name": name, "helper_num": 1,
         })
         assert resp["status"] == "error"
@@ -1314,7 +1315,7 @@ class TestHubStopMarksHelpersStopped:
         for root, req in ((top, {"helper_num": 1}),
                           (child, {"helper_num": 5, "requester": 1})):
             _helper_tree(root)
-            resp = _connect_and_send(sock_path, {"action": "spawn", **req})
+            resp = ask(hub, {"action": "spawn", **req})
             assert resp["status"] == "ok"
             _running_state(root, resp["container_name"])
 
@@ -1338,7 +1339,7 @@ class TestHubStopMarksHelpersStopped:
 
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
-        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        resp = ask(hub, {"action": "spawn", "helper_num": 1})
         _running_state(ctx.helpers_dir / "1", resp["container_name"])
         ctx.runtime = ContainerRuntime(command)
 
@@ -1358,7 +1359,7 @@ class TestHubStopMarksHelpersStopped:
     ):
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
-        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        resp = ask(hub, {"action": "spawn", "helper_num": 1})
         _running_state(ctx.helpers_dir / "1", resp["container_name"])
         ctx.runtime.stop.return_value = stopped
         ctx.runtime.rm.return_value = removed
@@ -1371,7 +1372,7 @@ class TestHubStopMarksHelpersStopped:
     def test_no_state_document_is_invented(self, hub_and_sock):
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
-        assert _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})["status"] == "ok"
+        assert ask(hub, {"action": "spawn", "helper_num": 1})["status"] == "ok"
 
         hub.stop()
 
@@ -1384,7 +1385,7 @@ class TestHubStopMarksHelpersStopped:
 
         hub, sock_path, ctx = hub_and_sock
         _helper_tree(ctx.helpers_dir / "1")
-        resp = _connect_and_send(sock_path, {"action": "spawn", "helper_num": 1})
+        resp = ask(hub, {"action": "spawn", "helper_num": 1})
         _running_state(ctx.helpers_dir / "1", resp["container_name"])
         hub.stop()
         monkeypatch.setattr(Path, "home", staticmethod(lambda: ctx.shell_path))
@@ -1670,7 +1671,7 @@ class TestInitScriptNameExecSite:
         (helper_root / "vault" / "rw").mkdir(parents=True)
 
         with patch.object(helper_listener, "INIT_SCRIPT_NAME", "init-check.sh"):
-            _connect_and_send(sock_path, {
+            ask(hub, {
                 "action": "spawn",
                 "helper_num": 1,
                 "helpers_dir": str(ctx.helpers_dir),

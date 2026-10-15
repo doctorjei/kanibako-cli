@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import socket
-from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +10,7 @@ import pytest
 from kanibako.channels.helper_listener import HelperContext, HelperHub
 from kanibako.settings.paths import BoxMode
 from tests.support.early import early_record
+from tests.support.hub import ask
 
 
 # ---------------------------------------------------------------------------
@@ -81,13 +79,9 @@ def fork_ctx(tmp_path):
 
 
 @pytest.fixture
-def fork_hub(tmp_path, fork_ctx):
-    """Start a HelperHub with fork-capable context."""
-    sock_path = tmp_path / "helper.sock"
-    hub = HelperHub()
-    hub.start(sock_path, fork_ctx)
-    yield hub, sock_path, fork_ctx
-    hub.stop()
+def fork_hub(fork_ctx):
+    """A HelperHub with fork-capable context."""
+    return _hub(fork_ctx), fork_ctx
 
 
 def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
@@ -136,31 +130,11 @@ def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
     )
 
 
-@contextmanager
-def _running_hub(ctx: HelperContext):
-    """Run a hub on *ctx*'s own socket path for the duration of the block."""
+def _hub(ctx: HelperContext) -> HelperHub:
+    """A hub holding *ctx*, with no socket: these tests are about the fork, not the wire."""
     hub = HelperHub()
-    hub.start(ctx.socket_path, ctx)
-    try:
-        yield ctx.socket_path
-    finally:
-        hub.stop()
-
-
-def _send(sock_path: Path, request: dict) -> dict:
-    """Connect to hub, send request, read response."""
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.connect(str(sock_path))
-    s.settimeout(5.0)
-    s.sendall(json.dumps(request).encode() + b"\n")
-    buf = b""
-    while b"\n" not in buf:
-        data = s.recv(4096)
-        if not data:
-            break
-        buf += data
-    s.close()
-    return json.loads(buf.split(b"\n")[0])
+    hub._ctx = ctx
+    return hub
 
 
 # ---------------------------------------------------------------------------
@@ -169,24 +143,24 @@ def _send(sock_path: Path, request: dict) -> dict:
 
 class TestHandleFork:
     def test_fork_creates_sibling_dir(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
-        resp = _send(sock_path, {"action": "fork", "name": "feature1"})
+        hub, ctx = fork_hub
+        resp = ask(hub, {"action": "fork", "name": "feature1"})
         assert resp["status"] == "ok"
         new_path = Path(resp["path"])
         assert new_path == ctx.project_path.parent / "myapp.feature1"
         assert new_path.is_dir()
 
     def test_fork_copies_workspace_files(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
-        resp = _send(sock_path, {"action": "fork", "name": "copy"})
+        hub, ctx = fork_hub
+        resp = ask(hub, {"action": "fork", "name": "copy"})
         assert resp["status"] == "ok"
         new_path = Path(resp["path"])
         assert (new_path / "main.py").read_text() == "print('hello')\n"
         assert (new_path / "src" / "lib.py").read_text() == "# lib\n"
 
     def test_fork_assigns_new_name(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
-        resp = _send(sock_path, {"action": "fork", "name": "named"})
+        hub, ctx = fork_hub
+        resp = ask(hub, {"action": "fork", "name": "named"})
         assert resp["status"] == "ok"
         assert "name" in resp
         # The assigned name should be registered in the PRIMARY membership.
@@ -194,8 +168,8 @@ class TestHandleFork:
         assert resp["name"] in load_primary_boxes(ctx.primary_workset, early=ctx.early)
 
     def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
-        resp = _send(sock_path, {"action": "fork", "name": "meta"})
+        hub, ctx = fork_hub
+        resp = ask(hub, {"action": "fork", "name": "meta"})
         assert resp["status"] == "ok"
         new_name = resp["name"]
         new_meta = ctx.data_path / "boxes" / new_name
@@ -212,29 +186,29 @@ class TestHandleFork:
         assert not (new_meta / "helpers").exists()
 
     def test_fork_rejects_existing_destination(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
+        hub, ctx = fork_hub
         # Create the destination beforehand
         dest = ctx.project_path.parent / "myapp.existing"
         dest.mkdir()
-        resp = _send(sock_path, {"action": "fork", "name": "existing"})
+        resp = ask(hub, {"action": "fork", "name": "existing"})
         assert resp["status"] == "error"
         assert "already exists" in resp["message"]
 
     def test_fork_rejects_empty_name(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
-        resp = _send(sock_path, {"action": "fork", "name": ""})
+        hub, ctx = fork_hub
+        resp = ask(hub, {"action": "fork", "name": ""})
         assert resp["status"] == "error"
         assert "missing" in resp["message"]
 
     def test_fork_rejects_name_with_slash(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
-        resp = _send(sock_path, {"action": "fork", "name": "a/b"})
+        hub, ctx = fork_hub
+        resp = ask(hub, {"action": "fork", "name": "a/b"})
         assert resp["status"] == "error"
         assert "invalid" in resp["message"]
 
     def test_fork_rejects_name_with_dot(self, fork_hub):
-        hub, sock_path, ctx = fork_hub
-        resp = _send(sock_path, {"action": "fork", "name": "a.b"})
+        hub, ctx = fork_hub
+        resp = ask(hub, {"action": "fork", "name": "a.b"})
         assert resp["status"] == "error"
         assert "invalid" in resp["message"]
 
@@ -254,15 +228,9 @@ class TestHandleFork:
             data_path=None,
             early=early_record(tmp_path, mode=BoxMode.primary),
         )
-        sock_path = tmp_path / "helper.sock"
-        hub = HelperHub()
-        hub.start(sock_path, ctx)
-        try:
-            resp = _send(sock_path, {"action": "fork", "name": "test"})
-            assert resp["status"] == "error"
-            assert "project_path" in resp["message"]
-        finally:
-            hub.stop()
+        resp = ask(_hub(ctx), {"action": "fork", "name": "test"})
+        assert resp["status"] == "error"
+        assert "project_path" in resp["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -333,8 +301,7 @@ class TestForkSourceMetaDirFallback:
         assert primary_box_name_for_workspace(
             ctx.primary_workset, str(ctx.project_path), early=ctx.early) is None
 
-        with _running_hub(ctx) as sock_path:
-            resp = _send(sock_path, {"action": "fork", "name": "fallback"})
+        resp = ask(_hub(ctx), {"action": "fork", "name": "fallback"})
 
         assert resp["status"] == "ok"
         new_meta = ctx.boxes / resp["name"]
