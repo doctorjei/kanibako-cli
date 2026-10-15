@@ -585,7 +585,6 @@ def start_mocks():
                 name="default",
                 root=Path("/data"),
                 is_default=True,
-                local_shared_base=Path("/data"),
             )
             proj.metadata_path = MagicMock()
             proj.metadata_path.__truediv__ = MagicMock(return_value=MagicMock())

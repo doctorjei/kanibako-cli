@@ -154,7 +154,6 @@ class ProjectGroup:
     name: str
     root: Path
     is_default: bool
-    local_shared_base: Path
 
 
 class _WorksetRooted(Protocol):
@@ -177,7 +176,7 @@ def workset_settings_path(group: _WorksetRooted | None) -> Path | None:
 def _default_project_group(std: StandardPaths) -> ProjectGroup:
     """The PRIMARY (default) workset's :class:`ProjectGroup`, rooted at ``{config.primary_workset}``."""
     return ProjectGroup(name="default", root=std.primary_workset,
-                        is_default=True, local_shared_base=std.data_path)
+                        is_default=True)
 
 
 @dataclass
@@ -2383,47 +2382,45 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
 
     # J2 connect self-heal: the box is already registered, so recovery == CLEAR the stale
     # entry (NO re-register, NO seed).  ⚑ The key is the host-side box dir, not the workspace.
-    journal_path = getattr(std, "journal", None)
-    if journal_path is not None:
-        from kanibako.launch import journal as _journal
-        box_key = Path(shell_path).parent
-        pending = _journal.pending_import(journal_path, box_key)
-        if pending is not None:
-            # ⚑ A kill between the membership write and the marker drop leaves a forced
-            # connect's marker; drop it now, BEFORE the clear, so a second kill replays it.
-            if pending.get("op") == "connect" and registered_workspace is not None:
-                # ⚑ The replay never raises: an unreadable file keeps its marker, warned,
-                # and the entry still clears (a stuck entry is worse than a kept marker).
-                root = Path(registered_workspace)
-                marked, failed = False, None
+    journal_path = std.journal
+    from kanibako.launch import journal as _journal
+    box_key = Path(shell_path).parent
+    pending = _journal.pending_import(journal_path, box_key)
+    if pending is not None:
+        # ⚑ A kill between the membership write and the marker drop leaves a forced
+        # connect's marker; drop it now, BEFORE the clear, so a second kill replays it.
+        if pending.get("op") == "connect" and registered_workspace is not None:
+            # ⚑ The replay never raises: an unreadable file keeps its marker, warned,
+            # and the entry still clears (a stuck entry is worse than a kept marker).
+            root = Path(registered_workspace)
+            marked, failed = False, None
+            try:
+                root = root.resolve()
+            except RuntimeError:  # Python 3.11's resolve() on a link loop
+                failed = "a symlink loop"
+            else:
                 try:
-                    root = root.resolve()
-                except RuntimeError:  # Python 3.11's resolve() on a link loop
-                    failed = "a symlink loop"
-                else:
-                    try:
-                        marked = _is_standalone_meta_dir(root)
-                    except (ConfigError, OSError) as exc:
-                        # ⚑ Not the ConfigError's text: its "then retry" cure is wrong here,
-                        # for the entry clears and a retry drops nothing.
-                        cause = exc.__cause__ if isinstance(exc, ConfigError) else exc
-                        failed = getattr(cause, "strerror", None) or "it could not be read"
-                if failed is not None:
-                    get_logger(__name__).warning(
-                        "an interrupted connect could not check the standalone marker in %s "
-                        "(%s). The box is the workset's box; if that file still says "
-                        "workset.registry: null, remove that line by hand.",
-                        root / WORKSET_META_FILE, failed)
-                if marked:
-                    drop_standalone_marker(root, lambda _undo: None)
-            _journal.clear_entry(journal_path, box_key)
+                    marked = _is_standalone_meta_dir(root)
+                except (ConfigError, OSError) as exc:
+                    # ⚑ Not the ConfigError's text: its "then retry" cure is wrong here,
+                    # for the entry clears and a retry drops nothing.
+                    cause = exc.__cause__ if isinstance(exc, ConfigError) else exc
+                    failed = getattr(cause, "strerror", None) or "it could not be read"
+            if failed is not None:
+                get_logger(__name__).warning(
+                    "an interrupted connect could not check the standalone marker in %s "
+                    "(%s). The box is the workset's box; if that file still says "
+                    "workset.registry: null, remove that line by hand.",
+                    root / WORKSET_META_FILE, failed)
+            if marked:
+                drop_standalone_marker(root, lambda _undo: None)
+        _journal.clear_entry(journal_path, box_key)
 
     return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
                         shell_path=shell_path, vault_ro_path=vault_ro_path,
                         vault_rw_path=vault_rw_path, is_new=is_new, mode=BoxMode.named,
                         name=project_name, group=ProjectGroup(name=ws.name, root=ws.root,
-                                                              is_default=False,
-                                                              local_shared_base=ws.root),
+                                                              is_default=False),
                         _config_path=std.config_file, _enable_vault=resolved_vault,
                         _early=_early_scope(std, BoxMode.named, ws.name))
 

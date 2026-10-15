@@ -191,7 +191,6 @@ class ProjectGroup:
     name: str
     root: Path
     is_default: bool
-    local_shared_base: Path
 
 @dataclass
 class ProjectPaths:

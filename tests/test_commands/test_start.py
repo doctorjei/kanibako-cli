@@ -2558,7 +2558,6 @@ class TestPluginsAndCacheShares:
         proj = MagicMock()
         proj.group = ProjectGroup(
             name="default", root=std.data, is_default=True,
-            local_shared_base=std.data,
         )
         # Default/PRIMARY mode (B1: meta.runtime.* needs a real mode; primary uses
         # the {config.primary_workset} reference so project_path is unused here).
@@ -3926,7 +3925,6 @@ class TestRetiredEnvFilesAreNotRead:
                 name="default",
                 root=ws_root,
                 is_default=True,
-                local_shared_base=ws_root,
             )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -3960,7 +3958,6 @@ class TestRetiredEnvFilesAreNotRead:
                 name="myws",
                 root=ws_root,
                 is_default=False,
-                local_shared_base=ws_root,
             )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -7736,7 +7733,6 @@ class TestCodexEnvKeyComesFromThePersonasOwnNames:
         proj = MagicMock()
         proj.group = ProjectGroup(
             name="default", root=std.data, is_default=True,
-            local_shared_base=std.data,
         )
         proj.mode = BoxMode.primary
         proj.project_path = std.data
@@ -7867,7 +7863,6 @@ class TestPersonaKeylessNullAtANonNodeTier:
         proj = MagicMock()
         proj.group = ProjectGroup(
             name="default", root=std.data, is_default=True,
-            local_shared_base=std.data,
         )
         proj.mode = BoxMode.primary
         proj.project_path = std.data
@@ -10408,7 +10403,6 @@ class TestPersonaLiveTierWiring:
         proj = MagicMock()
         proj.group = ProjectGroup(
             name="default", root=std.data, is_default=True,
-            local_shared_base=std.data,
         )
         proj.mode = BoxMode.primary
         proj.project_path = std.data
@@ -13928,8 +13922,7 @@ class TestShellRunsTheCommand:
 
         with self._site(start_mocks, 0) as m:
             m.proj.mode = BoxMode.named
-            m.proj.group = ProjectGroup(name="wsx", root=Path("/data/wsx"), is_default=False,
-                                        local_shared_base=Path("/data/wsx"))
+            m.proj.group = ProjectGroup(name="wsx", root=Path("/data/wsx"), is_default=False)
             m.proj.name = "bar"
             rc, err, _ = self._end(m, capsys, site="detach-up")
             assert rc == 0

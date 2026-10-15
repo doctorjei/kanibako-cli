@@ -1337,8 +1337,7 @@ class TestWorksetBoxesAndLogsResolved:
             shell_path=ws.projects_dir / "b" / "home",
             vault_ro_path=ws.vault_ro_dir / "b", vault_rw_path=ws.vault_rw_dir / "b",
             is_new=False, mode=BoxMode.named, _enable_vault=False, name="b",
-            group=ProjectGroup(name="logmove", root=root, is_default=False,
-                               local_shared_base=root),
+            group=ProjectGroup(name="logmove", root=root, is_default=False),
         )
         assert helper_log_path(std, proj) == elsewhere / "b.jsonl"
 
@@ -1461,8 +1460,7 @@ class TestWorksetLogsPresentNone:
             shell_path=ws.projects_dir / "b" / "home",
             vault_ro_path=ws.vault_ro_dir / "b", vault_rw_path=ws.vault_rw_dir / "b",
             is_new=False, mode=BoxMode.named, _enable_vault=False, name="b",
-            group=ProjectGroup(name="nolog2", root=root, is_default=False,
-                               local_shared_base=root),
+            group=ProjectGroup(name="nolog2", root=root, is_default=False),
         )
         assert helper_log_path(std, proj) is None
         assert creds_watcher_log_path(std, proj) is None

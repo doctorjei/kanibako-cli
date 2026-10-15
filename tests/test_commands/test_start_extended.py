@@ -2782,7 +2782,7 @@ class TestVaultTmpfsMode:
             m.proj.mode = BoxMode.primary
             m.proj.group = ProjectGroup(
                 name="default", root=Path("/data"),
-                is_default=True, local_shared_base=Path("/data"),
+                is_default=True,
             )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -2804,7 +2804,7 @@ class TestVaultTmpfsMode:
             m.proj.mode = BoxMode.named
             m.proj.group = ProjectGroup(
                 name="ws", root=Path("/ws"),
-                is_default=False, local_shared_base=Path("/ws"),
+                is_default=False,
             )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,

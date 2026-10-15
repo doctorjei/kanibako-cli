@@ -641,7 +641,7 @@ class TestWorksetLaunch:
         proj.name = project_name
         proj.group = ProjectGroup(
             name="my_workset", root=ws_root,
-            is_default=False, local_shared_base=ws_root,
+            is_default=False,
         )
         proj.project_path = ws_root / "workspaces" / project_name
         proj.project_hash = "ws123abc"

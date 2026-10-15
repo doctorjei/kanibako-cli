@@ -122,9 +122,6 @@ meet it: displays print `<None>` (`box info`, `box create`'s messages, `clean`, 
 `_lifecycle._state_from_paths`; `duplicate` and `extract`'s git check treat it as no workspace; the
 launch narrows it after the probe. Primary and named boxes always carry a path.
 
-*local_shared_base* is the root under which the local-shared path lives (`base / "common"`): the
-standard data path for the default group, the workset root for a workset group.
-
 ### `_WorksetRooted`
 
 Structural type for "anything rooted at `{meta.workset.path}`". Satisfied by both `ProjectGroup` (the
@@ -199,7 +196,7 @@ def _default_project_group(std: StandardPaths) -> ProjectGroup
 The PRIMARY (default) workset's `ProjectGroup`.
 
 Spec §2c: the PRIMARY workset roots at `{config.primary_workset}` — the workset-tier settings/env
-files derive from this root (F4). `local_shared_base` is the data path.
+files derive from this root (F4).
 
 ```python
 def box_tree_materialized(proj: ProjectPaths) -> bool

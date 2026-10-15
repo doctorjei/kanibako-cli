@@ -2224,7 +2224,6 @@ class TestBoxWorksetSettingsPaths:
 
         group = ProjectGroup(
             name="default", root=tmp_path / "pw", is_default=True,
-            local_shared_base=tmp_path / "data",
         )
         for mode, grp in (
             (BoxMode.primary, group),
@@ -2253,7 +2252,6 @@ class TestBoxWorksetSettingsPaths:
             name="default",
             root=tmp_path / "primary_workset",
             is_default=True,
-            local_shared_base=tmp_path / "data",
         )
         proj_p = self._proj(tmp_path, mode=BoxMode.primary, group=primary_group)
         box_p, ws_p = box_workset_settings_paths(proj_p)
@@ -2265,7 +2263,6 @@ class TestBoxWorksetSettingsPaths:
             name="kento",
             root=tmp_path / "kento",
             is_default=False,
-            local_shared_base=tmp_path / "kento",
         )
         proj_n = self._proj(tmp_path, mode=BoxMode.named, group=named_group)
         box_n, ws_n = box_workset_settings_paths(proj_n)
