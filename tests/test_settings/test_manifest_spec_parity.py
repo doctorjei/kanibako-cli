@@ -331,7 +331,7 @@ class TestTheTiersAreOneSet:
 
 
 @pytest.mark.parametrize("key", sorted(EXPECTED_GAPS))
-@pytest.mark.xfail(strict=True, reason="known registry gap; see EXPECTED_GAPS")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="known registry gap; see EXPECTED_GAPS")
 def test_an_expected_gap_is_still_open(key):
     """XFAILS while the gap is open; XPASS (a strict failure) once a row lands."""
     declared = (
