@@ -27,6 +27,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]' -e packages/agent-claude/ -e packages/agent-goose/ -e packages/agent-codex/
       - run: ruff check src/ tests/ packages/
+      - run: ruff format --check src/ tests/ packages/
       - run: mypy src/kanibako/
       - run: mypy packages/agent-claude/src packages/agent-goose/src packages/agent-codex/src
       # ⚑ This step also runs the KEYSPACE ENFORCEMENT layer. tests/_keystore_census.py
