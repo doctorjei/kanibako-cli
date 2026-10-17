@@ -168,8 +168,17 @@ def _scan_plugin_modules(
     except ImportError:
         return
 
+    # ⚑ THE WALK IMPORTS TOO. ``walk_packages`` imports each package to recurse into
+    # it, and with no ``onerror`` it re-raises anything but ``ImportError`` — so a
+    # plugin package whose ``__init__`` raises (a published goose refusing on an old
+    # ``$GUEST_HOME``) escaped here after the entry-point guard had already reported
+    # it SKIPPED. ``onerror`` runs only for an ``Exception``, the same class the two
+    # guards below catch; anything outside it still propagates.
+    def _walk_failed(module_name: str) -> None:
+        logger.debug("Failed to import plugin package %s", module_name, exc_info=True)
+
     for finder, module_name, ispkg in pkgutil.walk_packages(
-        plugins_pkg.__path__, prefix="kanibako.plugins."
+        plugins_pkg.__path__, prefix="kanibako.plugins.", onerror=_walk_failed,
     ):
         if module_name in ("kanibako.plugins",):
             continue

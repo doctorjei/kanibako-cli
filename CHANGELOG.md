@@ -2650,13 +2650,13 @@ migration code.** Four released config surfaces are removed outright
   code is preserved in git history, not in the wheel. Importing a legacy path now raises
   `ModuleNotFoundError`. **This reaches users, not only plugin authors:** the agent plugins pin no
   upper bound on `kanibako-cli`, so an old plugin beside a new core is what an unpinned upgrade
-  produces by default. Two independent breaks are in play, and between them they cover almost the
-  whole published set. A middle band of wheels imports one of the four removed paths. The rest fail
+  produces by default. Two independent breaks are in play, and between them they cover every
+  published wheel but goose `0.4.0` and `0.5.0`, which a third refusal catches. A middle band of wheels imports one of the four removed paths. The rest fail
   on the *other* break: `kanibako.targets.base` kept its path and lost **symbols**, which catches
   the oldest wheels and the newest pre-release ones alike — so being clear of the removed paths
-  proves nothing on its own. **No published `kanibako-agent-claude` or `kanibako-agent-codex` wheel
-  loads on v1.8.0**; `kanibako-agent-goose` `0.4.0` and `0.5.0` are the only published plugin
-  wheels that do. Nothing crashes — a plugin that cannot import is reported by name on standard
+  proves nothing on its own. **No published agent plugin wheel loads on v1.8.0.** Goose `0.4.0`
+  and `0.5.0` clear both breaks, but their `goose-defaults.yaml` still spells `$GUEST_HOME` bare,
+  and this release refuses that spelling when the plugin loads. Nothing crashes — a plugin that cannot import is reported by name on standard
   error and skipped, and every other agent plus `kanibako setup` keeps working (see the discovery
   fix below). The cure is to upgrade that plugin, or to install the `kanibako` meta package, which
   pins a compatible set. The version-by-version matrix is in *Core module paths moved
@@ -6377,17 +6377,21 @@ migration code.** Four released config surfaces are removed outright
   them. `kanibako setup` uses the same discovery, so the documented cure died the same way and
   editing installed files by hand was the only way back in. A plugin that fails to load is now
   reported by name on standard error, with what still works and what to do about it, and then
-  skipped. Every other agent keeps working. The two fallback discovery paths already tolerated a
-  failing plugin; the main one now matches them.
+  skipped. Every other agent keeps working. The fallback module scan's own import already tolerated
+  a failing plugin; the main one now matches it. The scan's package walk did not: a plugin package
+  raising anything but `ImportError` at import (a published goose refusing its bare `$GUEST_HOME`,
+  for one) printed the SKIPPED warning and then still killed the command. The walk now skips that
+  package too, so the warning is all you see.
 
 - **`kanibako-agent-goose` and `kanibako-agent-codex` are now 0.6.0; older ones are
   refused.** Their published `0.3.0` packages predate the `access_realization` and top-level `env:`
   changes, so the current kanibako cannot load them — it refuses them by name, which is correct but
   left no version to upgrade *to*, since `0.3.0` was the newest published. Both were republished at
-  `0.4.0`, and again at `0.5.0` when their plugin code and seeded canon changed further. Both moved
-  once more, to `0.6.0`. Codex moved because the published `0.5.0` calls a probe helper that this
-  release replaces, so that wheel would fail to import against the new CLI. Goose moved because its
-  plugin code, defaults, and seeded canon changed after `0.5.0` was published. The meta package
+  `0.4.0`, and again at `0.5.0` when their plugin code and seeded canon changed further. Neither
+  `0.5.0` loads on this release, so both moved to `0.6.0`. Codex's calls a probe helper that this
+  release replaces, so it fails to import against the new CLI. Goose's defaults file spells
+  `$GUEST_HOME` bare, which this release refuses, and its plugin code, defaults, and seeded canon
+  changed after it was published. The meta package
   requires the current pair. **If you installed the meta package and saw errors about `safe_bypass`,
   `container_env`, or `BindDefault`, upgrading is the fix.**
   Unlike the CLI and the Claude plugin, these two are **not** stamped with the release train — they
