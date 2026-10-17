@@ -585,6 +585,18 @@ class TestPostStartHook:
     assert threading.active_count() <= before
 
 
+def _is_runtime_run(func: object) -> bool:
+  """``runtime.run`` or ``ctx.runtime.run``: a ``run`` on any receiver named ``*runtime``."""
+  import ast
+
+  if not (isinstance(func, ast.Attribute) and func.attr == "run"):
+    return False
+  receiver = func.value
+  if isinstance(receiver, ast.Name):
+    return receiver.id.endswith("runtime")
+  return isinstance(receiver, ast.Attribute) and receiver.attr.endswith("runtime")
+
+
 class TestPostStartCallSites:
   """⚑ THE OBLIGATION THAT THE SIGNATURE CANNOT ENFORCE.
 
@@ -610,30 +622,26 @@ class TestPostStartCallSites:
     """Source-level sweep: a ``runtime.run(``/``ctx.runtime.run(`` call in the
     box-home modules must carry ``post_start=``. Adding a fourth box-launching
     seam without the hook fails HERE rather than in a user's box."""
+    import ast
     import inspect
-    import re
 
     from kanibako.channels import helper_listener
     from kanibako.commands import start as start_mod
 
     offenders: list[str] = []
     for mod in (start_mod, helper_listener):
-      src = inspect.getsource(mod)
-      for m in re.finditer(r"\w*runtime\.run\(", src):
-        line_start = src.rfind("\n", 0, m.start()) + 1
-        before = src[line_start : m.start()]
-        # PROSE, not a call. Both modules DISCUSS ``runtime.run(...)`` in
-        # comments and docstrings, and a sweep that flags prose is a sweep
-        # people learn to ignore.
-        if "#" in before or "``" in before:
-          continue
-        # Slice the call's argument text: from the open paren to the
-        # matching close, cheaply bounded by the next ``)`` at call indent.
-        tail = src[m.end() : m.end() + 1200]
-        call = tail.split("\n        )")[0].split("\n    )")[0]
-        if "post_start" not in call:
-          lineno = src[: m.start()].count("\n") + 1
-          offenders.append(f"{mod.__name__}:{lineno}")
+      sites = [
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(mod)))
+        if isinstance(node, ast.Call) and _is_runtime_run(node.func)
+      ]
+      # A sweep that finds no call proves nothing: the seam moved or was renamed.
+      assert sites, f"no runtime.run() call found in {mod.__name__}"
+      offenders += [
+        f"{mod.__name__}:{node.lineno}"
+        for node in sites
+        if not any(kw.arg == "post_start" for kw in node.keywords)
+      ]
     assert not offenders, (
       "these runtime.run() call sites bind a box home but pass no post_start "
       f"hook, so podman's :U leaves their canon agent-owned: {offenders}"

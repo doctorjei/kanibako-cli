@@ -840,10 +840,10 @@ class TestInterruptedMoveIsNamed:
       name="beta", workspace_path=tmp_path, mode=BoxMode.primary, moved_from=None
     )
     _lifecycle._note_unwind_incomplete(
-      state,
-      SimpleNamespace(verb=verb),
+      state,  # type: ignore[arg-type]
+      SimpleNamespace(verb=verb),  # type: ignore[arg-type]
       dest,
-      [OSError("x")],  # type: ignore[arg-type]
+      [OSError("x")],
       interrupted=True,
     )
     noun = {"move": "move", "convert": "conversion"}.get(verb or "", "remap")
@@ -862,10 +862,10 @@ class TestInterruptedMoveIsNamed:
       name="beta", workspace_path=tmp_path, mode=BoxMode.primary, moved_from=None
     )
     _lifecycle._note_unwind_incomplete(
-      state,
-      SimpleNamespace(verb="convert"),
+      state,  # type: ignore[arg-type]
+      SimpleNamespace(verb="convert"),  # type: ignore[arg-type]
       None,
-      [],  # type: ignore[arg-type]
+      [],
       interrupted=True,
     )
     assert capsys.readouterr().err == (
@@ -914,10 +914,10 @@ class TestInterruptedMoveIsNamed:
     spec = SimpleNamespace(verb=None)
     if incomplete:
       _lifecycle._note_unwind_incomplete(
-        state,
-        spec,
+        state,  # type: ignore[arg-type]
+        spec,  # type: ignore[arg-type]
         None,
-        [],  # type: ignore[arg-type]
+        [],
         interrupted=True,
       )
     else:
