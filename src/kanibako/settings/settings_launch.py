@@ -2718,6 +2718,16 @@ def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -
     return None
 
 
+def key_setter(written: Sequence[_WrittenLevel], key: str) -> str | None:
+    """The settings file whose value wins at *key*, or ``None`` when no file holds it.
+
+    *written* is the snapshot's ``written_out``. ``None`` means the value came from
+    below every settings file: the folded floor, or a level no file backs (the
+    persona store, the CLI level).
+    """
+    return _none_setter(written, key, None)
+
+
 def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]:
     """Every ``{key}``-ref in the source expression *src*, via the ONE scanner."""
     refs: list[str] = []

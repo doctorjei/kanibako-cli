@@ -1047,6 +1047,34 @@ class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
         assert f"agent.{harness}.env.{var}" not in message
         assert "claimed by two keys" not in message
 
+    @pytest.mark.parametrize(("family", "var", "driver"), [
+        ("env", "GOOSE_MODEL", "model"),
+        ("secret_path", "GOOSE_MODEL", "model"),
+        ("env", "GOOSE_MODE", "access"),
+    ])
+    def test_a_persona_node_is_named_as_the_user_spells_it(
+        self, tmp_path, family, var, driver,
+    ):
+        """193-D1: both keys render the node as ``kimi+goose``, never the store form."""
+        from kanibako.agent_ref import canonicalize_agent_ref
+
+        secret = tmp_path / "secret.txt"
+        secret.write_text("mine\n")
+        value = str(secret) if family == "secret_path" else "mine"
+        box_file = write_yaml(tmp_path / "box.yaml", {"box": {family: {var: value}}})
+        agent_file = write_yaml(tmp_path / "agent.yaml", {"self": {"model": "m"}})
+        with pytest.raises(SettingsError) as excinfo:
+            realized_entries(
+                target_for("goose"), node=canonicalize_agent_ref("kimi+goose"),
+                box_path=box_file, agent_path=agent_file,
+            )
+        message = str(excinfo.value)
+        assert message.startswith(
+            f"'box.{family}.{var}' conflicts with 'agent.kimi+goose.{driver}', which "
+            f"kanibako turns into {var}; remove the {family} entry"
+        ), message
+        assert "\u2118" not in message
+
     def test_the_model_cure_names_its_flag(self, tmp_path):
         box_file = write_yaml(
             tmp_path / "box.yaml", {"box": {"env": {"GOOSE_MODEL": "mine"}}},

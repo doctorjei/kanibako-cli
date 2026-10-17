@@ -793,6 +793,72 @@ class TestOneVariableTwoOrderings:
             f"'agent.claude.env.{self._VAR}' (set by the persona store)"
         ) in message, message
 
+    def test_an_agent_file_value_is_not_credited_to_the_persona_store(
+        self, std, config, project_dir,
+    ):
+        """193-D2: the agent FILE sits above the persona rung, so its value is the user's."""
+        from kanibako.settings.agent_file import slot_for, write_leaf
+        from kanibako.settings.config_io import write_nested_key
+
+        proj, box_path = self._files(std, config, project_dir)
+        write_nested_key(box_path, ("box", "env"), self._VAR, "box-owned")
+        slot = slot_for(std.agents, "claude", f"env.{self._VAR}")
+        slot.path.parent.mkdir(parents=True, exist_ok=True)
+        write_leaf(slot, "file-owned")
+
+        with pytest.raises(SettingsError) as exc:
+            _resolve(
+                std, proj, agent_cfg_path=slot.path,
+                persona_values={f"env.{self._VAR}": "store-owned"},
+            )
+        message = str(exc.value)
+        assert f"'agent.claude.env.{self._VAR}' at the 'agent' scope" in message, message
+        assert "set by" not in message
+
+    def test_a_stamp_the_system_file_overrides_is_not_credited_to_kanibako(
+        self, std, config, project_dir,
+    ):
+        """193-D2: a user's ``system.env.KANIBAKO_*`` wins over the stamp; it is theirs."""
+        from kanibako.settings.config_io import write_nested_key
+
+        var = "KANIBAKO_AGENT_MARKERS_DIR"
+        proj, box_path = self._files(std, config, project_dir)
+        write_nested_key(std.settings, ("system", "env"), var, "/system-owned")
+        write_nested_key(box_path, ("box", "env"), var, "/mine")
+
+        with pytest.raises(SettingsError) as exc:
+            _resolve(std, proj, system_settings_path=std.settings)
+        message = str(exc.value)
+        assert f"'system.env.{var}' at the 'system' scope" in message, message
+        assert "set by" not in message
+
+    def test_a_persona_store_twin_of_a_realized_variable_names_the_store(
+        self, std, config, project_dir,
+    ):
+        """193-E1: the store's ``env.<VAR>`` beside its realization; the cure is the store."""
+        from kanibako.commands.start import _LaunchRealizer
+
+        plugin = pytest.importorskip("kanibako.plugins.claude")
+        desc = plugin.ClaudeTarget().descriptor
+        proj, _box_path = self._files(std, config, project_dir)
+        with pytest.raises(SettingsError) as exc:
+            _resolve_launch_snapshot(
+                std=std, proj=proj, agent_name="claude",
+                system_settings_path=None, agent_cfg_path=None,
+                desc=desc, install=None, target=_WiringTarget(),
+                deliver_creds=True, cli_level=None,
+                persona_values={
+                    "endpoint": "http://h", "env.ANTHROPIC_BASE_URL": "http://mine",
+                },
+                realize=_LaunchRealizer(desc=desc, agent_id="claude"),
+            )
+        message = str(exc.value)
+        assert message.startswith(
+            "'agent.claude.env.ANTHROPIC_BASE_URL' (set by the persona store) "
+            "conflicts with 'agent.claude.endpoint', which kanibako turns into "
+            "ANTHROPIC_BASE_URL; remove the env entry from the persona store"
+        ), message
+
 
 class TestTheAgentFileEnvRidesTheOneChannel:
     """MBR-1 P3 — the per-agent FILE's ``self.env`` is an ordinary ``agent.<node>.env.<VAR>``.

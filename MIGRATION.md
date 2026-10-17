@@ -3086,10 +3086,10 @@ the key that drives the variable.
 
 | what you have | what happens now | the cure |
 |---|---|---|
-| `agent.goose.env.GOOSE_MODE: auto` (or at any other scope) | refuses on **every** goose launch | set `access` (`kanibako agent set goose access=full`), or pass `-S` / `-A` per launch |
-| `agent.goose.env.GOOSE_MODEL: …` | refuses **whenever `model` resolves to a value**, `""` included | set `model` instead — `kanibako agent set goose model=…`, or `-M` per launch |
-| `agent.goose.env.GOOSE_PROVIDER: …` | refuses whenever `provider` resolves | set `provider` |
-| `agent.goose.env.OPENAI_HOST: …` / `agent.claude.env.ANTHROPIC_BASE_URL: …` | refuses whenever `endpoint` resolves | set `endpoint` (or use a persona, which supplies it) |
+| `agent.goose.env.GOOSE_MODE: auto` (or at any other scope) | refuses on **every** goose launch | remove the `env` entry, then set `access` (`kanibako agent set goose access=full`) or pass `-S` / `-A` per launch |
+| `agent.goose.env.GOOSE_MODEL: …` | refuses **whenever `model` resolves to a value**, `""` included | remove the `env` entry, then set `model` — `kanibako agent set goose model=…`, or `-M` per launch |
+| `agent.goose.env.GOOSE_PROVIDER: …` | refuses whenever `provider` resolves | remove the `env` entry, then set `provider` |
+| `agent.goose.env.OPENAI_HOST: …` / `agent.claude.env.ANTHROPIC_BASE_URL: …` | refuses whenever `endpoint` resolves | remove the `env` entry, then set `endpoint` (or use a persona, which supplies it) |
 
 ⚑ **`GOOSE_MODE` is the total one.** The other four are conditional on an *unrelated* key, which is
 worth knowing before it surprises you: the same settings file launches or refuses depending on

@@ -4624,6 +4624,7 @@ def _run_container(
                 if active_endpoint is not None else ()
             ),
         )
+        _written: list = []
         _snapshot, deliveries = _resolve_launch_snapshot(
             std=std,
             proj=proj,
@@ -4646,6 +4647,7 @@ def _run_container(
             # that takes ``-e``: a realization is what THIS launch's flags produce,
             # so a stored map or a display must not carry one.
             realize=_realizer,
+            written_out=_written,
         )
         # ``--browser`` writes BROWSER_WS_ENDPOINT after the collapse; a user value
         # for it (any scope's key or ``-e``) would be replaced silently. Refused
@@ -4653,7 +4655,10 @@ def _run_container(
         if browser:
             _refuse_browser_env_twin(
                 _launch_env_map(_snapshot),
-                _env_key_origins(agent_name=agent_id, persona_values=persona_values),
+                _env_key_origins(
+                    agent_name=agent_id, persona_values=persona_values,
+                    written=_written,
+                ),
             )
         # §1A CREATE EXCEPTION for ``-e`` (181-CX1 (a) [Jei:2026-10-13]): the collapse above is the
         # first point that knows which key owns each variable — its env slots, and the
@@ -7742,6 +7747,7 @@ def _resolve_launch_snapshot(
     cli_env: "Mapping[str, str] | None" = None,
     realize: "Callable[[KeyStore], LaunchRealization] | None" = None,
     narrow_bind_dests: "frozenset[str] | None" = None,
+    written_out: "list | None" = None,
 ):
     """Build the ONE launch snapshot + what this launch DELIVERS from it.
 
@@ -7763,6 +7769,10 @@ def _resolve_launch_snapshot(
     *narrow_bind_dests* is a NARROW caller's own table: omitted, a
     whole-box resolve emits from ``meta.assembly.bindings`` and has no second map to
     reach for.
+
+    *written_out*, when given, receives the cascade's labeled levels
+    (``build_launch_snapshot``'s), so a later refusal can tell a settings file's
+    value from one the persona store or kanibako set (:func:`_env_key_origins`).
 
     See ``llm-docs/kanibako/commands/start.py.md``, "``_resolve_launch_snapshot`` —
     the ONE launch resolve, and what gates each parameter", for every parameter.
@@ -8072,6 +8082,7 @@ def _resolve_launch_snapshot(
     prefs = inputs.prefs
 
     dest_keys: dict[tuple[str, ...], str] = {}
+    written: list = [] if written_out is None else written_out
     snapshot = settings_launch.build_launch_snapshot(
         **inputs.as_kwargs(),
         agent_name=agent_name,
@@ -8089,6 +8100,11 @@ def _resolve_launch_snapshot(
         cli_level=cli_level,
         dest_keys=dest_keys,
         descriptor=desc,
+        written_out=written,
+    )
+    env_origins = _env_key_origins(
+        agent_name=agent_name, persona_values=persona_values, stamps=stamps,
+        written=written,
     )
     try:
         # THE REALIZATION SEAM (MBR-1 P4c-2), and its position is the design: AFTER
@@ -8105,6 +8121,7 @@ def _resolve_launch_snapshot(
         if realize is not None:
             _install_realized_env(
                 snapshot, realize(snapshot).env, agent_id=agent_name, desc=desc,
+                origins=env_origins,
             )
         entries = settings_launch.snapshot_category_entries(
             snapshot, active_agent=agent_name, box_ctx=ctx,
@@ -8171,9 +8188,7 @@ def _resolve_launch_snapshot(
         # the resolve's own return channel is the only way a display can have it.
         declared_by = _install_assembly_collapse(
             snapshot, delivered, whole_box=include_base_families, cli_env=cli_env,
-            env_origins=_env_key_origins(
-                agent_name=agent_name, persona_values=persona_values, stamps=stamps,
-            ),
+            env_origins=env_origins,
         )
         # The carrier every consumer reads (cutover 6-R1/6-R2), built off the SAME
         # gated list — another reader of one list, never a second resolve. ⚑ The
@@ -10241,19 +10256,27 @@ def _env_key_origins(
     *, agent_name: str,
     persona_values: "Mapping[str, str | None] | None",
     stamps: "Mapping[str, str] | None" = None,
+    written: "list | tuple" = (),
 ) -> dict[str, str]:
     """Each env entry key the user did not write → who set it, for refusal text.
 
     A launch stamp (:func:`_core_env_default_categories`) is ``kanibako``'s; a
     persona-store ``env.<VAR>`` lands at ``agent.<agent_name>.env.<VAR>``
     (``settings_launch._persona_partial``) and is ``the persona store``'s.
+    ⚑ Only while no settings file holds the key: *written* (the snapshot's
+    ``written_out``) names a file that does, and that file's value is the one
+    that wins (the agent file sits above the persona rung; any file above the floor).
     """
+    from kanibako.settings.settings_launch import key_setter
+
     origins = {key: "kanibako" for key in stamps or {}}
     for key in persona_values or {}:
         category, sep, var = key.partition(".")  # FIRST dot only, as the store splits.
         if sep and category == "env":
             origins[f"agent.{agent_name}.env.{var}"] = "the persona store"
-    return origins
+    return {
+        key: who for key, who in origins.items() if key_setter(written, key) is None
+    }
 
 
 class LaunchRealization(NamedTuple):
@@ -10390,7 +10413,10 @@ class _LaunchRealizer:
         return self._result
 
 
-def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
+def _install_realized_env(
+    snapshot, env, *, agent_id: str, desc,
+    origins: "Mapping[str, str] | None" = None,
+) -> None:
     """Write a launch's REALIZED variables into *snapshot* as ``agent.<node>.env.*`` keys.
 
     ⚑⚑ THIS IS THE WHOLE OF MBR-1 P4c-2: the realizations stop being a layer applied
@@ -10410,7 +10436,8 @@ def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
     only here is the DRIVING key known: the collapse and the secret check below see
     ordinary entries, and would name an ``agent.<node>.env.<VAR>`` the user never
     wrote.  :func:`_realized_twin_key` finds the key; it refuses exactly what those
-    two refused before, and nothing more.
+    two refused before, and nothing more.  *origins* (:func:`_env_key_origins`)
+    names who set a key no settings file holds.
     """
     if not env:
         return
@@ -10430,6 +10457,7 @@ def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
                 agent_id=agent_id,
                 driving_key=drivers.get(var, ""),
                 is_access=(var == access_var),
+                origin=(origins or {}).get(declared),
             )
         snapshot.insert_segments(("agent", agent_id, "env", var), value)
 
@@ -10491,24 +10519,32 @@ def _realized_twin_key(snapshot, agent_id: str, var: str) -> "str | None":
 
 def _refuse_realized_twin(
     var: str, declared_key: str, *,
-    agent_id: str, driving_key: str, is_access: bool,
+    agent_id: str, driving_key: str, is_access: bool, origin: "str | None" = None,
 ) -> None:
     """A settings key names a variable this launch REALIZES: refuse, naming both.
 
     ⚑ THE SOLE RAISE SITE for a realized variable's twin, at every scope and in
     both families (``env``, ``secret_path``): the message names the key the user
     wrote AND the key that DRIVES the variable, because the driving key is the
-    variable's owner and the only place its value can be chosen.
+    variable's owner and the only place its value can be chosen.  Both are shown
+    as the user spells them (:func:`shown_key`), so a persona node reads
+    ``kimi+goose`` and ``_annotate_pref_origin`` can match a pref's key.  *origin*
+    names who set a key no settings file holds (the persona store).
     """
     from kanibako.settings.settings_cli_level import CLI_SHADOWED_KEYS
     from kanibako.settings.settings_resolve import SettingsError
 
     family = "secret_path" if ".secret_path." in declared_key else "env"
     shown = shown_key(declared_key)
+    if origin:
+        shown_as = f"{shown!r} (set by {origin})"
+        entry = f"the {family} entry from {origin}"
+    else:
+        shown_as, entry = repr(shown), f"the {family} entry"
     # ⚑ REMOVAL COMES FIRST, never as one of two alternatives. MEASURED (bifrost
     # row 66 A3): with the key stored, ``-S``, ``-A``, an ``access`` value AND ``-e``
     # all meet this same refusal, because it fires before any of them applies.
-    clears = f"remove the {family} entry (no flag clears this while it stays)"
+    clears = f"remove {entry} (no flag clears this while it stays)"
     once = f"or pass `-e {var}=<value>` for one launch"
     if driving_key:
         template = f"agent.<agent>.{driving_key}"
@@ -10517,13 +10553,14 @@ def _refuse_realized_twin(
         )
         label = "access tier" if is_access else driving_key
         set_with = f"`{driving_key}`" + (f" (or `{flag}`)" if flag else "")
+        driving = shown_key(f"agent.{agent_id}.{driving_key}")
         raise SettingsError(
-            f"{shown!r} conflicts with {f'agent.{agent_id}.{driving_key}'!r}, which "
+            f"{shown_as} conflicts with {driving!r}, which "
             f"kanibako turns into {var}; {clears}, then set the {label} with "
             f"{set_with}, {once}."
         )
     raise SettingsError(
-        f"{shown!r} conflicts with the access tier, which kanibako turns into "
+        f"{shown_as} conflicts with the access tier, which kanibako turns into "
         f"{var}; {clears}, then choose the tier with `-S` or `-A`, {once}."
     )
 

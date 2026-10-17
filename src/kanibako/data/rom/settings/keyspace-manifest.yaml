@@ -1888,9 +1888,9 @@ keys:
            UPSTREAM of this map - ordinary agent-scope entries by the time the
            collapse walks; nothing downstream knows a realized variable from a
            declared one, and nothing may be taught to. A USER TWIN OF A REALIZED
-           VAR REFUSES, with NO carve-out: at the SAME agent scope the INSTALL
-           refuses, naming both the user's declared key and the driving key; at any
-           other scope it meets the ordinary contested-VAR refusal above. The
+           VAR REFUSES, with NO carve-out: at EVERY scope, env and secret_path
+           alike, the INSTALL refuses, naming both the user's declared key and the
+           driving key. The
            same-scope sentence above is about the WALK - by the time the collapse
            walks, a twin has already been refused upstream."
     spec: "§1A"
